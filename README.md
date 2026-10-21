@@ -149,6 +149,8 @@ enablebanking:
   country: "ES"
   institution_name: "Banco Santander"
   psu_type: "personal"
+  # Banco Santander allows up to 180 days.
+  consent_validity_days: 180
 ```
 
 #### 4. Activate the application
