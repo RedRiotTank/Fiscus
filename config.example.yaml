@@ -17,6 +17,10 @@ server:
   password: ""
   # Alternatively provide a bcrypt hash instead of a plaintext password.
   password_hash: ""
+  # Serve HTTPS directly. Set both files to enable TLS; leave both empty for
+  # plain HTTP. Enable Banking production apps require an https redirect URL.
+  tls_cert_file: ""
+  tls_key_file: ""
   read_header_timeout: "10s"
   read_timeout: "30s"
   write_timeout: "30s"
@@ -56,7 +60,8 @@ enablebanking:
   #   ...
   #   -----END PRIVATE KEY-----
   # Must exactly match the redirect URL registered for the application.
-  redirect_url: "http://localhost:8080/callback"
+  # Enable Banking production requires HTTPS; see README for a local TLS setup.
+  redirect_url: "https://localhost:8080/callback"
   country: "ES"
   # Default bank for "fiscus connect"; use "fiscus institutions" to find names.
   institution_name: "Banco Santander"

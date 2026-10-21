@@ -74,9 +74,10 @@ require a GoCardless account.
 
 1. Sign in to the [Enable Banking control panel](https://enablebanking.com/sign-in/)
    and create an application.
-2. Register a redirect URL. For local use, set it to
-   `http://localhost:8080/callback`. It must match `enablebanking.redirect_url`
-   exactly, including scheme, port, and path.
+2. Register a redirect URL. Production Enable Banking applications require
+   HTTPS, including for localhost. Use `https://localhost:8080/callback` with the
+   local TLS setup below, or an HTTPS tunnel. It must match
+   `enablebanking.redirect_url` exactly, including scheme, port, and path.
 3. Download the application's RSA private key (`.pem`) and note the application
    ID.
 4. Configure Fiscus:
@@ -84,10 +85,15 @@ require a GoCardless account.
    ```yaml
    provider: enablebanking
 
+   server:
+     address: ":8080"
+     tls_cert_file: "secrets/localhost-cert.pem"
+     tls_key_file: "secrets/localhost-key.pem"
+
    enablebanking:
      app_id: "your-application-id"
      private_key_path: "/absolute/path/to/your-application-id.pem"
-     redirect_url: "http://localhost:8080/callback"
+     redirect_url: "https://localhost:8080/callback"
      country: "ES"
      institution_name: "Banco Santander"
      psu_type: "personal"
@@ -106,6 +112,37 @@ require a GoCardless account.
    The bank redirects your browser to `/callback`; Fiscus validates the OAuth
    `state`, exchanges the one-time code for a session, links the connection, and
    requests a sync.
+
+#### Local HTTPS for Enable Banking
+
+Enable Banking production rejects `http://` redirect URLs. Fiscus can terminate
+TLS directly with a self-signed certificate. Generate one for `localhost`:
+
+```sh
+mkdir -p secrets
+openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
+  -keyout secrets/localhost-key.pem \
+  -out secrets/localhost-cert.pem \
+  -subj "/CN=localhost" \
+  -addext "subjectAltName=DNS:localhost"
+```
+
+Set `server.tls_cert_file` and `server.tls_key_file` as shown above, then open
+<https://localhost:8080>. The browser will warn that the certificate is
+self-signed; accept it for localhost. The bank redirect and dashboard then use
+the same HTTPS origin. The certificate and key are git-ignored.
+
+If you prefer not to use a self-signed certificate, run an HTTPS tunnel to
+Fiscus and register the tunnel URL instead:
+
+```sh
+cloudflared tunnel --url http://localhost:8080
+# register https://<generated-name>.trycloudflare.com/callback
+```
+
+Keep the tunnel running while authorizing the bank, and set
+`enablebanking.redirect_url` to the exact tunnel callback URL. A named tunnel or
+a reverse proxy with a trusted certificate is preferable for a stable URL.
 
 The `/callback` endpoint is intentionally reachable without dashboard Basic Auth
 because the bank redirects the browser there. A random `state` stored with the
@@ -161,8 +198,9 @@ variables are:
 | --- | --- |
 | `FISCUS_PROVIDER` | Banking provider: `gocardless` or `enablebanking` |
 | `FISCUS_DATABASE_PATH` | SQLite database file (default `data/fiscus.db`) |
-| `FISCUS_SERVER_ADDRESS` | HTTP listen address (default `:8080`) |
+| `FISCUS_SERVER_ADDRESS` | HTTP(S) listen address (default `:8080`) |
 | `FISCUS_SERVER_USERNAME` / `FISCUS_SERVER_PASSWORD` | Dashboard Basic Auth |
+| `FISCUS_SERVER_TLS_CERT_FILE` / `..._TLS_KEY_FILE` | Serve HTTPS directly (set both) |
 | `FISCUS_GOCARDLESS_SECRET_ID` / `..._SECRET_KEY` | GoCardless API credentials |
 | `FISCUS_GOCARDLESS_REDIRECT_URL` | OAuth redirect registered with GoCardless |
 | `FISCUS_GOCARDLESS_COUNTRY` | Institution country code (default `ES`) |

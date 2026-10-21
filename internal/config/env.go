@@ -17,6 +17,8 @@ func applyEnv(cfg *Config) error {
 	stringEnv("FISCUS_SERVER_USERNAME", &cfg.Server.Username)
 	stringEnv("FISCUS_SERVER_PASSWORD", &cfg.Server.Password)
 	stringEnv("FISCUS_SERVER_PASSWORD_HASH", &cfg.Server.PasswordHash)
+	stringEnv("FISCUS_SERVER_TLS_CERT_FILE", &cfg.Server.TLSCertFile)
+	stringEnv("FISCUS_SERVER_TLS_KEY_FILE", &cfg.Server.TLSKeyFile)
 	durationEnv("FISCUS_SERVER_READ_HEADER_TIMEOUT", &cfg.Server.ReadHeaderTimeout, &errs)
 	durationEnv("FISCUS_SERVER_READ_TIMEOUT", &cfg.Server.ReadTimeout, &errs)
 	durationEnv("FISCUS_SERVER_WRITE_TIMEOUT", &cfg.Server.WriteTimeout, &errs)

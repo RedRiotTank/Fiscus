@@ -204,6 +204,8 @@ func TestValidationErrors(t *testing.T) {
 			c.Server.PasswordHash = "$2a$10$hash"
 		}, want: "only one"},
 		{name: "bad hash", mutate: func(c *Config) { c.Server.Username = "a"; c.Server.PasswordHash = "plain" }, want: "bcrypt"},
+		{name: "TLS certificate only", mutate: func(c *Config) { c.Server.TLSCertFile = "/tmp/cert.pem" }, want: "tls_key_file"},
+		{name: "TLS key only", mutate: func(c *Config) { c.Server.TLSKeyFile = "/tmp/key.pem" }, want: "tls_cert_file"},
 		{name: "half credentials", mutate: func(c *Config) { c.GoCardless.SecretID = "id" }, want: "configured together"},
 		{name: "telegram token only", mutate: func(c *Config) { c.Alerts.Telegram.BotToken = "token" }, want: "configured together"},
 		{name: "telegram chat only", mutate: func(c *Config) { c.Alerts.Telegram.ChatID = "chat" }, want: "configured together"},

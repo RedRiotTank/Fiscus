@@ -185,7 +185,12 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		logger.Info("dashboard listening", "address", cfg.Server.Address, "version", version)
+		if cfg.Server.TLSCertFile != "" {
+			logger.Info("dashboard listening", "address", cfg.Server.Address, "scheme", "https", "version", version)
+			errCh <- httpServer.ListenAndServeTLS(cfg.Server.TLSCertFile, cfg.Server.TLSKeyFile)
+			return
+		}
+		logger.Info("dashboard listening", "address", cfg.Server.Address, "scheme", "http", "version", version)
 		errCh <- httpServer.ListenAndServe()
 	}()
 

@@ -23,12 +23,14 @@ type Config struct {
 	Logging       LoggingConfig       `yaml:"logging"`
 }
 
-// ServerConfig controls the HTTP dashboard.
+// ServerConfig controls the HTTP(S) dashboard.
 type ServerConfig struct {
 	Address           string   `yaml:"address"`
 	Username          string   `yaml:"username"`
 	Password          string   `yaml:"password"`
 	PasswordHash      string   `yaml:"password_hash"`
+	TLSCertFile       string   `yaml:"tls_cert_file"`
+	TLSKeyFile        string   `yaml:"tls_key_file"`
 	ReadHeaderTimeout Duration `yaml:"read_header_timeout"`
 	ReadTimeout       Duration `yaml:"read_timeout"`
 	WriteTimeout      Duration `yaml:"write_timeout"`
@@ -207,6 +209,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Server.PasswordHash != "" && !strings.HasPrefix(c.Server.PasswordHash, "$2") {
 		errs = append(errs, errors.New("server.password_hash must be a bcrypt hash"))
+	}
+	if cert, key := strings.TrimSpace(c.Server.TLSCertFile), strings.TrimSpace(c.Server.TLSKeyFile); (cert == "") != (key == "") {
+		errs = append(errs, errors.New("server.tls_cert_file and server.tls_key_file must be configured together"))
 	}
 	if id, key := strings.TrimSpace(c.GoCardless.SecretID), strings.TrimSpace(c.GoCardless.SecretKey); (id == "") != (key == "") {
 		errs = append(errs, errors.New("gocardless.secret_id and gocardless.secret_key must be configured together"))
