@@ -275,6 +275,10 @@ Fiscus is a monitoring tool, not an accounting system or financial advisor. It
 uses read-only APIs and never initiates payments. Verify alerts against your bank
 before acting on them.
 
+## Privacy and terms
+
+See [PRIVACY.md](PRIVACY.md) and [TERMS.md](TERMS.md).
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
