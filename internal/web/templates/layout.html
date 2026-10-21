@@ -1,0 +1,48 @@
+{{define "layout"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{{.Title}} · Fiscus</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230ea5e9'/%3E%3Cpath d='M20 18h26v8H29v8h14v8H29v12h-9z' fill='%23031018'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body hx-headers='{"X-Fiscus-Request":"1"}'>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="/" aria-label="Fiscus overview">
+        <span class="brand-mark" aria-hidden="true">F</span>
+        <span class="brand-text">
+          <strong>Fiscus</strong>
+          <small>treasury monitor</small>
+        </span>
+      </a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="/" class="{{if eq .Active "dashboard"}}active{{end}}">Overview</a>
+        <a href="/transactions" class="{{if eq .Active "transactions"}}active{{end}}">Transactions</a>
+        <a href="/alerts" class="{{if eq .Active "alerts"}}active{{end}}">Alerts</a>
+        <a href="/connections" class="{{if eq .Active "connections"}}active{{end}}">Connections</a>
+      </nav>
+      <span class="build">v{{.Version}}</span>
+    </div>
+  </header>
+
+  <main class="container">
+    {{template "content" .}}
+  </main>
+
+  <footer class="footer">
+    <span>Fiscus · read-only PSD2 monitoring · all amounts in minor units</span>
+    <span class="footer-links">
+      <a href="/healthz">health</a>
+      <a href="/readyz">ready</a>
+      <a href="/metrics">metrics</a>
+    </span>
+  </footer>
+</body>
+</html>
+{{end}}

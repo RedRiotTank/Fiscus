@@ -1,0 +1,101 @@
+{{define "content"}}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Treasury overview</p>
+    <h1>Cash position</h1>
+    <p class="subtitle">Balances, recent movements, and rule activity across your linked accounts.</p>
+  </div>
+  <div class="actions">
+    <form hx-post="/sync" hx-target="#sync-status" hx-swap="innerHTML">
+      <button class="button" type="submit">
+        <span class="button-icon" aria-hidden="true">↻</span> Sync now
+      </button>
+    </form>
+    <div id="sync-status" class="sync-status" aria-live="polite"></div>
+  </div>
+</div>
+
+{{template "overview_panel" .}}
+
+<div class="grid-two">
+  {{template "alerts_feed" .}}
+
+  <section class="panel">
+    <header class="panel-head">
+      <div>
+        <h2>Bank connections</h2>
+        <p class="panel-sub">Consent state and last refresh</p>
+      </div>
+      <a class="link" href="/connections">Manage</a>
+    </header>
+    {{if .Connections}}
+      <ul class="connection-list compact">
+        {{range .Connections}}
+          <li>
+            <div class="connection-main">
+              <span class="dot {{statusClass .Status}}" aria-hidden="true"></span>
+              <div>
+                <strong>{{if .InstitutionName}}{{.InstitutionName}}{{else}}Bank connection{{end}}</strong>
+                <span class="muted small">{{statusLabel .Status}} · {{len .Accounts}} account{{if ne (len .Accounts) 1}}s{{end}}</span>
+              </div>
+            </div>
+            <span class="muted small">{{if .LastSyncedAt}}{{ago .LastSyncedAt}}{{else}}not synced{{end}}</span>
+          </li>
+        {{end}}
+      </ul>
+    {{else}}
+      <div class="empty">
+        <p>No bank connections yet.</p>
+        <a class="button ghost" href="/connections">Connect a bank</a>
+      </div>
+    {{end}}
+    {{if .Transactions}}
+      <div class="panel-foot">
+        <a class="link" href="/transactions">View all {{.TotalTransactions}} transactions →</a>
+      </div>
+    {{end}}
+  </section>
+</div>
+
+<section class="panel">
+  <header class="panel-head">
+    <div>
+      <h2>Recent transactions</h2>
+      <p class="panel-sub">Latest booked and pending movements</p>
+    </div>
+    <a class="link" href="/transactions">All transactions</a>
+  </header>
+  {{if .Transactions}}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Account</th>
+            <th scope="col">Counterparty</th>
+            <th scope="col">Description</th>
+            <th scope="col" class="right">Amount</th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Transactions}}
+            <tr>
+              <td class="nowrap">{{date .BookingDate}}</td>
+              <td>{{.AccountName}}</td>
+              <td>{{if .Counterparty}}{{.Counterparty}}{{else}}<span class="muted">—</span>{{end}}</td>
+              <td class="description">{{if .Description}}{{.Description}}{{else}}<span class="muted">—</span>{{end}}</td>
+              <td class="right amount {{if lt .AmountMinor 0}}debit{{else}}credit{{end}}">{{money .AmountMinor .Currency}}</td>
+              <td><span class="badge {{if eq .Status "booked"}}ok{{else}}pending{{end}}">{{.Status}}</span></td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  {{else}}
+    <div class="empty">
+      <p>No transactions ingested yet. Fiscus will populate this view after the first successful sync.</p>
+    </div>
+  {{end}}
+</section>
+{{end}}

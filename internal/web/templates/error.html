@@ -1,0 +1,15 @@
+{{define "content"}}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Request failed</p>
+    <h1>Something went wrong</h1>
+    <p class="subtitle">{{.ErrorMessage}}</p>
+  </div>
+  <a class="button" href="/">Return to overview</a>
+</div>
+<section class="panel">
+  <div class="empty">
+    <p>Try the request again. If the problem persists, inspect the Fiscus daemon logs.</p>
+  </div>
+</section>
+{{end}}

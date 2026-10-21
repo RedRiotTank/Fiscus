@@ -1,0 +1,43 @@
+{{define "content"}}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Rule engine</p>
+    <h1>Alerts</h1>
+    <p class="subtitle">Persisted alerts, ordered newest first. Delivery state reflects the last notification attempt.</p>
+  </div>
+  <a class="button ghost" href="/">Back to overview</a>
+</div>
+
+<section class="panel">
+  <header class="panel-head">
+    <div>
+      <h2>Alert history</h2>
+      <p class="panel-sub">{{len .Alerts}} alert{{if ne (len .Alerts) 1}}s{{end}} loaded</p>
+    </div>
+  </header>
+  {{if .Alerts}}
+    <ul class="alert-list spacious">
+      {{range .Alerts}}
+        <li class="alert {{severityClass .Severity}}">
+          <div class="alert-top">
+            <span class="badge {{severityClass .Severity}}">{{.Severity}}</span>
+            <strong>{{.Title}}</strong>
+            <time datetime="{{datetime .CreatedAt}}">{{datetime .CreatedAt}}</time>
+          </div>
+          <p class="alert-message">{{.Message}}</p>
+          <div class="alert-meta">
+            <span>{{if .AccountName}}{{.AccountName}}{{else}}{{.AccountID}}{{end}}</span>
+            <span class="rule">rule: {{.Rule}}</span>
+            {{if .Delivered}}<span class="badge ok">delivered {{ago .DeliveredAt}}</span>{{else if .DeliveryError}}<span class="badge error" title="{{.DeliveryError}}">delivery failed</span>{{else}}<span class="badge pending">not delivered</span>{{end}}
+          </div>
+        </li>
+      {{end}}
+    </ul>
+  {{else}}
+    <div class="empty">
+      <p>No alerts have been triggered yet.</p>
+      <p class="muted">Rules run after each transaction or balance sync. Configure notification channels to receive alerts outside the dashboard.</p>
+    </div>
+  {{end}}
+</section>
+{{end}}

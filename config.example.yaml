@@ -1,0 +1,61 @@
+# Fiscus configuration example.
+#
+# Copy this file to config.yaml and fill in your own values. Every setting can
+# also be supplied through environment variables (see .env.example), which take
+# precedence over this file. Keep config.yaml out of version control.
+
+server:
+  # Listen address for the dashboard and health endpoints.
+  address: ":8080"
+  # Basic Auth credentials for the dashboard. Set both, or neither to disable
+  # authentication (only appropriate behind a trusted reverse proxy).
+  username: ""
+  password: ""
+  # Alternatively provide a bcrypt hash instead of a plaintext password.
+  password_hash: ""
+  read_header_timeout: "10s"
+  read_timeout: "30s"
+  write_timeout: "30s"
+  idle_timeout: "90s"
+  shutdown_timeout: "10s"
+
+database:
+  # SQLite database file. Parent directories must exist.
+  path: "data/fiscus.db"
+
+gocardless:
+  base_url: "https://bankaccountdata.gocardless.com/api/v2"
+  # API credentials from the GoCardless Bank Account Data portal.
+  secret_id: ""
+  secret_key: ""
+  # Must match the redirect URL registered in the GoCardless portal.
+  redirect_url: "http://localhost:8080/"
+  # Default institution country for "fiscus institutions".
+  country: "ES"
+  institution_id: ""
+  institution_name: ""
+  sync_interval: "15m"
+  sync_timeout: "5m"
+  initial_lookback_days: 90
+  overlap_days: 3
+
+alerts:
+  duplicate_window: "24h"
+  # Fractional increase over the rolling debit average that triggers a spike.
+  anomaly_threshold: 0.30
+  anomaly_lookback_days: 90
+  anomaly_min_history: 3
+  # Per-currency minimum balance as a decimal string of major units.
+  liquidity_thresholds:
+    EUR: "500.00"
+  telegram:
+    bot_token: ""
+    chat_id: ""
+  discord:
+    webhook_url: ""
+  retry_attempts: 3
+  retry_base_delay: "500ms"
+
+logging:
+  level: "info"
+  format: "text"

@@ -1,0 +1,66 @@
+{{define "overview_panel"}}
+<section id="overview-panel" class="overview" hx-get="/partials/overview" hx-trigger="every 30s" hx-swap="outerHTML" aria-live="polite">
+  {{if .Summary}}
+    <div class="summary-grid">
+      {{range .Summary}}
+        <article class="stat">
+          <span class="stat-label">{{.Currency}} available</span>
+          <strong class="stat-value">{{money .Minor .Currency}}</strong>
+          <span class="stat-meta">{{.Accounts}} account{{if ne .Accounts 1}}s{{end}} · consolidated</span>
+        </article>
+      {{end}}
+      <article class="stat subtle">
+        <span class="stat-label">Accounts</span>
+        <strong class="stat-value">{{.TotalAccounts}}</strong>
+        <span class="stat-meta">{{.TotalTransactions}} transactions tracked</span>
+      </article>
+    </div>
+  {{end}}
+
+  <section class="panel">
+    <header class="panel-head">
+      <div>
+        <h2>Accounts</h2>
+        <p class="panel-sub">Cached balances from the latest sync</p>
+      </div>
+      <a class="link" href="/connections">Connections</a>
+    </header>
+    {{if .Accounts}}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Account</th>
+              <th scope="col">IBAN</th>
+              <th scope="col">Type</th>
+              <th scope="col" class="right">Balance</th>
+              <th scope="col">Updated</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Accounts}}
+              <tr>
+                <td>
+                  <span class="account-name">{{if .Name}}{{.Name}}{{else}}{{.ID}}{{end}}</span>
+                  {{if .OwnerName}}<span class="muted small">{{.OwnerName}}</span>{{end}}
+                </td>
+                <td class="mono">{{if .IBAN}}{{.IBAN}}{{else}}<span class="muted">—</span>{{end}}</td>
+                <td>
+                  {{if .BalanceType}}<span class="badge muted">{{.BalanceType}}</span>{{else}}<span class="muted">—</span>{{end}}
+                </td>
+                <td class="right amount {{if lt .BalanceMinor 0}}debit{{else}}credit{{end}}">{{money .BalanceMinor .Currency}}</td>
+                <td class="nowrap muted">{{if .BalanceUpdatedAt}}{{ago .BalanceUpdatedAt}}{{else}}never{{end}}</td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}
+      <div class="empty">
+        <p>No accounts yet. Link a bank to start monitoring balances.</p>
+        <a class="button ghost" href="/connections">Set up a connection</a>
+      </div>
+    {{end}}
+  </section>
+</section>
+{{end}}
