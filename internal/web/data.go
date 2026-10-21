@@ -29,6 +29,7 @@ type PageData struct {
 	NextPage          int
 	HasNext           bool
 	ErrorMessage      string
+	AuthStatus        string
 }
 
 // CurrencySummary aggregates balances for one currency.

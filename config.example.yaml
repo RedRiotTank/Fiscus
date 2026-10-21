@@ -4,6 +4,10 @@
 # also be supplied through environment variables (see .env.example), which take
 # precedence over this file. Keep config.yaml out of version control.
 
+# Banking provider: "enablebanking" or "gocardless". Existing GoCardless users
+# can switch back to "gocardless"; the built-in default remains gocardless.
+provider: "enablebanking"
+
 server:
   # Listen address for the dashboard and health endpoints.
   address: ":8080"
@@ -34,6 +38,32 @@ gocardless:
   country: "ES"
   institution_id: ""
   institution_name: ""
+  sync_interval: "15m"
+  sync_timeout: "5m"
+  initial_lookback_days: 90
+  overlap_days: 3
+
+enablebanking:
+  base_url: "https://api.enablebanking.com"
+  # Application ID from the Enable Banking control panel.
+  app_id: ""
+  # Path to the RSA private key downloaded for the application. Keep the file
+  # outside version control and restrict it to the Fiscus user (chmod 600).
+  private_key_path: ""
+  # Alternatively paste the PEM contents here (for example from a secret store):
+  # private_key: |
+  #   -----BEGIN PRIVATE KEY-----
+  #   ...
+  #   -----END PRIVATE KEY-----
+  # Must exactly match the redirect URL registered for the application.
+  redirect_url: "http://localhost:8080/callback"
+  country: "ES"
+  # Default bank for "fiscus connect"; use "fiscus institutions" to find names.
+  institution_name: "Banco Santander"
+  # "personal" or "business".
+  psu_type: "personal"
+  # Requested consent lifetime; Enable Banking may shorten it for a bank.
+  consent_validity_days: 90
   sync_interval: "15m"
   sync_timeout: "5m"
   initial_lookback_days: 90

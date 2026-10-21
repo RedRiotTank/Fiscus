@@ -13,7 +13,9 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/RedRiotTank/Fiscus/internal/banking/enablebanking"
 	"github.com/RedRiotTank/Fiscus/internal/banking/gocardless"
+	"github.com/RedRiotTank/Fiscus/internal/config"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 )
 
@@ -32,9 +34,11 @@ func commandContext(timeout time.Duration) (context.Context, context.CancelFunc)
 func runConnect(args []string, stdout, stderr io.Writer) error {
 	fs := newFlagSet("connect", stderr)
 	configPath := fs.String("config", defaultConfigPath(), "path to YAML configuration")
-	institutionID := fs.String("institution", "", "GoCardless institution ID (see \"fiscus institutions\")")
+	institution := fs.String("institution", "", "institution ID (GoCardless) or bank name (Enable Banking)")
 	name := fs.String("name", "", "human-readable institution name for the dashboard")
 	reference := fs.String("reference", "fiscus", "consent reference shown by the bank")
+	country := fs.String("country", "", "ISO 3166-1 alpha-2 country code (Enable Banking)")
+	psu := fs.String("psu", "", "PSU type for Enable Banking: personal or business")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -45,21 +49,46 @@ func runConnect(args []string, stdout, stderr io.Writer) error {
 	if err := requireBanking(cfg); err != nil {
 		return err
 	}
+
+	options := connectOptions{
+		institution: strings.TrimSpace(*institution),
+		name:        strings.TrimSpace(*name),
+		reference:   strings.TrimSpace(*reference),
+		country:     strings.TrimSpace(*country),
+		psu:         strings.TrimSpace(*psu),
+	}
+	switch cfg.ProviderName() {
+	case "enablebanking":
+		return connectEnableBanking(cfg, options, stdout, stderr)
+	default:
+		return connectGoCardless(cfg, options, stdout, stderr)
+	}
+}
+
+type connectOptions struct {
+	institution string
+	name        string
+	reference   string
+	country     string
+	psu         string
+}
+
+func connectGoCardless(cfg *config.Config, options connectOptions, stdout, stderr io.Writer) error {
 	if strings.TrimSpace(cfg.GoCardless.RedirectURL) == "" {
 		return errors.New("gocardless.redirect_url is required to create a consent")
 	}
-	bank, err := buildBankClient(cfg)
+	bank, err := buildGoCardlessClient(cfg)
 	if err != nil {
 		return err
 	}
-	institution := strings.TrimSpace(*institutionID)
+	institution := options.institution
 	if institution == "" {
 		institution = strings.TrimSpace(cfg.GoCardless.InstitutionID)
 	}
 	if institution == "" {
 		return errors.New("-institution (or gocardless.institution_id) is required")
 	}
-	institutionName := strings.TrimSpace(*name)
+	institutionName := options.name
 	if institutionName == "" {
 		institutionName = strings.TrimSpace(cfg.GoCardless.InstitutionName)
 	}
@@ -73,7 +102,7 @@ func runConnect(args []string, stdout, stderr io.Writer) error {
 	requisition, err := bank.CreateRequisition(ctx, gocardless.CreateRequisitionInput{
 		InstitutionID: institution,
 		Redirect:      cfg.GoCardless.RedirectURL,
-		Reference:     strings.TrimSpace(*reference),
+		Reference:     options.reference,
 	})
 	if err != nil {
 		return err
@@ -105,19 +134,123 @@ func runConnect(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
+	printConsent(stdout, connection)
+	_, _ = fmt.Fprintf(stdout, "After authorizing, run \"fiscus sync\" or wait for the next scheduled sync.\n")
+	return nil
+}
+
+func connectEnableBanking(cfg *config.Config, options connectOptions, stdout, stderr io.Writer) error {
+	settings := cfg.EnableBanking
+	if strings.TrimSpace(settings.RedirectURL) == "" {
+		return errors.New("enablebanking.redirect_url is required to create a consent")
+	}
+	institution := options.institution
+	if institution == "" {
+		institution = strings.TrimSpace(settings.InstitutionName)
+	}
+	if institution == "" {
+		return errors.New("-institution (or enablebanking.institution_name) is required")
+	}
+	country := strings.ToUpper(options.country)
+	if country == "" {
+		country = strings.ToUpper(strings.TrimSpace(settings.Country))
+	}
+	if country == "" {
+		return errors.New("-country (or enablebanking.country) is required")
+	}
+	psuType := strings.ToLower(options.psu)
+	if psuType == "" {
+		psuType = strings.ToLower(strings.TrimSpace(settings.PSUType))
+	}
+	if psuType == "" {
+		psuType = "personal"
+	}
+
+	ctx, cancel := commandContext(60 * time.Second)
+	defer cancel()
+
+	store, err := openStore(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			_, _ = fmt.Fprintf(stderr, "fiscus: close database: %v\n", err)
+		}
+	}()
+
+	client, err := buildEnableBankingClient(cfg)
+	if err != nil {
+		return err
+	}
+	aspsps, err := client.ListASPSPs(ctx, country, psuType)
+	if err != nil {
+		return err
+	}
+	aspsp, ok := findASPSP(aspsps, institution)
+	if !ok {
+		return fmt.Errorf("enablebanking bank %q was not found in %s; run \"fiscus institutions -country %s\"", institution, country, country)
+	}
+
+	validDays := settings.ConsentValidityDays
+	if validDays <= 0 {
+		validDays = 90
+	}
+	now := time.Now().UTC()
+	validUntil := now.AddDate(0, 0, validDays)
+	if seconds := aspsp.MaximumConsentValidity; seconds > 0 {
+		if maxUntil := now.Add(time.Duration(seconds) * time.Second); validUntil.After(maxUntil) {
+			validUntil = maxUntil
+		}
+	}
+
+	authorization, err := client.CreateAuthorization(ctx, enablebanking.AuthorizationInput{
+		ASPSPName:    aspsp.Name,
+		ASPSPCountry: firstNonEmpty(aspsp.Country, country),
+		PSUType:      psuType,
+		RedirectURL:  settings.RedirectURL,
+		ValidUntil:   validUntil,
+	})
+	if err != nil {
+		return err
+	}
+
+	displayName := options.name
+	if displayName == "" {
+		displayName = firstNonEmpty(aspsp.Name, institution)
+	}
+	connection := domain.Connection{
+		RequisitionID:   authorization.AuthorizationID,
+		InstitutionID:   aspsp.Name,
+		InstitutionName: displayName,
+		Status:          "PENDING_AUTHORIZATION",
+		Link:            authorization.URL,
+		Reference:       authorization.State,
+		AgreementID:     authorization.AuthorizationID,
+	}
+	if err := store.UpsertConnection(ctx, &connection); err != nil {
+		return err
+	}
+
+	printConsent(stdout, connection)
+	_, _ = fmt.Fprintf(stdout, "After authorizing, the bank redirects to %s.\n", settings.RedirectURL)
+	_, _ = fmt.Fprintf(stdout, "Keep \"fiscus serve\" running so Fiscus can complete the consent and sync accounts.\n")
+	return nil
+}
+
+func printConsent(stdout io.Writer, connection domain.Connection) {
 	_, _ = fmt.Fprintf(stdout, "Connection created.\n\n")
 	_, _ = fmt.Fprintf(stdout, "  Requisition: %s\n", connection.RequisitionID)
 	_, _ = fmt.Fprintf(stdout, "  Institution: %s (%s)\n", connection.InstitutionName, connection.InstitutionID)
 	_, _ = fmt.Fprintf(stdout, "  Status:      %s\n\n", connection.Status)
 	_, _ = fmt.Fprintf(stdout, "Open this link to authorize access at your bank:\n\n  %s\n\n", connection.Link)
-	_, _ = fmt.Fprintf(stdout, "After authorizing, run \"fiscus sync\" or wait for the next scheduled sync.\n")
-	return nil
 }
 
 func runInstitutions(args []string, stdout, stderr io.Writer) error {
 	fs := newFlagSet("institutions", stderr)
 	configPath := fs.String("config", defaultConfigPath(), "path to YAML configuration")
-	country := fs.String("country", "", "ISO 3166-1 alpha-2 country code (defaults to gocardless.country)")
+	country := fs.String("country", "", "ISO 3166-1 alpha-2 country code")
+	psu := fs.String("psu", "", "PSU type for Enable Banking: personal or business")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -128,21 +261,30 @@ func runInstitutions(args []string, stdout, stderr io.Writer) error {
 	if err := requireBanking(cfg); err != nil {
 		return err
 	}
-	code := strings.ToUpper(strings.TrimSpace(*country))
+
+	ctx, cancel := commandContext(60 * time.Second)
+	defer cancel()
+
+	switch cfg.ProviderName() {
+	case "enablebanking":
+		return institutionsEnableBanking(ctx, cfg, strings.TrimSpace(*country), strings.TrimSpace(*psu), stdout)
+	default:
+		return institutionsGoCardless(ctx, cfg, strings.TrimSpace(*country), stdout)
+	}
+}
+
+func institutionsGoCardless(ctx context.Context, cfg *config.Config, country string, stdout io.Writer) error {
+	code := strings.ToUpper(country)
 	if code == "" {
 		code = strings.ToUpper(strings.TrimSpace(cfg.GoCardless.Country))
 	}
 	if code == "" {
 		return errors.New("-country (or gocardless.country) is required")
 	}
-	bank, err := buildBankClient(cfg)
+	bank, err := buildGoCardlessClient(cfg)
 	if err != nil {
 		return err
 	}
-
-	ctx, cancel := commandContext(60 * time.Second)
-	defer cancel()
-
 	institutions, err := bank.ListInstitutions(ctx, code)
 	if err != nil {
 		return err
@@ -160,6 +302,67 @@ func runInstitutions(args []string, stdout, stderr io.Writer) error {
 	return w.Flush()
 }
 
+func institutionsEnableBanking(ctx context.Context, cfg *config.Config, country, psu string, stdout io.Writer) error {
+	code := strings.ToUpper(country)
+	if code == "" {
+		code = strings.ToUpper(strings.TrimSpace(cfg.EnableBanking.Country))
+	}
+	if code == "" {
+		return errors.New("-country (or enablebanking.country) is required")
+	}
+	psuType := strings.ToLower(psu)
+	if psuType == "" {
+		psuType = strings.ToLower(strings.TrimSpace(cfg.EnableBanking.PSUType))
+	}
+	client, err := buildEnableBankingClient(cfg)
+	if err != nil {
+		return err
+	}
+	aspsps, err := client.ListASPSPs(ctx, code, psuType)
+	if err != nil {
+		return err
+	}
+	if len(aspsps) == 0 {
+		_, _ = fmt.Fprintf(stdout, "No banks found for %s.\n", code)
+		return nil
+	}
+
+	w := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
+	_, _ = fmt.Fprintln(w, "NAME\tCOUNTRY\tBIC\tPSU TYPES\tMAX CONSENT")
+	for _, aspsp := range aspsps {
+		maxDays := "-"
+		if aspsp.MaximumConsentValidity > 0 {
+			maxDays = fmt.Sprintf("%dd", aspsp.MaximumConsentValidity/(24*60*60))
+		}
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+			aspsp.Name, aspsp.Country, aspsp.BIC, strings.Join(aspsp.PSUTypes, ","), maxDays)
+	}
+	return w.Flush()
+}
+
+func findASPSP(aspsps []enablebanking.ASPSP, institution string) (enablebanking.ASPSP, bool) {
+	institution = strings.TrimSpace(institution)
+	for _, aspsp := range aspsps {
+		if strings.EqualFold(aspsp.Name, institution) || (aspsp.BIC != "" && strings.EqualFold(aspsp.BIC, institution)) {
+			return aspsp, true
+		}
+	}
+	needle := strings.ToLower(institution)
+	var match enablebanking.ASPSP
+	matches := 0
+	for _, aspsp := range aspsps {
+		name := strings.ToLower(aspsp.Name)
+		if strings.Contains(name, needle) || strings.Contains(needle, name) {
+			match = aspsp
+			matches++
+		}
+	}
+	if matches == 1 {
+		return match, true
+	}
+	return enablebanking.ASPSP{}, false
+}
+
 func runSync(args []string, stdout, stderr io.Writer) error {
 	fs := newFlagSet("sync", stderr)
 	configPath := fs.String("config", defaultConfigPath(), "path to YAML configuration")
@@ -175,7 +378,11 @@ func runSync(args []string, stdout, stderr io.Writer) error {
 	}
 	logger := newLogger(cfg, stderr)
 
-	ctx, cancel := commandContext(cfg.GoCardless.SyncTimeout.Std())
+	timeout := cfg.GoCardless.SyncTimeout.Std()
+	if cfg.ProviderName() == "enablebanking" {
+		timeout = cfg.EnableBanking.SyncTimeout.Std()
+	}
+	ctx, cancel := commandContext(timeout)
 	defer cancel()
 
 	store, err := openStore(ctx, cfg)
@@ -191,7 +398,11 @@ func runSync(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	worker, err := buildWorker(cfg, store, engine, logger, nil)
+	bank, _, err := buildBankProvider(cfg, store, logger)
+	if err != nil {
+		return err
+	}
+	worker, err := buildWorker(cfg, store, engine, logger, nil, bank)
 	if err != nil {
 		return err
 	}
@@ -205,4 +416,13 @@ func runSync(args []string, stdout, stderr io.Writer) error {
 	}
 	_, _ = fmt.Fprintln(stdout, "Synchronization complete.")
 	return nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }

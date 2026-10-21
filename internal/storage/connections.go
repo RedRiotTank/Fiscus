@@ -113,6 +113,55 @@ func (s *Store) GetConnectionByRequisitionID(ctx context.Context, requisitionID 
 	return c, nil
 }
 
+// GetConnectionByReference returns the most recent connection with a matching
+// consent reference. Enable Banking uses the reference to carry the OAuth state
+// while a consent is pending.
+func (s *Store) GetConnectionByReference(ctx context.Context, reference string) (domain.Connection, error) {
+	if reference == "" {
+		return domain.Connection{}, ErrNotFound
+	}
+	row := s.db.QueryRowContext(ctx,
+		`SELECT `+connectionColumns+` FROM connections
+		 WHERE reference = ? ORDER BY id DESC LIMIT 1`, reference)
+	c, err := scanConnection(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.Connection{}, ErrNotFound
+		}
+		return domain.Connection{}, fmt.Errorf("storage: get connection by reference: %w", err)
+	}
+	return c, nil
+}
+
+// UpdateConnectionAuthorization replaces the temporary authorization ID with the
+// provider session ID and marks the consent as linked.
+func (s *Store) UpdateConnectionAuthorization(
+	ctx context.Context,
+	id int64,
+	requisitionID, status, link, institutionID, institutionName, agreementID string,
+) error {
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE connections SET
+			requisition_id = ?, status = ?, link = ?, institution_id = ?,
+			institution_name = ?, agreement_id = ?, reference = '', last_error = '',
+			updated_at = ?
+		WHERE id = ?`,
+		requisitionID, status, link, institutionID, institutionName, agreementID,
+		encodeTime(nowUTC()), id,
+	)
+	if err != nil {
+		return fmt.Errorf("storage: update connection authorization: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("storage: update connection authorization: %w", err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // ListConnections returns all connections ordered by creation time.
 func (s *Store) ListConnections(ctx context.Context) ([]domain.Connection, error) {
 	rows, err := s.db.QueryContext(ctx,

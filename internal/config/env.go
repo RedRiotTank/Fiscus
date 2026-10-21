@@ -12,6 +12,7 @@ import (
 func applyEnv(cfg *Config) error {
 	var errs []error
 
+	stringEnv("FISCUS_PROVIDER", &cfg.Provider)
 	stringEnv("FISCUS_SERVER_ADDRESS", &cfg.Server.Address)
 	stringEnv("FISCUS_SERVER_USERNAME", &cfg.Server.Username)
 	stringEnv("FISCUS_SERVER_PASSWORD", &cfg.Server.Password)
@@ -35,6 +36,20 @@ func applyEnv(cfg *Config) error {
 	durationEnv("FISCUS_GOCARDLESS_SYNC_TIMEOUT", &cfg.GoCardless.SyncTimeout, &errs)
 	intEnv("FISCUS_GOCARDLESS_INITIAL_LOOKBACK_DAYS", &cfg.GoCardless.InitialLookbackDays, &errs)
 	intEnv("FISCUS_GOCARDLESS_OVERLAP_DAYS", &cfg.GoCardless.OverlapDays, &errs)
+
+	stringEnv("FISCUS_ENABLEBANKING_BASE_URL", &cfg.EnableBanking.BaseURL)
+	stringEnv("FISCUS_ENABLEBANKING_APP_ID", &cfg.EnableBanking.AppID)
+	stringEnv("FISCUS_ENABLEBANKING_PRIVATE_KEY_PATH", &cfg.EnableBanking.PrivateKeyPath)
+	stringEnv("FISCUS_ENABLEBANKING_PRIVATE_KEY", &cfg.EnableBanking.PrivateKey)
+	stringEnv("FISCUS_ENABLEBANKING_REDIRECT_URL", &cfg.EnableBanking.RedirectURL)
+	stringEnv("FISCUS_ENABLEBANKING_COUNTRY", &cfg.EnableBanking.Country)
+	stringEnv("FISCUS_ENABLEBANKING_INSTITUTION_NAME", &cfg.EnableBanking.InstitutionName)
+	stringEnv("FISCUS_ENABLEBANKING_PSU_TYPE", &cfg.EnableBanking.PSUType)
+	intEnv("FISCUS_ENABLEBANKING_CONSENT_VALIDITY_DAYS", &cfg.EnableBanking.ConsentValidityDays, &errs)
+	durationEnv("FISCUS_ENABLEBANKING_SYNC_INTERVAL", &cfg.EnableBanking.SyncInterval, &errs)
+	durationEnv("FISCUS_ENABLEBANKING_SYNC_TIMEOUT", &cfg.EnableBanking.SyncTimeout, &errs)
+	intEnv("FISCUS_ENABLEBANKING_INITIAL_LOOKBACK_DAYS", &cfg.EnableBanking.InitialLookbackDays, &errs)
+	intEnv("FISCUS_ENABLEBANKING_OVERLAP_DAYS", &cfg.EnableBanking.OverlapDays, &errs)
 
 	durationEnv("FISCUS_ALERTS_DUPLICATE_WINDOW", &cfg.Alerts.DuplicateWindow, &errs)
 	floatEnv("FISCUS_ALERTS_ANOMALY_THRESHOLD", &cfg.Alerts.AnomalyThreshold, &errs)
