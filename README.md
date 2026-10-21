@@ -57,6 +57,21 @@ Every command accepts `-config <path>` (default `config.yaml`, or
 `FISCUS_CONFIG`). `connect` accepts `-institution`, `-name`, and `-reference`.
 `institutions` accepts `-country`.
 
+## Metrics
+
+`GET /metrics` exposes Prometheus metrics, including sync outcomes and durations,
+ingested transaction counts, latest balances in minor units, alerts by rule and
+severity, and notification deliveries by channel. Go runtime and process metrics
+are included. A scrape configuration is provided in `deploy/prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: fiscus
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["fiscus:8080"]
+```
+
 ## Configuration
 
 Fiscus reads an optional YAML file and then applies environment variables, which
@@ -107,30 +122,52 @@ retried with exponential backoff.
 
 ## Deployment
 
-The container image runs as an unprivileged user and stores SQLite data in
-`/data`. A Compose example is provided:
+The multi-stage `Dockerfile` produces a static binary in a minimal Alpine image
+that runs as an unprivileged user and stores SQLite data in `/data`. Build and
+run it with Compose:
 
 ```sh
 cp .env.example .env
 # edit .env
-docker compose up -d
+docker compose up -d --build
+```
+
+The Compose service reads `.env`, publishes the dashboard on
+`127.0.0.1:8080`, persists `/data` in a named volume, and runs with a read-only
+root filesystem, a temporary `/tmp`, no Linux capabilities, and
+`no-new-privileges`. Set `FISCUS_SERVER_USERNAME` and
+`FISCUS_SERVER_PASSWORD_HASH` before exposing the dashboard.
+
+The image can also be built directly:
+
+```sh
+make docker-build
+docker run --rm -p 8080:8080 \
+  --env-file .env \
+  -v fiscus-data:/data \
+  fiscus:local
 ```
 
 The database, configuration, and environment files are git-ignored. Back up the
-SQLite file (or use a volume snapshot) while the daemon is stopped. To expose the
-dashboard publicly, terminate TLS at a reverse proxy and keep
-`FISCUS_SERVER_ADDRESS` bound to the private network.
+SQLite file (or use a volume snapshot) while the daemon is stopped. `/healthz`
+reports process liveness, `/readyz` verifies database access, and `/metrics` is
+the Prometheus endpoint. To expose the dashboard publicly, terminate TLS at a
+reverse proxy and keep `FISCUS_SERVER_ADDRESS` bound to the private network.
 
 ## Development
 
 ```sh
-go test -race ./...
-go vet ./...
-golangci-lint run
+make test        # go test ./...
+make race        # go test -race ./...
+make vet
+make lint        # golangci-lint run ./...
+make build       # bin/fiscus with version metadata
 ```
 
 `config.example.yaml` contains local defaults. Tests use temporary SQLite
-databases and `httptest` servers; no external services are required.
+databases and `httptest` servers; no external services are required. The CI
+workflow runs vet, the race-enabled test suite, golangci-lint, and a Docker
+image build on every push to `main` and every pull request.
 
 ## Disclaimer
 

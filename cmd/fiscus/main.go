@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"github.com/RedRiotTank/Fiscus/internal/config"
+	"github.com/RedRiotTank/Fiscus/internal/observability"
 )
 
 var (
@@ -114,7 +115,7 @@ func newLogger(cfg *config.Config, stderr io.Writer) *slog.Logger {
 	return slog.New(handler)
 }
 
-func runServe(args []string, stdout, stderr io.Writer) error {
+func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 	fs := newFlagSet("serve", stderr)
 	configPath := fs.String("config", defaultConfigPath(), "path to YAML configuration")
 	if err := fs.Parse(args); err != nil {
@@ -143,11 +144,13 @@ func runServe(args []string, stdout, stderr io.Writer) error {
 		}
 	}()
 
-	engine, err := buildEngine(cfg, store, logger)
+	metrics := observability.New(version)
+
+	engine, err := buildEngine(cfg, store, logger, metrics)
 	if err != nil {
 		return err
 	}
-	worker, err := buildWorker(cfg, store, engine, logger)
+	worker, err := buildWorker(cfg, store, engine, logger, metrics)
 	if err != nil {
 		return err
 	}
@@ -161,7 +164,7 @@ func runServe(args []string, stdout, stderr io.Writer) error {
 	if worker != nil {
 		trigger = worker
 	}
-	server, err := newWebServer(cfg, store, trigger, logger)
+	server, err := newWebServer(cfg, store, trigger, logger, metrics)
 	if err != nil {
 		return err
 	}

@@ -9,6 +9,7 @@ import "time"
 // Severity describes how urgent an alert is.
 type Severity string
 
+// Severity levels classify alerts for display and notification routing.
 const (
 	SeverityInfo     Severity = "info"
 	SeverityWarning  Severity = "warning"

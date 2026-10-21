@@ -122,6 +122,7 @@ func Default() *Config {
 func Load(path string) (*Config, error) {
 	cfg := Default()
 	if path != "" {
+		// #nosec G304 -- the configuration path is supplied by the operator.
 		data, err := os.ReadFile(path)
 		switch {
 		case err == nil:

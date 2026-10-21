@@ -1,0 +1,30 @@
+services:
+  fiscus:
+    build:
+      context: .
+      args:
+        VERSION: ${FISCUS_VERSION:-dev}
+        COMMIT: ${FISCUS_COMMIT:-none}
+        DATE: ${FISCUS_BUILD_DATE:-unknown}
+    image: fiscus:local
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      FISCUS_SERVER_ADDRESS: ":8080"
+      FISCUS_DATABASE_PATH: /data/fiscus.db
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - fiscus-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  fiscus-data:

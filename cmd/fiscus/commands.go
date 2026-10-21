@@ -1,3 +1,4 @@
+// Package main implements the Fiscus command-line entrypoint.
 package main
 
 import (
@@ -186,11 +187,11 @@ func runSync(args []string, stdout, stderr io.Writer) error {
 			logger.Error("close database", "error", err)
 		}
 	}()
-	engine, err := buildEngine(cfg, store, logger)
+	engine, err := buildEngine(cfg, store, logger, nil)
 	if err != nil {
 		return err
 	}
-	worker, err := buildWorker(cfg, store, engine, logger)
+	worker, err := buildWorker(cfg, store, engine, logger, nil)
 	if err != nil {
 		return err
 	}
