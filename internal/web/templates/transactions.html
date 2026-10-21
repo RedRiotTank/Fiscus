@@ -1,0 +1,72 @@
+{{define "content"}}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Ledger</p>
+    <h1>Transactions</h1>
+    <p class="subtitle">{{.TotalTransactions}} transactions stored. Amounts are exact integer minor units.</p>
+  </div>
+  <form class="filter" method="get" action="/transactions">
+    <label for="account">Account</label>
+    <select id="account" name="account">
+      <option value="">All accounts</option>
+      {{range .Accounts}}
+        <option value="{{.ID}}" {{if eq .ID $.FilterAccount}}selected{{end}}>{{if .Name}}{{.Name}}{{else}}{{.ID}}{{end}}{{if .Currency}} · {{.Currency}}{{end}}</option>
+      {{end}}
+    </select>
+    <button class="button small" type="submit">Filter</button>
+  </form>
+</div>
+
+<section class="panel">
+  <header class="panel-head">
+    <div>
+      <h2>Transaction history</h2>
+      <p class="panel-sub">Page {{.Page}} · 50 per page</p>
+    </div>
+    {{if .FilterAccount}}<span class="badge muted">filtered</span>{{end}}
+  </header>
+  {{if .Transactions}}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Booked</th>
+            <th scope="col">Account</th>
+            <th scope="col">Counterparty</th>
+            <th scope="col">Description</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Transactions}}
+            <tr>
+              <td class="nowrap">{{date .BookingDate}}</td>
+              <td>{{.AccountName}}</td>
+              <td>{{if .Counterparty}}{{.Counterparty}}{{else}}<span class="muted">—</span>{{end}}</td>
+              <td class="description">{{if .Description}}{{.Description}}{{else}}<span class="muted">—</span>{{end}}</td>
+              <td><span class="badge {{if eq .Status "booked"}}ok{{else}}pending{{end}}">{{.Status}}</span></td>
+              <td class="right amount {{if lt .AmountMinor 0}}debit{{else}}credit{{end}}">{{money .AmountMinor .Currency}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    <nav class="pagination" aria-label="Transaction pages">
+      {{if gt .Page 0}}
+        <a class="button ghost small" href="/transactions?account={{.FilterAccount}}&page={{.PrevPage}}">← Previous</a>
+      {{else}}
+        <span></span>
+      {{end}}
+      {{if .HasNext}}
+        <a class="button ghost small" href="/transactions?account={{.FilterAccount}}&page={{.NextPage}}">Next →</a>
+      {{end}}
+    </nav>
+  {{else}}
+    <div class="empty">
+      <p>No transactions match this view.</p>
+      {{if .FilterAccount}}<a class="button ghost" href="/transactions">Clear filter</a>{{end}}
+    </div>
+  {{end}}
+</section>
+{{end}}

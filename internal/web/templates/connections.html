@@ -1,0 +1,36 @@
+{{define "content"}}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Ingestion</p>
+    <h1>Connections</h1>
+    <p class="subtitle">Read-only PSD2 consents. Expired or rejected consents stop providing data until renewed.</p>
+  </div>
+  <div id="sync-status" class="sync-status" aria-live="polite"></div>
+</div>
+
+{{template "connections_panel" .}}
+
+<section class="panel help">
+  <header class="panel-head">
+    <div>
+      <h2>Connecting a bank</h2>
+      <p class="panel-sub">Consent is created once from the command line</p>
+    </div>
+  </header>
+  <ol class="steps">
+    <li>
+      <strong>Find your institution</strong>
+      <pre class="code">fiscus institutions -country {{"ES"}}</pre>
+    </li>
+    <li>
+      <strong>Create the consent</strong>
+      <pre class="code">fiscus connect -institution &lt;institution-id&gt;</pre>
+    </li>
+    <li>
+      <strong>Finish the redirect</strong>
+      <span>Open the printed link, select accounts, and complete your bank's authentication. Fiscus is notified on the next scheduled sync.</span>
+    </li>
+  </ol>
+  <p class="muted small">Fiscus never initiates payments. Access tokens stay in memory and are refreshed automatically.</p>
+</section>
+{{end}}

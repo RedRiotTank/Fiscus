@@ -24,26 +24,45 @@ for money.
 ## Quick start
 
 ```sh
+git clone https://github.com/RedRiotTank/Fiscus.git
+cd Fiscus
 cp config.example.yaml config.yaml
 cp .env.example .env
 # edit config.yaml / .env with your credentials
+mkdir -p data
 go run ./cmd/fiscus serve
 ```
 
 Open <http://localhost:8080>. Create a bank connection with:
 
 ```sh
-go run ./cmd/fiscus connect -institution <institution-id> -country ES
+go run ./cmd/fiscus institutions -country ES
+go run ./cmd/fiscus connect -institution <institution-id> -name "My bank"
 ```
 
-Then open the printed link, complete the bank consent flow, and wait for the next
-sync (or trigger a sync from the Connections page).
+Open the printed link, complete the consent flow at your bank, then run
+`go run ./cmd/fiscus sync` or trigger a sync from the Connections page.
+
+## Commands
+
+| Command | Description |
+| --- | --- |
+| `fiscus serve` | Start the dashboard and background sync worker (default) |
+| `fiscus connect` | Create a GoCardless consent and print the authorization link |
+| `fiscus institutions` | List institutions for a country |
+| `fiscus sync` | Run one synchronization cycle and exit |
+| `fiscus version` | Print build information |
+
+Every command accepts `-config <path>` (default `config.yaml`, or
+`FISCUS_CONFIG`). `connect` accepts `-institution`, `-name`, and `-reference`.
+`institutions` accepts `-country`.
 
 ## Configuration
 
-Fiscus reads an optional YAML file (`-config`, default `config.yaml`) and then
-overrides values from environment variables. See `config.example.yaml` and
-`.env.example` for the full set of options. Important variables:
+Fiscus reads an optional YAML file and then applies environment variables, which
+take precedence. Unknown YAML keys are rejected so typos fail fast. See
+`config.example.yaml` and `.env.example` for every option. The most important
+variables are:
 
 | Variable | Purpose |
 | --- | --- |
@@ -57,8 +76,21 @@ overrides values from environment variables. See `config.example.yaml` and
 | `FISCUS_DISCORD_WEBHOOK_URL` | Discord alerts |
 | `FISCUS_LOG_LEVEL` | `debug`, `info`, `warn`, or `error` |
 
-Liquidity thresholds are configured per currency as decimal strings, for example
-`EUR: "500.00"`. They are parsed into integer minor units at startup.
+Durations use Go syntax (`15m`, `24h`, `500ms`). Liquidity thresholds are
+configured per currency as decimal strings in major units, for example
+`EUR: "500.00"` in YAML or `FISCUS_LIQUIDITY_THRESHOLDS=EUR:500.00` in the
+environment. They are parsed into integer minor units at startup and must be
+positive.
+
+Set either `server.password` or `server.password_hash` (bcrypt), never both. If
+neither a username nor a password is set, the dashboard is unauthenticated, which
+is only appropriate behind a trusted reverse proxy. `CONNECT` requests to the
+dashboard endpoints are ignored; state-changing sync requests require an
+`X-Fiscus-Request: 1` header.
+
+`/healthz`, `/readyz`, and `/metrics` are intentionally unauthenticated so
+orchestrators and scrapers can reach them. Bind the service to a private network
+or protect those paths at the proxy if they must not be public.
 
 ## Alert rules
 
@@ -72,6 +104,22 @@ Liquidity thresholds are configured per currency as decimal strings, for example
 Alerts are persisted before dispatch. A deterministic de-duplication key prevents
 the same condition from notifying twice. Telegram and Discord deliveries are
 retried with exponential backoff.
+
+## Deployment
+
+The container image runs as an unprivileged user and stores SQLite data in
+`/data`. A Compose example is provided:
+
+```sh
+cp .env.example .env
+# edit .env
+docker compose up -d
+```
+
+The database, configuration, and environment files are git-ignored. Back up the
+SQLite file (or use a volume snapshot) while the daemon is stopped. To expose the
+dashboard publicly, terminate TLS at a reverse proxy and keep
+`FISCUS_SERVER_ADDRESS` bound to the private network.
 
 ## Development
 

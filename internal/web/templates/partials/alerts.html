@@ -1,0 +1,34 @@
+{{define "alerts_feed"}}
+<section id="alerts-panel" class="panel feed" hx-get="/partials/alerts" hx-trigger="every 20s" hx-swap="outerHTML" aria-live="polite">
+  <header class="panel-head">
+    <div>
+      <h2>Alert feed</h2>
+      <p class="panel-sub">Rules evaluated on each sync</p>
+    </div>
+    <a class="link" href="/alerts">All alerts</a>
+  </header>
+  {{if .Alerts}}
+    <ul class="alert-list">
+      {{range .Alerts}}
+        <li class="alert {{severityClass .Severity}}">
+          <div class="alert-top">
+            <span class="badge {{severityClass .Severity}}">{{.Severity}}</span>
+            <strong>{{.Title}}</strong>
+            <span class="muted small">{{ago .CreatedAt}}</span>
+          </div>
+          <p class="alert-message">{{.Message}}</p>
+          <div class="alert-meta">
+            <span>{{if .AccountName}}{{.AccountName}}{{else}}{{.AccountID}}{{end}}</span>
+            <span class="rule">rule: {{.Rule}}</span>
+            {{if .Delivered}}<span class="badge ok">delivered</span>{{else if .DeliveryError}}<span class="badge error" title="{{.DeliveryError}}">delivery failed</span>{{else}}<span class="badge pending">pending</span>{{end}}
+          </div>
+        </li>
+      {{end}}
+    </ul>
+  {{else}}
+    <div class="empty">
+      <p>No alerts yet. Fiscus will surface duplicate charges, unusual debits, and low balances here.</p>
+    </div>
+  {{end}}
+</section>
+{{end}}

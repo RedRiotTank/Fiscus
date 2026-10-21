@@ -1,0 +1,84 @@
+{{define "connections_panel"}}
+<section id="connections-panel" class="panel" hx-get="/partials/connections" hx-trigger="every 15s" hx-swap="outerHTML" aria-live="polite">
+  <header class="panel-head">
+    <div>
+      <h2>Bank connections</h2>
+      <p class="panel-sub">PSD2 consents managed through GoCardless</p>
+    </div>
+    <form hx-post="/sync" hx-target="#sync-status" hx-swap="innerHTML">
+      <button class="button small" type="submit">Sync all</button>
+    </form>
+  </header>
+
+  {{if .Connections}}
+    <div class="connection-stack">
+      {{range .Connections}}
+        <article class="connection-card">
+          <header class="connection-head">
+            <div class="connection-title">
+              <span class="dot {{statusClass .Status}}" aria-hidden="true"></span>
+              <div>
+                <h3>{{if .InstitutionName}}{{.InstitutionName}}{{else}}Bank connection{{end}}</h3>
+                <p class="muted small">
+                  <span class="badge {{statusClass .Status}}">{{statusLabel .Status}}</span>
+                  {{if .RequisitionID}}<span class="mono">{{.RequisitionID}}</span>{{end}}
+                </p>
+              </div>
+            </div>
+            <div class="connection-actions">
+              {{if and .Link (not .Linked)}}
+                <a class="button ghost small" href="{{externalURL .Link}}" target="_blank" rel="noopener noreferrer">Continue consent</a>
+              {{end}}
+              <form hx-post="/connections/{{.ID}}/sync" hx-target="#sync-status" hx-swap="innerHTML">
+                <button class="button small" type="submit">Sync</button>
+              </form>
+            </div>
+          </header>
+
+          {{if .LastError}}<p class="inline-error">{{.LastError}}</p>{{end}}
+
+          {{if .Accounts}}
+            <div class="table-wrap">
+              <table class="compact-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Account</th>
+                    <th scope="col">IBAN</th>
+                    <th scope="col" class="right">Balance</th>
+                    <th scope="col">Updated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {{range .Accounts}}
+                    <tr>
+                      <td>{{if .Name}}{{.Name}}{{else}}{{.ID}}{{end}}</td>
+                      <td class="mono">{{if .IBAN}}{{.IBAN}}{{else}}<span class="muted">—</span>{{end}}</td>
+                      <td class="right amount {{if lt .BalanceMinor 0}}debit{{else}}credit{{end}}">{{money .BalanceMinor .Currency}}</td>
+                      <td class="muted">{{if .BalanceUpdatedAt}}{{ago .BalanceUpdatedAt}}{{else}}never{{end}}</td>
+                    </tr>
+                  {{end}}
+                </tbody>
+              </table>
+            </div>
+          {{else}}
+            <p class="muted small">No accounts discovered yet. Finish the consent flow, then sync.</p>
+          {{end}}
+
+          <footer class="connection-foot">
+            <span class="muted small">
+              {{if .LastSyncedAt}}Last sync {{ago .LastSyncedAt}}{{else}}Never synced{{end}}
+            </span>
+            {{if .AgreementID}}<span class="muted small mono">agreement {{.AgreementID}}</span>{{end}}
+          </footer>
+        </article>
+      {{end}}
+    </div>
+  {{else}}
+    <div class="empty">
+      <p>No bank connections yet.</p>
+      <p class="muted">Create a consent from the CLI, then open the printed link:</p>
+      <pre class="code">fiscus connect -institution &lt;institution-id&gt;</pre>
+    </div>
+  {{end}}
+</section>
+{{end}}

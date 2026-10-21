@@ -1,0 +1,265 @@
+// Package config loads Fiscus configuration from an optional YAML file and
+// environment variables.
+package config
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	"gopkg.in/yaml.v3"
+)
+
+// Config is the complete runtime configuration.
+type Config struct {
+	Server     ServerConfig     `yaml:"server"`
+	Database   DatabaseConfig   `yaml:"database"`
+	GoCardless GoCardlessConfig `yaml:"gocardless"`
+	Alerts     AlertsConfig     `yaml:"alerts"`
+	Logging    LoggingConfig    `yaml:"logging"`
+}
+
+// ServerConfig controls the HTTP dashboard.
+type ServerConfig struct {
+	Address           string   `yaml:"address"`
+	Username          string   `yaml:"username"`
+	Password          string   `yaml:"password"`
+	PasswordHash      string   `yaml:"password_hash"`
+	ReadHeaderTimeout Duration `yaml:"read_header_timeout"`
+	ReadTimeout       Duration `yaml:"read_timeout"`
+	WriteTimeout      Duration `yaml:"write_timeout"`
+	IdleTimeout       Duration `yaml:"idle_timeout"`
+	ShutdownTimeout   Duration `yaml:"shutdown_timeout"`
+}
+
+// DatabaseConfig controls SQLite persistence.
+type DatabaseConfig struct {
+	Path string `yaml:"path"`
+}
+
+// GoCardlessConfig controls PSD2 ingestion.
+type GoCardlessConfig struct {
+	BaseURL             string   `yaml:"base_url"`
+	SecretID            string   `yaml:"secret_id"`
+	SecretKey           string   `yaml:"secret_key"`
+	RedirectURL         string   `yaml:"redirect_url"`
+	Country             string   `yaml:"country"`
+	InstitutionID       string   `yaml:"institution_id"`
+	InstitutionName     string   `yaml:"institution_name"`
+	SyncInterval        Duration `yaml:"sync_interval"`
+	SyncTimeout         Duration `yaml:"sync_timeout"`
+	InitialLookbackDays int      `yaml:"initial_lookback_days"`
+	OverlapDays         int      `yaml:"overlap_days"`
+}
+
+// AlertsConfig controls rules and notification channels.
+type AlertsConfig struct {
+	DuplicateWindow     Duration          `yaml:"duplicate_window"`
+	AnomalyThreshold    float64           `yaml:"anomaly_threshold"`
+	AnomalyLookbackDays int               `yaml:"anomaly_lookback_days"`
+	AnomalyMinHistory   int               `yaml:"anomaly_min_history"`
+	LiquidityThresholds map[string]string `yaml:"liquidity_thresholds"`
+	Telegram            TelegramConfig    `yaml:"telegram"`
+	Discord             DiscordConfig     `yaml:"discord"`
+	RetryAttempts       int               `yaml:"retry_attempts"`
+	RetryBaseDelay      Duration          `yaml:"retry_base_delay"`
+}
+
+// TelegramConfig configures the Telegram notifier.
+type TelegramConfig struct {
+	BotToken string `yaml:"bot_token"`
+	ChatID   string `yaml:"chat_id"`
+}
+
+// DiscordConfig configures the Discord notifier.
+type DiscordConfig struct {
+	WebhookURL string `yaml:"webhook_url"`
+}
+
+// LoggingConfig controls structured logging.
+type LoggingConfig struct {
+	Level  string `yaml:"level"`
+	Format string `yaml:"format"`
+}
+
+// Default returns production-oriented defaults. Secrets are intentionally empty.
+func Default() *Config {
+	return &Config{
+		Server: ServerConfig{
+			Address:           ":8080",
+			ReadHeaderTimeout: Duration(10 * time.Second),
+			ReadTimeout:       Duration(30 * time.Second),
+			WriteTimeout:      Duration(30 * time.Second),
+			IdleTimeout:       Duration(90 * time.Second),
+			ShutdownTimeout:   Duration(10 * time.Second),
+		},
+		Database: DatabaseConfig{Path: "data/fiscus.db"},
+		GoCardless: GoCardlessConfig{
+			BaseURL:             "https://bankaccountdata.gocardless.com/api/v2",
+			Country:             "ES",
+			SyncInterval:        Duration(15 * time.Minute),
+			SyncTimeout:         Duration(5 * time.Minute),
+			InitialLookbackDays: 90,
+			OverlapDays:         3,
+		},
+		Alerts: AlertsConfig{
+			DuplicateWindow:     Duration(24 * time.Hour),
+			AnomalyThreshold:    0.30,
+			AnomalyLookbackDays: 90,
+			AnomalyMinHistory:   3,
+			LiquidityThresholds: map[string]string{},
+			RetryAttempts:       3,
+			RetryBaseDelay:      Duration(500 * time.Millisecond),
+		},
+		Logging: LoggingConfig{Level: "info", Format: "text"},
+	}
+}
+
+// Load reads an optional YAML file (missing files are ignored), applies
+// environment overrides, and validates the result.
+func Load(path string) (*Config, error) {
+	cfg := Default()
+	if path != "" {
+		data, err := os.ReadFile(path)
+		switch {
+		case err == nil:
+			decoder := yaml.NewDecoder(strings.NewReader(string(data)))
+			decoder.KnownFields(true)
+			if err := decoder.Decode(cfg); err != nil {
+				return nil, fmt.Errorf("config: parse %s: %w", path, err)
+			}
+		case errors.Is(err, os.ErrNotExist):
+			// Configuration is optional; environment variables may be sufficient.
+		default:
+			return nil, fmt.Errorf("config: read %s: %w", path, err)
+		}
+	}
+	if err := applyEnv(cfg); err != nil {
+		return nil, err
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// Validate checks required fields, durations, and cross-field consistency.
+func (c *Config) Validate() error {
+	var errs []error
+	if strings.TrimSpace(c.Server.Address) == "" {
+		errs = append(errs, errors.New("server.address is required"))
+	}
+	if c.Server.ReadHeaderTimeout <= 0 {
+		errs = append(errs, errors.New("server.read_header_timeout must be positive"))
+	}
+	if c.Server.ShutdownTimeout <= 0 {
+		errs = append(errs, errors.New("server.shutdown_timeout must be positive"))
+	}
+	if strings.TrimSpace(c.Database.Path) == "" {
+		errs = append(errs, errors.New("database.path is required"))
+	}
+	if c.Server.Username == "" && (c.Server.Password != "" || c.Server.PasswordHash != "") {
+		errs = append(errs, errors.New("server.username is required when a password is configured"))
+	}
+	if c.Server.Username != "" && c.Server.Password == "" && c.Server.PasswordHash == "" {
+		errs = append(errs, errors.New("server.password or server.password_hash is required when a username is configured"))
+	}
+	if c.Server.Password != "" && c.Server.PasswordHash != "" {
+		errs = append(errs, errors.New("configure only one of server.password and server.password_hash"))
+	}
+	if c.Server.PasswordHash != "" && !strings.HasPrefix(c.Server.PasswordHash, "$2") {
+		errs = append(errs, errors.New("server.password_hash must be a bcrypt hash"))
+	}
+	if id, key := strings.TrimSpace(c.GoCardless.SecretID), strings.TrimSpace(c.GoCardless.SecretKey); (id == "") != (key == "") {
+		errs = append(errs, errors.New("gocardless.secret_id and gocardless.secret_key must be configured together"))
+	}
+	if token, chat := strings.TrimSpace(c.Alerts.Telegram.BotToken), strings.TrimSpace(c.Alerts.Telegram.ChatID); (token == "") != (chat == "") {
+		errs = append(errs, errors.New("alerts.telegram.bot_token and alerts.telegram.chat_id must be configured together"))
+	}
+	if c.GoCardless.SyncInterval <= 0 {
+		errs = append(errs, errors.New("gocardless.sync_interval must be positive"))
+	}
+	if c.GoCardless.SyncTimeout <= 0 {
+		errs = append(errs, errors.New("gocardless.sync_timeout must be positive"))
+	}
+	if c.GoCardless.InitialLookbackDays <= 0 {
+		errs = append(errs, errors.New("gocardless.initial_lookback_days must be positive"))
+	}
+	if c.GoCardless.OverlapDays < 0 {
+		errs = append(errs, errors.New("gocardless.overlap_days cannot be negative"))
+	}
+	if c.GoCardless.BaseURL != "" && !validHTTPURL(c.GoCardless.BaseURL) {
+		errs = append(errs, errors.New("gocardless.base_url must be an absolute http(s) URL"))
+	}
+	if c.GoCardless.RedirectURL != "" && !validHTTPURL(c.GoCardless.RedirectURL) {
+		errs = append(errs, errors.New("gocardless.redirect_url must be an absolute http(s) URL"))
+	}
+	if c.Alerts.DuplicateWindow <= 0 {
+		errs = append(errs, errors.New("alerts.duplicate_window must be positive"))
+	}
+	if c.Alerts.AnomalyThreshold <= 0 {
+		errs = append(errs, errors.New("alerts.anomaly_threshold must be positive"))
+	}
+	if c.Alerts.AnomalyLookbackDays <= 0 {
+		errs = append(errs, errors.New("alerts.anomaly_lookback_days must be positive"))
+	}
+	if c.Alerts.AnomalyMinHistory <= 0 {
+		errs = append(errs, errors.New("alerts.anomaly_min_history must be positive"))
+	}
+	if c.Alerts.RetryAttempts <= 0 {
+		errs = append(errs, errors.New("alerts.retry_attempts must be positive"))
+	}
+	if c.Alerts.RetryBaseDelay <= 0 {
+		errs = append(errs, errors.New("alerts.retry_base_delay must be positive"))
+	}
+	if _, err := c.LiquidityThresholdsMinor(); err != nil {
+		errs = append(errs, fmt.Errorf("alerts.liquidity_thresholds: %w", err))
+	}
+	if !validLogLevel(c.Logging.Level) {
+		errs = append(errs, fmt.Errorf("logging.level %q must be debug, info, warn, or error", c.Logging.Level))
+	}
+	if c.Logging.Format != "text" && c.Logging.Format != "json" {
+		errs = append(errs, fmt.Errorf("logging.format %q must be text or json", c.Logging.Format))
+	}
+	return errors.Join(errs...)
+}
+
+// BankingConfigured reports whether API credentials are available.
+func (c *Config) BankingConfigured() bool {
+	return strings.TrimSpace(c.GoCardless.SecretID) != "" && strings.TrimSpace(c.GoCardless.SecretKey) != ""
+}
+
+// TelegramConfigured reports whether Telegram delivery is enabled.
+func (c *Config) TelegramConfigured() bool {
+	return strings.TrimSpace(c.Alerts.Telegram.BotToken) != "" && strings.TrimSpace(c.Alerts.Telegram.ChatID) != ""
+}
+
+// DiscordConfigured reports whether Discord delivery is enabled.
+func (c *Config) DiscordConfigured() bool {
+	return strings.TrimSpace(c.Alerts.Discord.WebhookURL) != ""
+}
+
+// AuthConfigured reports whether the dashboard requires credentials.
+func (c *Config) AuthConfigured() bool {
+	return c.Server.Username != ""
+}
+
+func validHTTPURL(raw string) bool {
+	if !strings.HasPrefix(raw, "http://") && !strings.HasPrefix(raw, "https://") {
+		return false
+	}
+	// Keep this dependency-free; config validation only needs scheme + host.
+	rest := strings.TrimPrefix(strings.TrimPrefix(raw, "http://"), "https://")
+	return rest != "" && !strings.HasPrefix(rest, "/")
+}
+
+func validLogLevel(level string) bool {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "debug", "info", "warn", "error":
+		return true
+	default:
+		return false
+	}
+}
