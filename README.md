@@ -70,53 +70,41 @@ default is `gocardless` for backwards compatibility.
 ### Enable Banking
 
 Enable Banking works with banks such as Banco Santander in Spain and does not
-require a GoCardless account.
+require a GoCardless account. A **production** application is required for real
+bank accounts. Sandbox applications use simulated data and cannot access
+Santander.
 
-1. Sign in to the [Enable Banking control panel](https://enablebanking.com/sign-in/)
-   and create an application.
-2. Register a redirect URL. Production Enable Banking applications require
-   HTTPS, including for localhost. Use `https://localhost:8080/callback` with the
-   local TLS setup below, or an HTTPS tunnel. It must match
-   `enablebanking.redirect_url` exactly, including scheme, port, and path.
-3. Download the application's RSA private key (`.pem`) and note the application
-   ID.
-4. Configure Fiscus:
+#### 1. Register the production application
 
-   ```yaml
-   provider: enablebanking
+Sign in to the [Enable Banking control panel](https://enablebanking.com/sign-in/)
+and create an application with:
 
-   server:
-     address: ":8080"
-     tls_cert_file: "secrets/localhost-cert.pem"
-     tls_key_file: "secrets/localhost-key.pem"
+- **Environment:** Production.
+- **Private key:** Choose **Generate in the browser (using SubtleCrypto) and
+  export private key**. The browser downloads a file named
+  `<application-id>.pem`. The private key stays on your machine. Generating the
+  key and self-signed certificate externally with OpenSSL and importing the
+  public certificate also works.
+- **Application details:** A description, data protection email, privacy policy
+  URL, and terms of service URL are required for production applications relying
+  on Enable Banking authorization. The privacy and terms URLs must be publicly
+  reachable.
+- **Redirect URLs:** Use `https://localhost:8080/callback` for the local setup
+  below, or an HTTPS tunnel URL. Enable Banking production rejects `http://`
+  redirect URLs, including localhost. The value must match
+  `enablebanking.redirect_url` exactly, including scheme, port, and path.
 
-   enablebanking:
-     app_id: "your-application-id"
-     private_key_path: "/absolute/path/to/your-application-id.pem"
-     redirect_url: "https://localhost:8080/callback"
-     country: "ES"
-     institution_name: "Banco Santander"
-     psu_type: "personal"
-   ```
+After registering, note the application ID and store the downloaded `.pem`
+outside version control:
 
-5. Start the daemon, list banks, and start a consent:
+```sh
+chmod 600 /path/to/<application-id>.pem
+```
 
-   ```sh
-   fiscus serve
-   # in another terminal
-   fiscus institutions -country ES
-   fiscus connect -institution "Banco Santander"
-   ```
+#### 2. Enable HTTPS locally
 
-6. Open the printed authorization link and complete the bank's authentication.
-   The bank redirects your browser to `/callback`; Fiscus validates the OAuth
-   `state`, exchanges the one-time code for a session, links the connection, and
-   requests a sync.
-
-#### Local HTTPS for Enable Banking
-
-Enable Banking production rejects `http://` redirect URLs. Fiscus can terminate
-TLS directly with a self-signed certificate. Generate one for `localhost`:
+Production Enable Banking redirects must use HTTPS. Fiscus can terminate TLS
+directly with a self-signed certificate. Generate one for `localhost`:
 
 ```sh
 mkdir -p secrets
@@ -127,7 +115,7 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
   -addext "subjectAltName=DNS:localhost"
 ```
 
-Set `server.tls_cert_file` and `server.tls_key_file` as shown above, then open
+Set `server.tls_cert_file` and `server.tls_key_file` as shown below, then open
 <https://localhost:8080>. The browser will warn that the certificate is
 self-signed; accept it for localhost. The bank redirect and dashboard then use
 the same HTTPS origin. The certificate and key are git-ignored.
@@ -143,6 +131,69 @@ cloudflared tunnel --url http://localhost:8080
 Keep the tunnel running while authorizing the bank, and set
 `enablebanking.redirect_url` to the exact tunnel callback URL. A named tunnel or
 a reverse proxy with a trusted certificate is preferable for a stable URL.
+
+#### 3. Configure Fiscus
+
+```yaml
+provider: enablebanking
+
+server:
+  address: ":8080"
+  tls_cert_file: "secrets/localhost-cert.pem"
+  tls_key_file: "secrets/localhost-key.pem"
+
+enablebanking:
+  app_id: "your-application-id"
+  private_key_path: "/absolute/path/to/your-application-id.pem"
+  redirect_url: "https://localhost:8080/callback"
+  country: "ES"
+  institution_name: "Banco Santander"
+  psu_type: "personal"
+```
+
+#### 4. Activate the application
+
+New production applications start in the **Inactive** state. Until activated,
+API calls such as `fiscus institutions` return `403 Application is not active`.
+
+In the Enable Banking control panel, click **Activate by linking accounts** and
+complete the bank login. This activates the application in restricted mode:
+Fiscus can then access only the accounts you linked. For personal use, this is
+the correct option; **Request activation** is for general availability and
+requires Enable Banking review, KYC, and a production agreement.
+
+Activation only enables the application. It does not create the connection
+Fiscus uses, so continue with the next step.
+
+#### 5. Start Fiscus and create a consent
+
+```sh
+fiscus serve
+# in another terminal
+fiscus institutions -country ES
+fiscus connect -institution "Banco Santander"
+```
+
+Start `fiscus serve` before opening the authorization link. If `institutions`
+still returns `403 Application is not active`, the account-linking activation
+has not completed yet.
+
+For Banco Santander Spain, the bank may ask you to choose a document type:
+
+- **TIN** for a Spanish DNI/NIF
+- **NIE** for a foreigner identity number
+- **CIF** for a company
+- **Passport** for a passport
+- **User** for an online-banking username
+
+Choose **TIN** when you normally log in with your DNI.
+
+#### 6. Complete and verify
+
+Open the printed authorization link and complete the bank's authentication. The
+bank redirects your browser to `/callback`; Fiscus validates the OAuth `state`,
+exchanges the one-time code for a session, links the connection, and requests a
+sync. Verify the result at <https://localhost:8080/connections>.
 
 The `/callback` endpoint is intentionally reachable without dashboard Basic Auth
 because the bank redirects the browser there. A random `state` stored with the
@@ -206,7 +257,7 @@ variables are:
 | `FISCUS_GOCARDLESS_COUNTRY` | Institution country code (default `ES`) |
 | `FISCUS_ENABLEBANKING_APP_ID` | Enable Banking application ID |
 | `FISCUS_ENABLEBANKING_PRIVATE_KEY_PATH` | Path to the application's RSA private key |
-| `FISCUS_ENABLEBANKING_REDIRECT_URL` | Redirect URL registered with Enable Banking |
+| `FISCUS_ENABLEBANKING_REDIRECT_URL` | HTTPS redirect URL registered with Enable Banking |
 | `FISCUS_ENABLEBANKING_COUNTRY` | Bank country code (default `ES`) |
 | `FISCUS_ENABLEBANKING_INSTITUTION_NAME` | Default bank name for `fiscus connect` |
 | `FISCUS_TELEGRAM_BOT_TOKEN` / `..._CHAT_ID` | Telegram alerts |
@@ -275,13 +326,17 @@ docker run --rm -p 8080:8080 \
 
 When using Enable Banking, set
 `FISCUS_ENABLEBANKING_PRIVATE_KEY_PATH=/run/secrets/enablebanking.pem` and mount
-the key read-only. The file must be readable by UID/GID `10001`. The Compose file
-can use the same bind mount:
+the key read-only. The file must be readable by UID/GID `10001`. If Fiscus serves
+HTTPS directly, mount the TLS certificate and key as well and set
+`FISCUS_SERVER_TLS_CERT_FILE` and `FISCUS_SERVER_TLS_KEY_FILE`. The Compose file
+can use the same bind mounts:
 
 ```yaml
 volumes:
   - fiscus-data:/data
   - ./secrets/enablebanking.pem:/run/secrets/enablebanking.pem:ro
+  - ./secrets/localhost-cert.pem:/run/secrets/localhost-cert.pem:ro
+  - ./secrets/localhost-key.pem:/run/secrets/localhost-key.pem:ro
 ```
 
 The database, configuration, environment files, and private keys are git-ignored.
