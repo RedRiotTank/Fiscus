@@ -167,6 +167,7 @@ func (s *Store) ListTransactions(ctx context.Context, filter TransactionFilter) 
 	}
 	query := `SELECT ` + transactionColumns + ` FROM transactions`
 	if len(where) > 0 {
+		// #nosec G202 -- where contains only static, developer-defined predicates.
 		query += " WHERE " + strings.Join(where, " AND ")
 	}
 	query += " ORDER BY booking_date DESC, id DESC LIMIT ? OFFSET ?"

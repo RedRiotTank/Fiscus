@@ -142,10 +142,12 @@ func allDigits(s string) bool {
 func Format(minor int64, currency string) string {
 	scale := Scale(currency)
 	sign := ""
+	// #nosec G115 -- int64 and uint64 have the same width; the sign is handled below.
 	u := uint64(minor)
 	if minor < 0 {
 		sign = "-"
 		// Handle math.MinInt64 without overflow.
+		// #nosec G115 -- negating before conversion keeps the magnitude representable.
 		u = uint64(-(minor + 1)) + 1
 	}
 	if scale == 0 {

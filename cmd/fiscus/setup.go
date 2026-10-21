@@ -9,6 +9,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/banking/gocardless"
 	"github.com/RedRiotTank/Fiscus/internal/config"
 	"github.com/RedRiotTank/Fiscus/internal/ingest"
+	"github.com/RedRiotTank/Fiscus/internal/observability"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"github.com/RedRiotTank/Fiscus/internal/web"
 )
@@ -63,7 +64,7 @@ func buildNotifiers(cfg *config.Config) ([]alerts.Notifier, error) {
 	return notifiers, nil
 }
 
-func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger) (*alerts.Engine, error) {
+func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, metrics *observability.Metrics) (*alerts.Engine, error) {
 	thresholds, err := cfg.LiquidityThresholdsMinor()
 	if err != nil {
 		return nil, err
@@ -85,10 +86,17 @@ func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger) 
 	if err != nil {
 		return nil, err
 	}
+	var engineObserver alerts.EngineObserver
+	var deliveryObserver alerts.DeliveryObserver
+	if metrics != nil {
+		engineObserver = metrics
+		deliveryObserver = metrics.DeliveryObserver()
+	}
 	dispatcher := alerts.NewDispatcher(notifiers, alerts.DispatchConfig{
 		Attempts:  cfg.Alerts.RetryAttempts,
 		BaseDelay: cfg.Alerts.RetryBaseDelay.Std(),
 		Logger:    logger,
+		Observer:  deliveryObserver,
 	})
 	engine, err := alerts.NewEngine(alerts.EngineConfig{
 		Store:        store,
@@ -96,6 +104,7 @@ func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger) 
 		Logger:       logger,
 		TxRules:      []alerts.TransactionRule{duplicateRule, anomalyRule},
 		BalanceRules: []alerts.BalanceRule{liquidityRule},
+		Observer:     engineObserver,
 	})
 	if err != nil {
 		return nil, err
@@ -106,7 +115,7 @@ func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger) 
 	return engine, nil
 }
 
-func buildWorker(cfg *config.Config, store *storage.Store, engine *alerts.Engine, logger *slog.Logger) (*ingest.Worker, error) {
+func buildWorker(cfg *config.Config, store *storage.Store, engine *alerts.Engine, logger *slog.Logger, metrics *observability.Metrics) (*ingest.Worker, error) {
 	bank, err := buildBankClient(cfg)
 	if err != nil {
 		return nil, err
@@ -124,16 +133,20 @@ func buildWorker(cfg *config.Config, store *storage.Store, engine *alerts.Engine
 	if err != nil {
 		return nil, err
 	}
+	if metrics != nil {
+		worker.SetObserver(metrics)
+	}
 	return worker, nil
 }
 
-func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger, logger *slog.Logger) (*web.Server, error) {
+func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger, logger *slog.Logger, metrics *observability.Metrics) (*web.Server, error) {
 	return web.New(web.Config{
-		Username:     cfg.Server.Username,
-		Password:     cfg.Server.Password,
-		PasswordHash: cfg.Server.PasswordHash,
-		Version:      version,
-		Logger:       logger,
+		Username:       cfg.Server.Username,
+		Password:       cfg.Server.Password,
+		PasswordHash:   cfg.Server.PasswordHash,
+		Version:        version,
+		Logger:         logger,
+		MetricsHandler: metrics.Handler(),
 	}, store, trigger)
 }
 
