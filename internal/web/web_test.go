@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -470,5 +471,70 @@ func TestTemplateEscaping(t *testing.T) {
 	}
 	if !strings.Contains(body, "&lt;script&gt;alert(1)&lt;/script&gt;") {
 		t.Fatal("escaped account name not rendered")
+	}
+}
+
+type authorizationCall struct {
+	code  string
+	state string
+}
+
+type fakeAuthorizationCallback struct {
+	result string
+	err    error
+	calls  []authorizationCall
+}
+
+func (f *fakeAuthorizationCallback) CompleteAuthorization(_ context.Context, code, state string) (string, error) {
+	f.calls = append(f.calls, authorizationCall{code: code, state: state})
+	if f.err != nil {
+		return "", f.err
+	}
+	return f.result, nil
+}
+
+func TestAuthorizationCallback(t *testing.T) {
+	t.Parallel()
+	callback := &fakeAuthorizationCallback{result: "session-1"}
+	f := newWebFixture(t)
+	f.server.authHandler = callback
+
+	resp := f.request(t, http.MethodGet, "/callback?code=code-1&state=state-1", false, nil)
+	if resp.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d body=%s", resp.Code, resp.Body.String())
+	}
+	if location := resp.Header().Get("Location"); location != "/connections?auth=success" {
+		t.Fatalf("location = %q", location)
+	}
+	if len(callback.calls) != 1 || callback.calls[0] != (authorizationCall{code: "code-1", state: "state-1"}) {
+		t.Fatalf("callback calls = %+v", callback.calls)
+	}
+	if len(f.trigger.targets) != 1 || f.trigger.targets[0] != "" {
+		t.Fatalf("trigger targets = %+v", f.trigger.targets)
+	}
+
+	page := f.request(t, http.MethodGet, "/connections?auth=success", true, nil)
+	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "Bank authorization completed") {
+		t.Fatalf("success page status=%d body=%s", page.Code, page.Body.String())
+	}
+
+	callback.err = errors.New("exchange failed")
+	resp = f.request(t, http.MethodGet, "/callback?code=code-2&state=state-2", false, nil)
+	if resp.Code != http.StatusSeeOther || resp.Header().Get("Location") != "/connections?auth=error" {
+		t.Fatalf("error callback status=%d location=%q", resp.Code, resp.Header().Get("Location"))
+	}
+	page = f.request(t, http.MethodGet, "/connections?auth=error", true, nil)
+	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "could not be completed") {
+		t.Fatalf("error page status=%d body=%s", page.Code, page.Body.String())
+	}
+
+	resp = f.request(t, http.MethodGet, "/callback?error=access_denied", false, nil)
+	if resp.Code != http.StatusSeeOther || resp.Header().Get("Location") != "/connections?auth=error" {
+		t.Fatalf("provider error status=%d location=%q", resp.Code, resp.Header().Get("Location"))
+	}
+
+	resp = f.request(t, http.MethodGet, "/callback?code=code-1", false, nil)
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("missing state status = %d", resp.Code)
 	}
 }

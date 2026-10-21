@@ -150,7 +150,11 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	worker, err := buildWorker(cfg, store, engine, logger, metrics)
+	bank, authHandler, err := buildBankProvider(cfg, store, logger)
+	if err != nil {
+		return err
+	}
+	worker, err := buildWorker(cfg, store, engine, logger, metrics, bank)
 	if err != nil {
 		return err
 	}
@@ -164,7 +168,7 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 	if worker != nil {
 		trigger = worker
 	}
-	server, err := newWebServer(cfg, store, trigger, logger, metrics)
+	server, err := newWebServer(cfg, store, trigger, logger, metrics, authHandler)
 	if err != nil {
 		return err
 	}

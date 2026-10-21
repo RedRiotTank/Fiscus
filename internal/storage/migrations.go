@@ -80,6 +80,12 @@ var migrations = []migration{
 			`CREATE INDEX IF NOT EXISTS idx_alerts_created ON alerts(created_at DESC)`,
 		},
 	},
+	{
+		version: 2,
+		statements: []string{
+			`CREATE INDEX IF NOT EXISTS idx_connections_reference ON connections(reference)`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and

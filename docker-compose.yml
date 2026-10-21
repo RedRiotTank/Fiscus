@@ -18,6 +18,8 @@ services:
       - "127.0.0.1:8080:8080"
     volumes:
       - fiscus-data:/data
+      # Enable Banking private key (adjust the host path and uncomment):
+      # - ./secrets/enablebanking.pem:/run/secrets/enablebanking.pem:ro
     read_only: true
     tmpfs:
       - /tmp

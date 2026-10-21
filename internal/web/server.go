@@ -43,6 +43,11 @@ type SyncTrigger interface {
 	Trigger(requisitionID string) bool
 }
 
+// AuthorizationCallback completes a bank consent after an OAuth-style redirect.
+type AuthorizationCallback interface {
+	CompleteAuthorization(ctx context.Context, code, state string) (string, error)
+}
+
 // Config configures the web server.
 type Config struct {
 	Username       string
@@ -53,6 +58,7 @@ type Config struct {
 	Now            func() time.Time
 	ReadyTimeout   time.Duration
 	MetricsHandler http.Handler
+	AuthHandler    AuthorizationCallback
 }
 
 // Server renders dashboard pages and exposes health endpoints.
@@ -67,6 +73,7 @@ type Server struct {
 	passwordHash   string
 	readyTimeout   time.Duration
 	metricsHandler http.Handler
+	authHandler    AuthorizationCallback
 
 	pages    map[string]*template.Template
 	partials *template.Template
@@ -101,6 +108,7 @@ func New(cfg Config, store Store, trigger SyncTrigger) (*Server, error) {
 		passwordHash:   cfg.PasswordHash,
 		readyTimeout:   cfg.ReadyTimeout,
 		metricsHandler: cfg.MetricsHandler,
+		authHandler:    cfg.AuthHandler,
 	}
 	if err := s.parseTemplates(); err != nil {
 		return nil, err
@@ -175,6 +183,7 @@ func (s *Server) routes() http.Handler {
 	root := http.NewServeMux()
 	root.HandleFunc("GET /healthz", s.handleHealth)
 	root.HandleFunc("GET /readyz", s.handleReady)
+	root.HandleFunc("GET /callback", s.handleAuthorizationCallback)
 	if s.metricsHandler != nil {
 		root.Handle("GET /metrics", s.metricsHandler)
 	}
@@ -436,6 +445,7 @@ func statusLabel(status string) string {
 		"CR": "Created", "GC": "Consent given", "UA": "Authenticating",
 		"RJ": "Rejected", "SA": "Selecting accounts", "GA": "Granting access",
 		"LN": "Linked", "EX": "Expired", "SU": "Suspended",
+		"PENDING_AUTHORIZATION": "Waiting for bank", "RETURNED_FROM_BANK": "Returned from bank",
 	}
 	if label, ok := labels[status]; ok {
 		return label
@@ -450,7 +460,7 @@ func statusClass(status string) string {
 	switch status {
 	case "LN", "SA":
 		return "ok"
-	case "CR", "GC", "UA", "GA":
+	case "CR", "GC", "UA", "GA", "PENDING_AUTHORIZATION", "RETURNED_FROM_BANK":
 		return "pending"
 	case "RJ", "EX", "SU":
 		return "error"

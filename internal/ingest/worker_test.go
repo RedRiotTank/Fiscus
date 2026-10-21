@@ -17,22 +17,24 @@ import (
 )
 
 type fakeBank struct {
-	mu             sync.Mutex
-	requisition    gocardless.Requisition
-	requisitionErr error
-	details        map[string]gocardless.AccountDetails
-	detailsErr     map[string]error
-	balances       map[string][]gocardless.Balance
-	balancesErr    map[string]error
-	transactions   map[string]gocardless.Transactions
-	txErr          map[string]error
-	lastFrom       time.Time
-	lastTo         time.Time
+	mu               sync.Mutex
+	requisition      gocardless.Requisition
+	requisitionErr   error
+	requisitionCalls int
+	details          map[string]gocardless.AccountDetails
+	detailsErr       map[string]error
+	balances         map[string][]gocardless.Balance
+	balancesErr      map[string]error
+	transactions     map[string]gocardless.Transactions
+	txErr            map[string]error
+	lastFrom         time.Time
+	lastTo           time.Time
 }
 
 func (f *fakeBank) GetRequisition(_ context.Context, _ string) (*gocardless.Requisition, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.requisitionCalls++
 	if f.requisitionErr != nil {
 		return nil, f.requisitionErr
 	}
@@ -324,7 +326,33 @@ func TestWorkerIsolatesAccountErrors(t *testing.T) {
 	}
 }
 
-func TestWorkerRequiresLinkedConnection(t *testing.T) {
+func TestWorkerSkipsPendingAuthorization(t *testing.T) {
+	t.Parallel()
+	bank := standardBank()
+	eval := &fakeEvaluator{}
+	w, store, connection := newIngestTest(t, bank, eval)
+	ctx := context.Background()
+	connection.Status = "PENDING_AUTHORIZATION"
+	if err := store.UpsertConnection(ctx, &connection); err != nil {
+		t.Fatalf("UpsertConnection: %v", err)
+	}
+
+	if err := w.SyncAll(ctx); err != nil {
+		t.Fatalf("SyncAll: %v", err)
+	}
+	if bank.requisitionCalls != 0 {
+		t.Fatalf("provider was called %d times for a pending consent", bank.requisitionCalls)
+	}
+	got, err := store.GetConnectionByRequisitionID(ctx, "req-1")
+	if err != nil {
+		t.Fatalf("GetConnection: %v", err)
+	}
+	if got.LastError != "" || got.LastSyncedAt != nil {
+		t.Fatalf("pending connection was modified: %+v", got)
+	}
+}
+
+func TestWorkerSkipsPendingConnection(t *testing.T) {
 	t.Parallel()
 	bank := standardBank()
 	bank.requisition.Status = "UA"
@@ -332,14 +360,40 @@ func TestWorkerRequiresLinkedConnection(t *testing.T) {
 	w, store, _ := newIngestTest(t, bank, eval)
 	ctx := context.Background()
 
-	if err := w.SyncAll(ctx); err == nil {
-		t.Fatal("expected error for unlinked connection")
+	if err := w.SyncAll(ctx); err != nil {
+		t.Fatalf("pending consent should not fail sync: %v", err)
 	}
 	conn, err := store.GetConnectionByRequisitionID(ctx, "req-1")
 	if err != nil {
 		t.Fatalf("GetConnection: %v", err)
 	}
 	if conn.Status != "UA" {
+		t.Fatalf("status = %q", conn.Status)
+	}
+	if conn.LastError != "" {
+		t.Fatalf("LastError = %q, want empty", conn.LastError)
+	}
+	if eval.txCount() != 0 || eval.balanceCount() != 0 {
+		t.Fatal("rules should not run without account data")
+	}
+}
+
+func TestWorkerRequiresLinkedConnection(t *testing.T) {
+	t.Parallel()
+	bank := standardBank()
+	bank.requisition.Status = "RJ"
+	eval := &fakeEvaluator{}
+	w, store, _ := newIngestTest(t, bank, eval)
+	ctx := context.Background()
+
+	if err := w.SyncAll(ctx); err == nil {
+		t.Fatal("expected error for rejected connection")
+	}
+	conn, err := store.GetConnectionByRequisitionID(ctx, "req-1")
+	if err != nil {
+		t.Fatalf("GetConnection: %v", err)
+	}
+	if conn.Status != "RJ" {
 		t.Fatalf("status = %q", conn.Status)
 	}
 	if conn.LastError == "" {

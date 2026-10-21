@@ -246,6 +246,12 @@ func (w *Worker) syncConnection(ctx context.Context, connection domain.Connectio
 		w.observeSync(connection.RequisitionID, w.cfg.Now().Sub(started), syncErr)
 	}()
 
+	if pendingAuthorizationStatus(connection.Status) {
+		w.logger.Info("bank authorization is pending; skipping sync",
+			"requisition_id", connection.RequisitionID, "status", connection.Status)
+		return nil
+	}
+
 	requisition, err := w.bank.GetRequisition(ctx, connection.RequisitionID)
 	if err != nil {
 		syncErr = fmt.Errorf("fetch requisition: %w", err)
@@ -254,8 +260,12 @@ func (w *Worker) syncConnection(ctx context.Context, connection domain.Connectio
 	}
 
 	connection.Status = requisition.Status
-	connection.Link = requisition.Link
-	connection.AgreementID = requisition.AgreementID
+	if requisition.Link != "" {
+		connection.Link = requisition.Link
+	}
+	if requisition.AgreementID != "" {
+		connection.AgreementID = requisition.AgreementID
+	}
 	if connection.InstitutionID == "" {
 		connection.InstitutionID = requisition.InstitutionID
 	}
@@ -266,6 +276,11 @@ func (w *Worker) syncConnection(ctx context.Context, connection domain.Connectio
 	}
 
 	if !connection.Linked() {
+		if pendingConnectionStatus(connection.Status) {
+			w.logger.Info("bank connection authorization is pending; skipping account sync",
+				"requisition_id", connection.RequisitionID, "status", connection.Status)
+			return nil
+		}
 		w.logger.Info("bank connection is not linked; skipping account sync",
 			"requisition_id", connection.RequisitionID, "status", connection.Status)
 		err := fmt.Errorf("connection status %q does not allow account access", connection.Status)
@@ -388,8 +403,9 @@ func (w *Worker) evaluateBalance(ctx context.Context, accountID string) error {
 // commonly returns both interimAvailable and closingBooked.
 func selectBalance(balances []gocardless.Balance) (gocardless.Balance, bool) {
 	preference := []string{
-		"interimAvailable", "expected", "forwardAvailable", "interimBooked",
-		"closingBooked", "openingBooked", "authorised", "available",
+		"interimAvailable", "closingAvailable", "expected", "forwardAvailable",
+		"interimBooked", "closingBooked", "openingAvailable", "openingBooked",
+		"authorised", "available",
 	}
 	for _, wanted := range preference {
 		for _, b := range balances {
@@ -584,4 +600,21 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen]
+}
+
+// pendingConnectionStatus reports statuses that are waiting for user action and
+// should not be treated as sync failures.
+func pendingConnectionStatus(status string) bool {
+	switch status {
+	case "CR", "GC", "UA", "GA", "PENDING_AUTHORIZATION", "RETURNED_FROM_BANK":
+		return true
+	default:
+		return false
+	}
+}
+
+// pendingAuthorizationStatus reports a consent that has not produced a provider
+// session yet. Such connections must not be sent to the provider API.
+func pendingAuthorizationStatus(status string) bool {
+	return status == "PENDING_AUTHORIZATION"
 }

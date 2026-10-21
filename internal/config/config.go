@@ -14,11 +14,13 @@ import (
 
 // Config is the complete runtime configuration.
 type Config struct {
-	Server     ServerConfig     `yaml:"server"`
-	Database   DatabaseConfig   `yaml:"database"`
-	GoCardless GoCardlessConfig `yaml:"gocardless"`
-	Alerts     AlertsConfig     `yaml:"alerts"`
-	Logging    LoggingConfig    `yaml:"logging"`
+	Provider      string              `yaml:"provider"`
+	Server        ServerConfig        `yaml:"server"`
+	Database      DatabaseConfig      `yaml:"database"`
+	GoCardless    GoCardlessConfig    `yaml:"gocardless"`
+	EnableBanking EnableBankingConfig `yaml:"enablebanking"`
+	Alerts        AlertsConfig        `yaml:"alerts"`
+	Logging       LoggingConfig       `yaml:"logging"`
 }
 
 // ServerConfig controls the HTTP dashboard.
@@ -39,7 +41,7 @@ type DatabaseConfig struct {
 	Path string `yaml:"path"`
 }
 
-// GoCardlessConfig controls PSD2 ingestion.
+// GoCardlessConfig controls PSD2 ingestion through GoCardless Bank Account Data.
 type GoCardlessConfig struct {
 	BaseURL             string   `yaml:"base_url"`
 	SecretID            string   `yaml:"secret_id"`
@@ -48,6 +50,23 @@ type GoCardlessConfig struct {
 	Country             string   `yaml:"country"`
 	InstitutionID       string   `yaml:"institution_id"`
 	InstitutionName     string   `yaml:"institution_name"`
+	SyncInterval        Duration `yaml:"sync_interval"`
+	SyncTimeout         Duration `yaml:"sync_timeout"`
+	InitialLookbackDays int      `yaml:"initial_lookback_days"`
+	OverlapDays         int      `yaml:"overlap_days"`
+}
+
+// EnableBankingConfig controls PSD2 ingestion through Enable Banking.
+type EnableBankingConfig struct {
+	BaseURL             string   `yaml:"base_url"`
+	AppID               string   `yaml:"app_id"`
+	PrivateKeyPath      string   `yaml:"private_key_path"`
+	PrivateKey          string   `yaml:"private_key"`
+	RedirectURL         string   `yaml:"redirect_url"`
+	Country             string   `yaml:"country"`
+	InstitutionName     string   `yaml:"institution_name"`
+	PSUType             string   `yaml:"psu_type"`
+	ConsentValidityDays int      `yaml:"consent_validity_days"`
 	SyncInterval        Duration `yaml:"sync_interval"`
 	SyncTimeout         Duration `yaml:"sync_timeout"`
 	InitialLookbackDays int      `yaml:"initial_lookback_days"`
@@ -87,6 +106,7 @@ type LoggingConfig struct {
 // Default returns production-oriented defaults. Secrets are intentionally empty.
 func Default() *Config {
 	return &Config{
+		Provider: "gocardless",
 		Server: ServerConfig{
 			Address:           ":8080",
 			ReadHeaderTimeout: Duration(10 * time.Second),
@@ -99,6 +119,16 @@ func Default() *Config {
 		GoCardless: GoCardlessConfig{
 			BaseURL:             "https://bankaccountdata.gocardless.com/api/v2",
 			Country:             "ES",
+			SyncInterval:        Duration(15 * time.Minute),
+			SyncTimeout:         Duration(5 * time.Minute),
+			InitialLookbackDays: 90,
+			OverlapDays:         3,
+		},
+		EnableBanking: EnableBankingConfig{
+			BaseURL:             "https://api.enablebanking.com",
+			Country:             "ES",
+			PSUType:             "personal",
+			ConsentValidityDays: 90,
 			SyncInterval:        Duration(15 * time.Minute),
 			SyncTimeout:         Duration(5 * time.Minute),
 			InitialLookbackDays: 90,
@@ -149,6 +179,11 @@ func Load(path string) (*Config, error) {
 // Validate checks required fields, durations, and cross-field consistency.
 func (c *Config) Validate() error {
 	var errs []error
+	switch c.ProviderName() {
+	case "gocardless", "enablebanking":
+	default:
+		errs = append(errs, fmt.Errorf("provider %q must be gocardless or enablebanking", c.Provider))
+	}
 	if strings.TrimSpace(c.Server.Address) == "" {
 		errs = append(errs, errors.New("server.address is required"))
 	}
@@ -197,6 +232,44 @@ func (c *Config) Validate() error {
 	if c.GoCardless.RedirectURL != "" && !validHTTPURL(c.GoCardless.RedirectURL) {
 		errs = append(errs, errors.New("gocardless.redirect_url must be an absolute http(s) URL"))
 	}
+	eb := c.EnableBanking
+	hasAppID := strings.TrimSpace(eb.AppID) != ""
+	hasPrivateKey := strings.TrimSpace(eb.PrivateKeyPath) != "" || strings.TrimSpace(eb.PrivateKey) != ""
+	if hasAppID != hasPrivateKey {
+		errs = append(errs, errors.New("enablebanking.app_id and a private key must be configured together"))
+	}
+	if strings.TrimSpace(eb.PrivateKeyPath) != "" && strings.TrimSpace(eb.PrivateKey) != "" {
+		errs = append(errs, errors.New("configure only one of enablebanking.private_key_path and enablebanking.private_key"))
+	}
+	if strings.TrimSpace(eb.AppID) != "" && strings.TrimSpace(eb.RedirectURL) == "" {
+		errs = append(errs, errors.New("enablebanking.redirect_url is required when an app_id is configured"))
+	}
+	if eb.BaseURL != "" && !validHTTPURL(eb.BaseURL) {
+		errs = append(errs, errors.New("enablebanking.base_url must be an absolute http(s) URL"))
+	}
+	if eb.RedirectURL != "" && !validHTTPURL(eb.RedirectURL) {
+		errs = append(errs, errors.New("enablebanking.redirect_url must be an absolute http(s) URL"))
+	}
+	switch strings.ToLower(strings.TrimSpace(eb.PSUType)) {
+	case "personal", "business":
+	default:
+		errs = append(errs, fmt.Errorf("enablebanking.psu_type %q must be personal or business", eb.PSUType))
+	}
+	if eb.ConsentValidityDays <= 0 {
+		errs = append(errs, errors.New("enablebanking.consent_validity_days must be positive"))
+	}
+	if eb.SyncInterval <= 0 {
+		errs = append(errs, errors.New("enablebanking.sync_interval must be positive"))
+	}
+	if eb.SyncTimeout <= 0 {
+		errs = append(errs, errors.New("enablebanking.sync_timeout must be positive"))
+	}
+	if eb.InitialLookbackDays <= 0 {
+		errs = append(errs, errors.New("enablebanking.initial_lookback_days must be positive"))
+	}
+	if eb.OverlapDays < 0 {
+		errs = append(errs, errors.New("enablebanking.overlap_days cannot be negative"))
+	}
 	if c.Alerts.DuplicateWindow <= 0 {
 		errs = append(errs, errors.New("alerts.duplicate_window must be positive"))
 	}
@@ -227,8 +300,34 @@ func (c *Config) Validate() error {
 	return errors.Join(errs...)
 }
 
-// BankingConfigured reports whether API credentials are available.
+// ProviderName returns the normalized banking provider.
+func (c *Config) ProviderName() string {
+	provider := strings.ToLower(strings.TrimSpace(c.Provider))
+	if provider == "" {
+		return "gocardless"
+	}
+	return provider
+}
+
+// BankingConfigured reports whether credentials for the selected provider are
+// available.
 func (c *Config) BankingConfigured() bool {
+	switch c.ProviderName() {
+	case "enablebanking":
+		return c.EnableBankingConfigured()
+	default:
+		return strings.TrimSpace(c.GoCardless.SecretID) != "" && strings.TrimSpace(c.GoCardless.SecretKey) != ""
+	}
+}
+
+// EnableBankingConfigured reports whether Enable Banking credentials are set.
+func (c *Config) EnableBankingConfigured() bool {
+	return strings.TrimSpace(c.EnableBanking.AppID) != "" &&
+		(strings.TrimSpace(c.EnableBanking.PrivateKeyPath) != "" || strings.TrimSpace(c.EnableBanking.PrivateKey) != "")
+}
+
+// GoCardlessConfigured reports whether GoCardless credentials are set.
+func (c *Config) GoCardlessConfigured() bool {
 	return strings.TrimSpace(c.GoCardless.SecretID) != "" && strings.TrimSpace(c.GoCardless.SecretKey) != ""
 }
 

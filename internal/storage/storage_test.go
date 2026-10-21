@@ -156,6 +156,47 @@ func TestConnectionLifecycle(t *testing.T) {
 	}
 }
 
+func TestConnectionAuthorizationLifecycle(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	ctx := context.Background()
+	c := seedConnection(t, s)
+	if err := s.UpdateConnectionSync(ctx, c.ID, time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC), "pending"); err != nil {
+		t.Fatalf("UpdateConnectionSync: %v", err)
+	}
+
+	byRef, err := s.GetConnectionByReference(ctx, "ref")
+	if err != nil {
+		t.Fatalf("GetConnectionByReference: %v", err)
+	}
+	if byRef.ID != c.ID {
+		t.Fatalf("connection ID = %d, want %d", byRef.ID, c.ID)
+	}
+	if err := s.UpdateConnectionAuthorization(ctx, c.ID, "session-1", "LN",
+		"https://auth.example/start", "Banco Santander", "Santander", "authorization-1"); err != nil {
+		t.Fatalf("UpdateConnectionAuthorization: %v", err)
+	}
+
+	got, err := s.GetConnectionByID(ctx, c.ID)
+	if err != nil {
+		t.Fatalf("GetConnectionByID: %v", err)
+	}
+	if got.RequisitionID != "session-1" || got.Status != "LN" ||
+		got.InstitutionID != "Banco Santander" || got.InstitutionName != "Santander" ||
+		got.AgreementID != "authorization-1" || got.LastError != "" {
+		t.Fatalf("updated connection = %+v", got)
+	}
+	if _, err := s.GetConnectionByReference(ctx, "ref"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("reference should be cleared, error = %v", err)
+	}
+	if _, err := s.GetConnectionByReference(ctx, ""); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("empty reference error = %v, want ErrNotFound", err)
+	}
+	if err := s.UpdateConnectionAuthorization(ctx, 9999, "session-x", "LN", "", "", "", ""); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing connection error = %v, want ErrNotFound", err)
+	}
+}
+
 func TestAccountLifecycle(t *testing.T) {
 	t.Parallel()
 	s := newTestStore(t)

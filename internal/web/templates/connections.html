@@ -8,6 +8,12 @@
   <div id="sync-status" class="sync-status" aria-live="polite"></div>
 </div>
 
+{{if eq .AuthStatus "success"}}
+  <p class="notice success" role="status">Bank authorization completed. The connection is now linked and a sync has been requested.</p>
+{{else if eq .AuthStatus "error"}}
+  <p class="notice error" role="alert">Bank authorization could not be completed. Check the daemon logs and create a new consent if the link expired.</p>
+{{end}}
+
 {{template "connections_panel" .}}
 
 <section class="panel help">
@@ -20,17 +26,18 @@
   <ol class="steps">
     <li>
       <strong>Find your institution</strong>
-      <pre class="code">fiscus institutions -country {{"ES"}}</pre>
+      <pre class="code">fiscus institutions -country ES</pre>
     </li>
     <li>
       <strong>Create the consent</strong>
-      <pre class="code">fiscus connect -institution &lt;institution-id&gt;</pre>
+      <pre class="code">fiscus connect -institution "Banco Santander"</pre>
+      <span class="muted small">GoCardless uses the institution ID; Enable Banking uses the bank name.</span>
     </li>
     <li>
       <strong>Finish the redirect</strong>
-      <span>Open the printed link, select accounts, and complete your bank's authentication. Fiscus is notified on the next scheduled sync.</span>
+      <span>Open the printed link, select accounts, and complete your bank's authentication. The consent is stored automatically when the bank redirects back to Fiscus.</span>
     </li>
   </ol>
-  <p class="muted small">Fiscus never initiates payments. Access tokens stay in memory and are refreshed automatically.</p>
+  <p class="muted small">Fiscus never initiates payments and only requests read access to balances and transactions.</p>
 </section>
 {{end}}

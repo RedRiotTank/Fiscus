@@ -32,8 +32,67 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.BankingConfigured() || cfg.AuthConfigured() || cfg.TelegramConfigured() || cfg.DiscordConfigured() {
 		t.Fatal("credentials should be empty by default")
 	}
+	if cfg.ProviderName() != "gocardless" {
+		t.Fatalf("provider = %q", cfg.ProviderName())
+	}
+	if cfg.EnableBanking.BaseURL != "https://api.enablebanking.com" ||
+		cfg.EnableBanking.ConsentValidityDays != 90 ||
+		cfg.EnableBanking.PSUType != "personal" ||
+		cfg.EnableBanking.SyncInterval.Std() != 15*time.Minute {
+		t.Fatalf("enablebanking defaults = %+v", cfg.EnableBanking)
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("validate: %v", err)
+	}
+}
+
+func TestLoadEnableBankingConfig(t *testing.T) {
+	path := writeConfig(t, `
+provider: enablebanking
+enablebanking:
+  app_id: app-id
+  private_key_path: /run/secrets/enablebanking.pem
+  redirect_url: http://localhost:8080/callback
+  country: es
+  institution_name: Banco Santander
+  psu_type: business
+  consent_validity_days: 30
+  sync_interval: 20m
+  sync_timeout: 2m
+  initial_lookback_days: 45
+  overlap_days: 5
+`)
+	t.Setenv("FISCUS_PROVIDER", "enablebanking")
+	t.Setenv("FISCUS_ENABLEBANKING_APP_ID", "env-app")
+	t.Setenv("FISCUS_ENABLEBANKING_PRIVATE_KEY_PATH", "/run/secrets/env.pem")
+	t.Setenv("FISCUS_ENABLEBANKING_REDIRECT_URL", "http://localhost:9090/callback")
+	t.Setenv("FISCUS_ENABLEBANKING_COUNTRY", "ES")
+	t.Setenv("FISCUS_ENABLEBANKING_PSU_TYPE", "personal")
+	t.Setenv("FISCUS_ENABLEBANKING_CONSENT_VALIDITY_DAYS", "60")
+	t.Setenv("FISCUS_ENABLEBANKING_SYNC_INTERVAL", "5m")
+	t.Setenv("FISCUS_ENABLEBANKING_OVERLAP_DAYS", "2")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.ProviderName() != "enablebanking" {
+		t.Fatalf("provider = %q", cfg.ProviderName())
+	}
+	if !cfg.BankingConfigured() || cfg.GoCardlessConfigured() {
+		t.Fatalf("configured flags: banking=%v gocardless=%v", cfg.BankingConfigured(), cfg.GoCardlessConfigured())
+	}
+	if cfg.EnableBanking.AppID != "env-app" ||
+		cfg.EnableBanking.PrivateKeyPath != "/run/secrets/env.pem" ||
+		cfg.EnableBanking.RedirectURL != "http://localhost:9090/callback" ||
+		cfg.EnableBanking.PSUType != "personal" ||
+		cfg.EnableBanking.ConsentValidityDays != 60 ||
+		cfg.EnableBanking.SyncInterval.Std() != 5*time.Minute ||
+		cfg.EnableBanking.OverlapDays != 2 {
+		t.Fatalf("enablebanking config = %+v", cfg.EnableBanking)
+	}
+	if cfg.EnableBanking.InstitutionName != "Banco Santander" || cfg.EnableBanking.InitialLookbackDays != 45 {
+		t.Fatalf("yaml values were not preserved: %+v", cfg.EnableBanking)
 	}
 }
 
@@ -150,6 +209,29 @@ func TestValidationErrors(t *testing.T) {
 		{name: "telegram chat only", mutate: func(c *Config) { c.Alerts.Telegram.ChatID = "chat" }, want: "configured together"},
 		{name: "bad redirect", mutate: func(c *Config) { c.GoCardless.RedirectURL = "not-a-url" }, want: "redirect_url"},
 		{name: "bad base url", mutate: func(c *Config) { c.GoCardless.BaseURL = "://bad" }, want: "base_url"},
+		{name: "bad provider", mutate: func(c *Config) { c.Provider = "other" }, want: "provider"},
+		{name: "enablebanking app only", mutate: func(c *Config) { c.EnableBanking.AppID = "app" }, want: "configured together"},
+		{name: "enablebanking key only", mutate: func(c *Config) { c.EnableBanking.PrivateKeyPath = "/tmp/key.pem" }, want: "configured together"},
+		{name: "enablebanking both keys", mutate: func(c *Config) {
+			c.EnableBanking.AppID = "app"
+			c.EnableBanking.PrivateKeyPath = "/tmp/key.pem"
+			c.EnableBanking.PrivateKey = "pem"
+			c.EnableBanking.RedirectURL = "http://localhost:8080/callback"
+		}, want: "only one"},
+		{name: "enablebanking missing redirect", mutate: func(c *Config) {
+			c.EnableBanking.AppID = "app"
+			c.EnableBanking.PrivateKeyPath = "/tmp/key.pem"
+		}, want: "redirect_url"},
+		{name: "enablebanking bad base", mutate: func(c *Config) { c.EnableBanking.BaseURL = "://bad" }, want: "base_url"},
+		{name: "enablebanking bad redirect", mutate: func(c *Config) {
+			c.EnableBanking.AppID = "app"
+			c.EnableBanking.PrivateKeyPath = "/tmp/key.pem"
+			c.EnableBanking.RedirectURL = "not-a-url"
+		}, want: "redirect_url"},
+		{name: "enablebanking bad psu", mutate: func(c *Config) { c.EnableBanking.PSUType = "robot" }, want: "psu_type"},
+		{name: "enablebanking zero consent", mutate: func(c *Config) { c.EnableBanking.ConsentValidityDays = 0 }, want: "consent_validity_days"},
+		{name: "enablebanking zero sync", mutate: func(c *Config) { c.EnableBanking.SyncInterval = 0 }, want: "sync_interval"},
+		{name: "enablebanking negative overlap", mutate: func(c *Config) { c.EnableBanking.OverlapDays = -1 }, want: "overlap_days"},
 		{name: "zero sync interval", mutate: func(c *Config) { c.GoCardless.SyncInterval = 0 }, want: "sync_interval"},
 		{name: "negative overlap", mutate: func(c *Config) { c.GoCardless.OverlapDays = -1 }, want: "overlap_days"},
 		{name: "zero duplicate window", mutate: func(c *Config) { c.Alerts.DuplicateWindow = 0 }, want: "duplicate_window"},

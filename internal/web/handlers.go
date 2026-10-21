@@ -86,11 +86,48 @@ func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
 	data := s.baseData("Connections", "connections")
+	switch r.URL.Query().Get("auth") {
+	case "success":
+		data.AuthStatus = "success"
+	case "error":
+		data.AuthStatus = "error"
+	}
 	if err := s.loadConnections(r.Context(), &data); err != nil {
 		s.fail(w, r, err)
 		return
 	}
 	s.render(w, "connections", data)
+}
+
+// handleAuthorizationCallback completes an OAuth-style bank consent. It is
+// intentionally unauthenticated: the bank redirects the user here, and the
+// stored, random state value authenticates the pending connection.
+func (s *Server) handleAuthorizationCallback(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	if providerErr := query.Get("error"); providerErr != "" {
+		s.logger.Warn("bank authorization failed", "error", providerErr, "description", query.Get("error_description"))
+		http.Redirect(w, r, "/connections?auth=error", http.StatusSeeOther)
+		return
+	}
+	code := query.Get("code")
+	state := query.Get("state")
+	if code == "" || state == "" {
+		http.Error(w, "Missing authorization code or state", http.StatusBadRequest)
+		return
+	}
+	if s.authHandler == nil {
+		http.NotFound(w, r)
+		return
+	}
+	if _, err := s.authHandler.CompleteAuthorization(r.Context(), code, state); err != nil {
+		s.logger.Error("complete bank authorization", "error", err)
+		http.Redirect(w, r, "/connections?auth=error", http.StatusSeeOther)
+		return
+	}
+	if s.trigger != nil {
+		s.trigger.Trigger("")
+	}
+	http.Redirect(w, r, "/connections?auth=success", http.StatusSeeOther)
 }
 
 func (s *Server) handleOverviewPartial(w http.ResponseWriter, r *http.Request) {
