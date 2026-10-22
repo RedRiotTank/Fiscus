@@ -109,9 +109,10 @@ type AlertsConfig struct {
 
 // TelegramConfig configures the Telegram notifier.
 type TelegramConfig struct {
-	BotToken string `yaml:"bot_token"`
-	ChatID   string `yaml:"chat_id"`
-	UserID   string `yaml:"user_id"`
+	BotToken            string `yaml:"bot_token"`
+	ChatID              string `yaml:"chat_id"`
+	UserID              string `yaml:"user_id"`
+	NotifyUncategorized bool   `yaml:"notify_uncategorized"`
 }
 
 // DiscordConfig configures the Discord notifier.
@@ -164,6 +165,9 @@ func Default() *Config {
 			LiquidityThresholds: map[string]string{},
 			RetryAttempts:       3,
 			RetryBaseDelay:      Duration(500 * time.Millisecond),
+			Telegram: TelegramConfig{
+				NotifyUncategorized: true,
+			},
 		},
 		Logging: LoggingConfig{Level: "info", Format: "text"},
 	}

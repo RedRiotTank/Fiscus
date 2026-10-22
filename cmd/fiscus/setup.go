@@ -129,12 +129,14 @@ func buildTelegramBot(cfg *config.Config, store *storage.Store, worker *ingest.W
 		syncer = worker
 	}
 	return telegram.New(telegram.Config{
-		BotToken: cfg.Alerts.Telegram.BotToken,
-		ChatID:   cfg.Alerts.Telegram.ChatID,
-		UserID:   cfg.Alerts.Telegram.UserID,
-		Logger:   logger,
-		Store:    store,
-		Syncer:   syncer,
+		BotToken:   cfg.Alerts.Telegram.BotToken,
+		ChatID:     cfg.Alerts.Telegram.ChatID,
+		UserID:     cfg.Alerts.Telegram.UserID,
+		Logger:     logger,
+		Store:      store,
+		Syncer:     syncer,
+		Categories: configuredCategories(cfg),
+		Budgets:    configuredBudgets(cfg),
 	})
 }
 
@@ -245,6 +247,17 @@ func configuredBudgets(cfg *config.Config) []budgets.Budget {
 			Currency:        item.Currency,
 			NotifyAtPercent: item.NotifyAtPercent,
 		})
+	}
+	return out
+}
+
+func configuredCategories(cfg *config.Config) []string {
+	out := make([]string, 0, len(cfg.Rules))
+	for _, rule := range cfg.Rules {
+		category := strings.TrimSpace(rule.Category)
+		if category != "" {
+			out = append(out, category)
+		}
 	}
 	return out
 }

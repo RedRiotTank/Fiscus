@@ -13,12 +13,23 @@ import (
 	"testing"
 	"time"
 
+	"github.com/RedRiotTank/Fiscus/internal/budgets"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
+	"github.com/RedRiotTank/Fiscus/internal/storage"
 )
+
+type categoryUpdate struct {
+	ID       int64
+	Category string
+}
 
 type fakeStore struct {
 	accounts     []domain.Account
 	transactions []domain.Transaction
+	between      []domain.Transaction
+	spending     []storage.CategorySpending
+	updates      []categoryUpdate
+	updateErr    error
 	limit        int
 	err          error
 }
@@ -35,6 +46,22 @@ func (f *fakeStore) RecentBookedTransactions(_ context.Context, limit int) ([]do
 	return f.transactions, f.err
 }
 
+func (f *fakeStore) ListTransactionsBetween(context.Context, time.Time, time.Time) ([]domain.Transaction, error) {
+	return f.between, f.err
+}
+
+func (f *fakeStore) SpendingByCategory(context.Context, time.Time, time.Time) ([]storage.CategorySpending, error) {
+	return f.spending, f.err
+}
+
+func (f *fakeStore) UpdateTransactionCategory(_ context.Context, id int64, category string) error {
+	if f.updateErr != nil {
+		return f.updateErr
+	}
+	f.updates = append(f.updates, categoryUpdate{ID: id, Category: category})
+	return nil
+}
+
 type fakeSyncer struct {
 	err   error
 	calls int
@@ -46,14 +73,21 @@ func (f *fakeSyncer) SyncAll(context.Context) error {
 }
 
 type sentMessage struct {
-	ChatID string `json:"chat_id"`
-	Text   string `json:"text"`
+	ChatID      string                `json:"chat_id"`
+	Text        string                `json:"text"`
+	ReplyMarkup *inlineKeyboardMarkup `json:"reply_markup"`
+}
+
+type answeredCallback struct {
+	ID   string `json:"callback_query_id"`
+	Text string `json:"text"`
 }
 
 type fakeAPI struct {
 	mu        sync.Mutex
 	updates   []update
 	sent      []sentMessage
+	answered  []answeredCallback
 	firstPoll chan struct{}
 	polls     int
 }
@@ -78,6 +112,13 @@ func newFakeAPI(t *testing.T) (*fakeAPI, *httptest.Server) {
 			}
 			api.sent = append(api.sent, msg)
 			writeJSON(t, w, map[string]any{"ok": true, "result": map[string]any{}})
+		case strings.HasSuffix(r.URL.Path, "/answerCallbackQuery"):
+			var answer answeredCallback
+			if err := json.NewDecoder(r.Body).Decode(&answer); err != nil {
+				t.Errorf("decode answerCallbackQuery: %v", err)
+			}
+			api.answered = append(api.answered, answer)
+			writeJSON(t, w, map[string]any{"ok": true, "result": true})
 		default:
 			http.NotFound(w, r)
 		}
@@ -102,6 +143,11 @@ func newTestBot(t *testing.T, _ *fakeAPI, server *httptest.Server, store Store, 
 		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Store:      store,
 		Syncer:     syncer,
+		Categories: []string{"Dining", "Utilities", "Dining", "Uncategorized"},
+		Budgets: []budgets.Budget{{
+			Category: "Dining", LimitMinor: 2500, Currency: "EUR", NotifyAtPercent: []int{80, 100},
+		}},
+		Now: func() time.Time { return time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC) },
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -240,6 +286,140 @@ func TestUnknownCommand(t *testing.T) {
 	defer api.mu.Unlock()
 	if len(api.sent) != 1 || !strings.Contains(api.sent[0].Text, "Instrucción desconocida") {
 		t.Fatalf("reply = %+v", api.sent)
+	}
+}
+
+func TestNotifyUncategorizedInlineKeyboard(t *testing.T) {
+	t.Parallel()
+	api, server := newFakeAPI(t)
+	store := &fakeStore{}
+	bot := newTestBot(t, api, server, store, nil)
+	tx := domain.Transaction{
+		ID: 9, AccountID: "acc-1", ExternalID: "tx-9", AmountMinor: -1234, Currency: "EUR",
+		Counterparty: "Corner Cafe", Description: "Card payment",
+		BookingDate: time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC), Category: "Uncategorized",
+	}
+	if err := bot.NotifyUncategorized(context.Background(), tx); err != nil {
+		t.Fatalf("NotifyUncategorized: %v", err)
+	}
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if len(api.sent) != 1 {
+		t.Fatalf("sent = %d, want 1", len(api.sent))
+	}
+	if !strings.Contains(api.sent[0].Text, "Movimiento sin categoría") || !strings.Contains(api.sent[0].Text, "Corner Cafe") {
+		t.Fatalf("notification text = %q", api.sent[0].Text)
+	}
+	markup := api.sent[0].ReplyMarkup
+	if markup == nil || len(markup.InlineKeyboard) != 2 {
+		t.Fatalf("markup = %+v", markup)
+	}
+	firstRow := markup.InlineKeyboard[0]
+	if len(firstRow) != 2 || firstRow[0].CallbackData != "tx:9:cat:0" || firstRow[1].CallbackData != "tx:9:cat:1" {
+		t.Fatalf("category buttons = %+v", firstRow)
+	}
+	ignore := markup.InlineKeyboard[1]
+	if len(ignore) != 1 || ignore[0].Text != "Ignorar" || ignore[0].CallbackData != "tx:9:ignore" {
+		t.Fatalf("ignore button = %+v", ignore)
+	}
+}
+
+func callbackUpdate(chatID, userID int64, data string) update {
+	return update{
+		UpdateID: 2,
+		CallbackQuery: &callbackQuery{
+			ID: "callback-1", From: &user{ID: userID}, Data: data,
+			Message: &message{MessageID: 2, Chat: chat{ID: chatID}},
+		},
+	}
+}
+
+func TestCallbackCategorizesTransaction(t *testing.T) {
+	t.Parallel()
+	api, server := newFakeAPI(t)
+	store := &fakeStore{}
+	bot := newTestBot(t, api, server, store, nil)
+	bot.handleUpdate(context.Background(), callbackUpdate(42, 7, "tx:9:cat:1"))
+	bot.handleUpdate(context.Background(), callbackUpdate(42, 7, "tx:9:ignore"))
+
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if len(store.updates) != 2 {
+		t.Fatalf("updates = %+v, want 2", store.updates)
+	}
+	if store.updates[0] != (categoryUpdate{ID: 9, Category: "Utilities"}) {
+		t.Fatalf("first update = %+v", store.updates[0])
+	}
+	if store.updates[1] != (categoryUpdate{ID: 9, Category: "Ignored"}) {
+		t.Fatalf("second update = %+v", store.updates[1])
+	}
+	if len(api.answered) != 2 || !strings.Contains(api.answered[0].Text, "Utilities") || !strings.Contains(api.answered[1].Text, "ignorado") {
+		t.Fatalf("answers = %+v", api.answered)
+	}
+}
+
+func TestCallbackRejectsInvalidData(t *testing.T) {
+	t.Parallel()
+	api, server := newFakeAPI(t)
+	store := &fakeStore{}
+	bot := newTestBot(t, api, server, store, nil)
+	bot.handleUpdate(context.Background(), callbackUpdate(42, 7, "tx:9:cat:99"))
+	bot.handleUpdate(context.Background(), callbackUpdate(99, 7, "tx:9:ignore"))
+
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if len(store.updates) != 0 {
+		t.Fatalf("updates = %+v, want none", store.updates)
+	}
+	if len(api.answered) != 1 || !strings.Contains(api.answered[0].Text, "no válida") {
+		t.Fatalf("answers = %+v", api.answered)
+	}
+}
+
+func TestRunwayCommand(t *testing.T) {
+	t.Parallel()
+	api, server := newFakeAPI(t)
+	store := &fakeStore{
+		accounts: []domain.Account{{ID: "a1", Currency: "EUR", BalanceMinor: 300000}},
+		between: []domain.Transaction{{
+			AccountID: "a1", AmountMinor: -90000, Currency: "EUR",
+			BookingDate: time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC),
+			Status:      domain.TransactionStatusBooked,
+		}},
+	}
+	bot := newTestBot(t, api, server, store, nil)
+	bot.handleUpdate(context.Background(), messageUpdate(42, 7, "/runway"))
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if len(api.sent) != 1 {
+		t.Fatalf("sent = %d", len(api.sent))
+	}
+	text := api.sent[0].Text
+	for _, want := range []string{"Autonomía financiera", "liquidez 3,000.00", "consumo mensual 300.00", "10.0 meses"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("runway missing %q: %q", want, text)
+		}
+	}
+}
+
+func TestPresupuestoCommand(t *testing.T) {
+	t.Parallel()
+	api, server := newFakeAPI(t)
+	store := &fakeStore{spending: []storage.CategorySpending{
+		{Category: "Dining", Currency: "EUR", Minor: 2000},
+	}}
+	bot := newTestBot(t, api, server, store, nil)
+	bot.handleUpdate(context.Background(), messageUpdate(42, 7, "/presupuesto"))
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if len(api.sent) != 1 {
+		t.Fatalf("sent = %d", len(api.sent))
+	}
+	text := api.sent[0].Text
+	for _, want := range []string{"Presupuesto de March 2026", "Dining: 20.00 de 25.00 EUR (80%)", "Mes transcurrido: 32%"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("budget missing %q: %q", want, text)
+		}
 	}
 }
 

@@ -176,6 +176,9 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if worker != nil && bot != nil && cfg.Alerts.Telegram.NotifyUncategorized {
+		worker.SetUncategorizedNotifier(bot)
+	}
 	var botDone chan struct{}
 	if bot != nil {
 		botDone = make(chan struct{})

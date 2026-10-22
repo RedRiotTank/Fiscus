@@ -158,6 +158,32 @@ func (s *Store) UpsertTransaction(ctx context.Context, t *domain.Transaction) (i
 	return inserted, promoted, nil
 }
 
+// UpdateTransactionCategory changes a transaction's category. It is used by
+// interactive categorization flows such as Telegram inline keyboards.
+func (s *Store) UpdateTransactionCategory(ctx context.Context, id int64, category string) error {
+	if id <= 0 {
+		return ErrNotFound
+	}
+	category = strings.TrimSpace(category)
+	if category == "" {
+		category = "Uncategorized"
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE transactions SET category = ?, updated_at = ? WHERE id = ?`,
+		category, encodeTime(nowUTC()), id)
+	if err != nil {
+		return fmt.Errorf("storage: update transaction category: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("storage: update transaction category: %w", err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // ListTransactions returns transactions matching the filter, newest first.
 func (s *Store) ListTransactions(ctx context.Context, filter TransactionFilter) ([]domain.Transaction, error) {
 	var (
