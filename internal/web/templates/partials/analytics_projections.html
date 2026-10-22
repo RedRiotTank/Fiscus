@@ -1,0 +1,39 @@
+{{define "analytics_projections"}}
+<section class="analytics-block">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Wealth trajectory</p>
+      <h2>Wealth &amp; savings projection</h2>
+      <p class="subtitle">Historical net savings projected forward with a variance cone. Adjust savings and expected yield to explore scenarios.</p>
+    </div>
+    <div class="segmented" role="group" aria-label="Projection horizon">
+      <button type="button" class="segmented-button active" data-projection-horizon="1y" aria-pressed="true">1Y</button>
+      <button type="button" class="segmented-button" data-projection-horizon="5y" aria-pressed="false">5Y</button>
+      <button type="button" class="segmented-button" data-projection-horizon="10y" aria-pressed="false">10Y</button>
+      <button type="button" class="segmented-button" data-projection-horizon="15y" aria-pressed="false">15Y</button>
+    </div>
+  </div>
+  <article class="panel chart-card">
+    <header class="chart-head">
+      <div>
+        <h3>Projected balance</h3>
+        <p class="panel-sub" id="projection-summary">Loading projection…</p>
+      </div>
+      <div class="projection-controls">
+        <label class="control-field" for="projection-extra">
+          <span>Extra monthly savings <output id="projection-extra-value">€0</output></span>
+          <input id="projection-extra" type="range" min="-500" max="2000" step="50" value="0">
+        </label>
+        <label class="control-field" for="projection-yield">
+          <span>Annual investment yield <output id="projection-yield-value">3.0%</output></span>
+          <input id="projection-yield" type="range" min="0" max="12" step="0.25" value="3">
+        </label>
+      </div>
+    </header>
+    <div class="chart-body chart-body-tall">
+      <canvas id="projection-chart" role="img" aria-label="Wealth projection with uncertainty cone"></canvas>
+      <p class="chart-empty" id="projection-chart-empty" hidden>No historical savings data yet.</p>
+    </div>
+  </article>
+</section>
+{{end}}
