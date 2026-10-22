@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -668,6 +669,51 @@ func (b *Bot) answerCallback(ctx context.Context, callbackID, text string) {
 	if err := json.Unmarshal(responseBody, &decoded); err != nil || resp.StatusCode < 200 || resp.StatusCode >= 300 || !decoded.OK {
 		b.logger.Error("telegram answerCallbackQuery rejected", "status", resp.StatusCode)
 	}
+}
+
+// SendDocument uploads a file to the configured chat. It is used by the
+// optional weekly gzipped backup job.
+func (b *Bot) SendDocument(ctx context.Context, filename string, data []byte) error {
+	if strings.TrimSpace(filename) == "" {
+		return errors.New("telegram: document filename is required")
+	}
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("chat_id", b.chatID); err != nil {
+		return errors.New("telegram: build document upload")
+	}
+	part, err := writer.CreateFormFile("document", filename)
+	if err != nil {
+		return errors.New("telegram: build document upload")
+	}
+	if _, err := part.Write(data); err != nil {
+		return errors.New("telegram: build document upload")
+	}
+	if err := writer.Close(); err != nil {
+		return errors.New("telegram: build document upload")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.apiBase+"/sendDocument", &body)
+	if err != nil {
+		return errors.New("telegram: build sendDocument request")
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	resp, err := b.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("telegram: sendDocument: %s", b.sanitize(err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	if err != nil {
+		return errors.New("telegram: read sendDocument response")
+	}
+	var decoded apiResponse
+	if err := json.Unmarshal(responseBody, &decoded); err != nil {
+		return fmt.Errorf("telegram: sendDocument HTTP %d", resp.StatusCode)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 || !decoded.OK {
+		return fmt.Errorf("telegram: sendDocument rejected: %s", truncateRunes(decoded.Description, 200))
+	}
+	return nil
 }
 
 func (b *Bot) sanitize(value string) string {

@@ -83,11 +83,18 @@ type answeredCallback struct {
 	Text string `json:"text"`
 }
 
+type sentDocument struct {
+	ChatID   string
+	Filename string
+	Data     []byte
+}
+
 type fakeAPI struct {
 	mu        sync.Mutex
 	updates   []update
 	sent      []sentMessage
 	answered  []answeredCallback
+	documents []sentDocument
 	firstPoll chan struct{}
 	polls     int
 }
@@ -119,6 +126,24 @@ func newFakeAPI(t *testing.T) (*fakeAPI, *httptest.Server) {
 			}
 			api.answered = append(api.answered, answer)
 			writeJSON(t, w, map[string]any{"ok": true, "result": true})
+		case strings.HasSuffix(r.URL.Path, "/sendDocument"):
+			if err := r.ParseMultipartForm(1 << 20); err != nil {
+				t.Errorf("parse sendDocument: %v", err)
+				writeJSON(t, w, map[string]any{"ok": false})
+				return
+			}
+			file, header, err := r.FormFile("document")
+			if err != nil {
+				t.Errorf("sendDocument file: %v", err)
+				writeJSON(t, w, map[string]any{"ok": false})
+				return
+			}
+			defer func() { _ = file.Close() }()
+			data, _ := io.ReadAll(file)
+			api.documents = append(api.documents, sentDocument{
+				ChatID: r.FormValue("chat_id"), Filename: header.Filename, Data: data,
+			})
+			writeJSON(t, w, map[string]any{"ok": true, "result": map[string]any{}})
 		default:
 			http.NotFound(w, r)
 		}
@@ -420,6 +445,24 @@ func TestPresupuestoCommand(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("budget missing %q: %q", want, text)
 		}
+	}
+}
+
+func TestSendDocument(t *testing.T) {
+	t.Parallel()
+	api, server := newFakeAPI(t)
+	bot := newTestBot(t, api, server, &fakeStore{}, nil)
+	if err := bot.SendDocument(context.Background(), "backup.sqlite.gz", []byte("gzip-data")); err != nil {
+		t.Fatalf("SendDocument: %v", err)
+	}
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if len(api.documents) != 1 {
+		t.Fatalf("documents = %+v", api.documents)
+	}
+	got := api.documents[0]
+	if got.ChatID != "42" || got.Filename != "backup.sqlite.gz" || string(got.Data) != "gzip-data" {
+		t.Fatalf("document = %+v", got)
 	}
 }
 

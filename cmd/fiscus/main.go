@@ -45,6 +45,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runSync(args[1:], stdout, stderr)
 	case "recategorize":
 		return runRecategorize(args[1:], stdout, stderr)
+	case "backup":
+		return runBackup(args[1:], stdout, stderr)
 	case "export":
 		return runExport(args[1:], stdout, stderr)
 	case "version", "-version", "--version":
@@ -68,6 +70,7 @@ Usage:
   fiscus institutions   List available institutions for a country
   fiscus sync           Run one synchronization cycle and exit
   fiscus recategorize   Re-run category rules over historical transactions
+  fiscus backup         Write a gzipped online SQLite backup
   fiscus export         Export transactions as CSV, hledger, or Beancount
   fiscus version        Print build information
 
@@ -153,8 +156,13 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 	}()
 
 	metrics := observability.New(version)
+	sink, err := buildEventSink(cfg, logger)
+	if err != nil {
+		return err
+	}
+	defer sink.Wait()
 
-	engine, err := buildEngine(cfg, store, logger, metrics)
+	engine, err := buildEngine(cfg, store, logger, metrics, sink)
 	if err != nil {
 		return err
 	}
@@ -162,7 +170,7 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	worker, err := buildWorker(cfg, store, engine, logger, metrics, bank)
+	worker, err := buildWorker(cfg, store, engine, logger, metrics, bank, sink)
 	if err != nil {
 		return err
 	}
@@ -178,6 +186,13 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 	}
 	if worker != nil && bot != nil && cfg.Alerts.Telegram.NotifyUncategorized {
 		worker.SetUncategorizedNotifier(bot)
+	}
+	if cfg.Backups.Enabled && cfg.Backups.Telegram {
+		if bot == nil {
+			logger.Warn("scheduled Telegram backups require a configured Telegram bot")
+		} else {
+			startBackupScheduler(appCtx, cfg, store, bot, logger)
+		}
 	}
 	var botDone chan struct{}
 	if bot != nil {

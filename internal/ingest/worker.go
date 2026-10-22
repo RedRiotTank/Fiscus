@@ -18,6 +18,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/banking/gocardless"
 	"github.com/RedRiotTank/Fiscus/internal/categories"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
+	"github.com/RedRiotTank/Fiscus/internal/events"
 	"github.com/RedRiotTank/Fiscus/internal/money"
 )
 
@@ -108,6 +109,7 @@ type Worker struct {
 	evaluator     Evaluator
 	observer      Observer
 	uncategorized UncategorizedNotifier
+	events        events.Sink
 	logger        *slog.Logger
 	cfg           Config
 	trigger       chan string
@@ -164,6 +166,13 @@ func (w *Worker) SetUncategorizedNotifier(notifier UncategorizedNotifier) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.uncategorized = notifier
+}
+
+// SetEventSink installs an optional outbound event sink for webhooks.
+func (w *Worker) SetEventSink(sink events.Sink) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.events = sink
 }
 
 func (w *Worker) observeSync(requisitionID string, d time.Duration, err error) {
@@ -262,7 +271,9 @@ func (w *Worker) SyncAll(ctx context.Context) error {
 	}
 	w.evaluateConsents(ctx)
 	w.evaluateAnalysis(ctx)
-	return errors.Join(errs...)
+	syncErr := errors.Join(errs...)
+	w.emitSyncCompleted(ctx, "all", "", len(connections), syncErr)
+	return syncErr
 }
 
 // SyncConnection synchronizes a single requisition.
@@ -274,7 +285,40 @@ func (w *Worker) SyncConnection(ctx context.Context, requisitionID string) error
 	err = w.syncConnection(ctx, connection)
 	w.evaluateConsents(ctx)
 	w.evaluateAnalysis(ctx)
+	w.emitSyncCompleted(ctx, "connection", requisitionID, 1, err)
 	return err
+}
+
+func (w *Worker) emitTransactionCreated(ctx context.Context, tx domain.Transaction) {
+	w.mu.Lock()
+	sink := w.events
+	w.mu.Unlock()
+	if sink == nil {
+		return
+	}
+	sink.Emit(ctx, events.TransactionCreated, map[string]any{
+		"id": tx.ID, "account_id": tx.AccountID, "external_id": tx.ExternalID,
+		"amount_minor": tx.AmountMinor, "currency": tx.Currency,
+		"booking_date": tx.BookingDate, "counterparty": tx.Counterparty,
+		"description": tx.Description, "category": tx.Category, "status": tx.Status,
+	})
+}
+
+func (w *Worker) emitSyncCompleted(ctx context.Context, scope, requisitionID string, connections int, err error) {
+	w.mu.Lock()
+	sink := w.events
+	w.mu.Unlock()
+	if sink == nil {
+		return
+	}
+	payload := map[string]any{
+		"scope": scope, "requisition_id": requisitionID,
+		"connections": connections, "success": err == nil,
+	}
+	if err != nil {
+		payload["error"] = err.Error()
+	}
+	sink.Emit(ctx, events.SyncCompleted, payload)
 }
 
 func (w *Worker) notifyUncategorized(ctx context.Context, tx domain.Transaction) {
@@ -553,6 +597,7 @@ func (w *Worker) syncTransactions(ctx context.Context, account domain.Account, c
 		}
 		if created {
 			inserted++
+			w.emitTransactionCreated(ctx, tx)
 		}
 		if tx.Status == domain.TransactionStatusBooked && strings.TrimSpace(tx.Category) == categories.DefaultCategory {
 			w.notifyUncategorized(ctx, tx)

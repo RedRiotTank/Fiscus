@@ -147,6 +147,50 @@ func TestInvalidExpectedInflowsRejected(t *testing.T) {
 	}
 }
 
+func TestLoadBackupsAndWebhooks(t *testing.T) {
+	path := writeConfig(t, `
+backups:
+  enabled: true
+  telegram: true
+  directory: snapshots
+  interval: 24h
+webhooks:
+  - url: https://example.test/events
+    secret: top-secret
+    events: [transaction.created, alert.triggered]
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.Backups.Enabled || !cfg.Backups.Telegram || cfg.Backups.Directory != "snapshots" || cfg.Backups.Interval.Std() != 24*time.Hour {
+		t.Fatalf("backups = %+v", cfg.Backups)
+	}
+	if len(cfg.Webhooks) != 1 || cfg.Webhooks[0].URL != "https://example.test/events" || len(cfg.Webhooks[0].Events) != 2 {
+		t.Fatalf("webhooks = %+v", cfg.Webhooks)
+	}
+}
+
+func TestInvalidBackupsAndWebhooksRejected(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+	}{
+		{name: "telegram without enabled", yaml: "backups:\n  telegram: true\n"},
+		{name: "invalid interval", yaml: "backups:\n  interval: 0s\n"},
+		{name: "invalid webhook URL", yaml: "webhooks:\n  - url: ftp://example.test\n    events: [sync.completed]\n"},
+		{name: "empty webhook events", yaml: "webhooks:\n  - url: https://example.test\n"},
+		{name: "unknown webhook event", yaml: "webhooks:\n  - url: https://example.test\n    events: [unknown]\n"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := Load(writeConfig(t, test.yaml)); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}
+
 func TestLoadEnableBankingConfig(t *testing.T) {
 	path := writeConfig(t, `
 provider: enablebanking

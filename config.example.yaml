@@ -130,3 +130,19 @@ rules:
     pattern: "(?i)IBERDROLA|ENDESA|AGUAS"
   - category: "Payroll"
     pattern: "(?i)NOMINA|SALARY"
+
+# Optional weekly gzipped SQLite backups delivered to the Telegram chat above.
+# Manual snapshots are always available with: fiscus backup --out=/path/file.sqlite.gz
+backups:
+  enabled: false
+  telegram: false
+  directory: "backups"
+  interval: 168h
+
+# Optional generic outbound webhooks. Deliveries are asynchronous JSON POSTs
+# with retries. When a secret is set, requests carry an HMAC-SHA256 signature
+# in X-Fiscus-Signature (sha256=<hex>) over the exact JSON body.
+webhooks:
+  - url: "https://example.com/fiscus/events"
+    secret: "replace-with-a-long-random-secret"
+    events: ["transaction.created", "alert.triggered", "sync.completed"]
