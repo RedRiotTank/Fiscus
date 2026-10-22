@@ -23,6 +23,7 @@ type Config struct {
 	Alerts        AlertsConfig        `yaml:"alerts"`
 	Logging       LoggingConfig       `yaml:"logging"`
 	Rules         []CategoryRule      `yaml:"rules"`
+	Budgets       []BudgetConfig      `yaml:"budgets"`
 }
 
 // CategoryRule tags a transaction whose counterparty or description matches
@@ -30,6 +31,15 @@ type Config struct {
 type CategoryRule struct {
 	Category string `yaml:"category"`
 	Pattern  string `yaml:"pattern"`
+}
+
+// BudgetConfig caps month-to-date spending for one category. Limit is in
+// integer minor units. Currency defaults to EUR when omitted.
+type BudgetConfig struct {
+	Category        string `yaml:"category"`
+	Limit           int64  `yaml:"limit"`
+	Currency        string `yaml:"currency"`
+	NotifyAtPercent []int  `yaml:"notify_at_percent"`
 }
 
 // ServerConfig controls the HTTP(S) dashboard.
@@ -311,6 +321,19 @@ func (c *Config) Validate() error {
 	}
 	if c.Logging.Format != "text" && c.Logging.Format != "json" {
 		errs = append(errs, fmt.Errorf("logging.format %q must be text or json", c.Logging.Format))
+	}
+	for i, budget := range c.Budgets {
+		if strings.TrimSpace(budget.Category) == "" {
+			errs = append(errs, fmt.Errorf("budgets[%d].category is required", i))
+		}
+		if budget.Limit <= 0 {
+			errs = append(errs, fmt.Errorf("budgets[%d].limit must be a positive integer minor-unit amount", i))
+		}
+		for j, threshold := range budget.NotifyAtPercent {
+			if threshold <= 0 || threshold > 100 {
+				errs = append(errs, fmt.Errorf("budgets[%d].notify_at_percent[%d] must be between 1 and 100", i, j))
+			}
+		}
 	}
 	for i, rule := range c.Rules {
 		if strings.TrimSpace(rule.Category) == "" {

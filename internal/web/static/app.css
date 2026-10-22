@@ -547,6 +547,90 @@ td.description {
   letter-spacing: 0;
 }
 
+.budget-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.budget-row {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.budget-row:last-child {
+  border-bottom: 0;
+}
+
+.budget-top,
+.budget-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.budget-top strong {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.88rem;
+}
+
+.budget-top strong.ok {
+  color: var(--green);
+}
+
+.budget-top strong.warning {
+  color: var(--amber);
+}
+
+.budget-top strong.critical {
+  color: var(--red);
+}
+
+.budget-meta {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-progress {
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  width: 100%;
+  height: 8px;
+  margin: 9px 0 8px;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--panel-2);
+}
+
+.budget-progress::-webkit-progress-bar {
+  background: var(--panel-2);
+  border-radius: 999px;
+}
+
+.budget-progress::-webkit-progress-value {
+  border-radius: 999px;
+  background: var(--green);
+}
+
+.budget-progress::-moz-progress-bar {
+  border-radius: 999px;
+  background: var(--green);
+}
+
+.budget-progress.warning::-webkit-progress-value,
+.budget-progress.warning::-moz-progress-bar {
+  background: var(--amber);
+}
+
+.budget-progress.critical::-webkit-progress-value,
+.budget-progress.critical::-moz-progress-bar {
+  background: var(--red);
+}
+
 .category-spending {
   list-style: none;
   margin: 0;

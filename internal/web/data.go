@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/analysis"
+	"github.com/RedRiotTank/Fiscus/internal/budgets"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"github.com/RedRiotTank/Fiscus/internal/treasury"
@@ -22,6 +23,7 @@ type PageData struct {
 	Summary           []CurrencySummary
 	CategorySpending  []CategorySpendingView
 	SpendingMonth     string
+	Budgets           []budgets.Status
 	Subscriptions     []SubscriptionView
 	Fees              []FeeView
 	MonthlyCosts      []CurrencyAmountView
@@ -252,6 +254,7 @@ func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 			Category: item.Category, Currency: item.Currency, Minor: item.Minor,
 		})
 	}
+	data.Budgets = budgets.Compute(spending, s.budgets, now)
 	windowStart := now.Add(-time.Duration(treasury.DefaultBurnWindowDays) * 24 * time.Hour)
 	windowTransactions, err := s.store.ListTransactionsBetween(ctx, windowStart, now.Add(24*time.Hour))
 	if err != nil {

@@ -12,6 +12,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/analysis"
 	"github.com/RedRiotTank/Fiscus/internal/banking/enablebanking"
 	"github.com/RedRiotTank/Fiscus/internal/banking/gocardless"
+	"github.com/RedRiotTank/Fiscus/internal/budgets"
 	"github.com/RedRiotTank/Fiscus/internal/categories"
 	"github.com/RedRiotTank/Fiscus/internal/config"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
@@ -167,6 +168,10 @@ func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, 
 	if err != nil {
 		return nil, err
 	}
+	budgetRule, err := budgets.NewRule(store, configuredBudgets(cfg), nil)
+	if err != nil {
+		return nil, err
+	}
 	notifiers, err := buildNotifiers(cfg)
 	if err != nil {
 		return nil, err
@@ -190,7 +195,7 @@ func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, 
 		TxRules:       []alerts.TransactionRule{duplicateRule, anomalyRule},
 		BalanceRules:  []alerts.BalanceRule{liquidityRule},
 		ConsentRules:  []alerts.ConsentRule{consentRule},
-		AnalysisRules: []alerts.AnalysisRule{subscriptionRule},
+		AnalysisRules: []alerts.AnalysisRule{subscriptionRule, budgetRule},
 		Observer:      engineObserver,
 	})
 	if err != nil {
@@ -229,6 +234,19 @@ func buildCategoryClassifier(cfg *config.Config) (*categories.Classifier, error)
 		rules = append(rules, categories.Rule{Category: rule.Category, Pattern: rule.Pattern})
 	}
 	return categories.New(rules)
+}
+
+func configuredBudgets(cfg *config.Config) []budgets.Budget {
+	out := make([]budgets.Budget, 0, len(cfg.Budgets))
+	for _, item := range cfg.Budgets {
+		out = append(out, budgets.Budget{
+			Category:        item.Category,
+			LimitMinor:      item.Limit,
+			Currency:        item.Currency,
+			NotifyAtPercent: item.NotifyAtPercent,
+		})
+	}
+	return out
 }
 
 func buildWorker(cfg *config.Config, store *storage.Store, engine *alerts.Engine, logger *slog.Logger, metrics *observability.Metrics, bank ingest.Bank) (*ingest.Worker, error) {
@@ -278,6 +296,7 @@ func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger,
 		MetricsHandler: metrics.Handler(),
 		AuthHandler:    authHandler,
 		Classifier:     classifier,
+		Budgets:        configuredBudgets(cfg),
 	}, store, trigger)
 }
 

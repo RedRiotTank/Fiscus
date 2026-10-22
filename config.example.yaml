@@ -98,6 +98,16 @@ logging:
   level: "info"
   format: "text"
 
+# Optional monthly category budget caps. Limits are integer minor units
+# (for example 30000 = 300.00 EUR). Currency defaults to EUR. When consumption
+# crosses a threshold, an alert is emitted at most once per threshold, category,
+# and calendar month; 100% always produces a critical alert.
+budgets:
+  - category: "Restaurants"
+    limit: 30000
+    currency: "EUR"
+    notify_at_percent: [80, 100]
+
 # Optional transaction categorization rules. Rules are evaluated in order and
 # the first match wins; transactions that match no rule become "Uncategorized".
 # Patterns are Go regular expressions, matched against the counterparty and

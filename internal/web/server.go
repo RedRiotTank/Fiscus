@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/analysis"
+	"github.com/RedRiotTank/Fiscus/internal/budgets"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/money"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
@@ -70,6 +71,7 @@ type Config struct {
 	MetricsHandler http.Handler
 	AuthHandler    AuthorizationCallback
 	Classifier     Classifier
+	Budgets        []budgets.Budget
 }
 
 // Server renders dashboard pages and exposes health endpoints.
@@ -87,6 +89,7 @@ type Server struct {
 	metricsHandler http.Handler
 	authHandler    AuthorizationCallback
 	classifier     Classifier
+	budgets        []budgets.Budget
 
 	pages    map[string]*template.Template
 	partials *template.Template
@@ -128,6 +131,7 @@ func New(cfg Config, store Store, trigger SyncTrigger) (*Server, error) {
 		metricsHandler: cfg.MetricsHandler,
 		authHandler:    cfg.AuthHandler,
 		classifier:     cfg.Classifier,
+		budgets:        cfg.Budgets,
 	}
 	if err := s.parseTemplates(); err != nil {
 		return nil, err
