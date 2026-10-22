@@ -101,6 +101,7 @@ type AlertsConfig struct {
 type TelegramConfig struct {
 	BotToken string `yaml:"bot_token"`
 	ChatID   string `yaml:"chat_id"`
+	UserID   string `yaml:"user_id"`
 }
 
 // DiscordConfig configures the Discord notifier.

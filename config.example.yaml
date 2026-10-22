@@ -86,6 +86,9 @@ alerts:
   telegram:
     bot_token: ""
     chat_id: ""
+    # Optional Telegram user ID. When set, bot commands require both the
+    # configured chat and this user (useful for groups).
+    user_id: ""
   discord:
     webhook_url: ""
   retry_attempts: 3

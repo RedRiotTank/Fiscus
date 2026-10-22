@@ -133,8 +133,10 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	appCtx, cancelApp := context.WithCancel(ctx)
+	defer cancelApp()
 
-	store, err := openStore(ctx, cfg)
+	store, err := openStore(appCtx, cfg)
 	if err != nil {
 		return err
 	}
@@ -159,9 +161,22 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 		return err
 	}
 	if worker != nil {
-		go worker.Run(ctx)
+		go worker.Run(appCtx)
 	} else {
 		logger.Warn("banking credentials are not configured; ingestion is disabled")
+	}
+
+	bot, err := buildTelegramBot(cfg, store, worker, logger)
+	if err != nil {
+		return err
+	}
+	var botDone chan struct{}
+	if bot != nil {
+		botDone = make(chan struct{})
+		go func() {
+			defer close(botDone)
+			bot.Run(appCtx)
+		}()
 	}
 
 	var trigger syncTrigger
@@ -207,6 +222,14 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 	defer cancel()
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("http shutdown: %w", err)
+	}
+	cancelApp()
+	if botDone != nil {
+		select {
+		case <-botDone:
+		case <-shutdownCtx.Done():
+			logger.Warn("telegram bot did not stop before shutdown timeout")
+		}
 	}
 	return nil
 }

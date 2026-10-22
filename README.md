@@ -20,6 +20,7 @@ for money.
 - Regex-based transaction categorization and a monthly category breakdown
 - Recurring subscription and bank-fee detection
 - Multi-channel notifications with retries and alert de-duplication
+- Interactive Telegram bot for balances, recent movements, and manual syncs
 - Embedded HTMX dashboard with Basic Auth protection
 - `/healthz`, `/readyz`, and Prometheus `/metrics` endpoints
 - Single static binary; non-root container image and Compose deployment
@@ -320,6 +321,22 @@ cost of active subscriptions and lists detected bank commissions.
 Alerts are persisted before dispatch. A deterministic de-duplication key prevents
 the same condition from notifying twice. Telegram and Discord deliveries are
 retried with exponential backoff.
+
+## Telegram bot
+
+When `alerts.telegram.bot_token` and `chat_id` are configured, `fiscus serve`
+also starts a long-polling Telegram bot. Commands are ignored unless they come
+from the configured chat, and optionally from `alerts.telegram.user_id` (useful
+for group chats). Supported commands:
+
+| Command | Action |
+| --- | --- |
+| `/saldo` | Consolidated balance and per-account breakdown |
+| `/sync` | Run a bank synchronization and report the outcome |
+| `/ultimos [n]` | Last `n` confirmed transactions with categories (max 50) |
+| `/help` | Show available commands |
+
+The polling loop stops cleanly as part of the daemon's SIGTERM/SIGINT shutdown.
 
 ## Deployment
 

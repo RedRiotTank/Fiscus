@@ -201,6 +201,34 @@ func (s *Store) RecentTransactions(ctx context.Context, limit int) ([]domain.Tra
 	return s.ListTransactions(ctx, TransactionFilter{Limit: limit})
 }
 
+// RecentBookedTransactions returns the newest confirmed transactions across all
+// accounts. Pending transactions are excluded.
+func (s *Store) RecentBookedTransactions(ctx context.Context, limit int) ([]domain.Transaction, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+transactionColumns+` FROM transactions
+		WHERE status = ?
+		ORDER BY booking_date DESC, id DESC LIMIT ?`,
+		domain.TransactionStatusBooked, normalizeLimit(limit),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("storage: recent booked transactions: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.Transaction
+	for rows.Next() {
+		t, err := scanTransaction(rows)
+		if err != nil {
+			return nil, fmt.Errorf("storage: scan booked transaction: %w", err)
+		}
+		out = append(out, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("storage: iterate booked transactions: %w", err)
+	}
+	return out, nil
+}
+
 // CategorySpending is the absolute booked spending for one category and
 // currency within a period.
 type CategorySpending struct {
