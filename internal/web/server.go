@@ -179,6 +179,7 @@ func (s *Server) routes() http.Handler {
 	app.HandleFunc("GET /api/analytics/pace", s.handleAnalyticsPace)
 	app.HandleFunc("GET /api/analytics/activity", s.handleAnalyticsActivity)
 	app.HandleFunc("GET /api/analytics/projections", s.handleAnalyticsProjections)
+	app.HandleFunc("GET /api/analytics/liquidity", s.handleAnalyticsLiquidity)
 	app.HandleFunc("POST /sync", s.handleSyncAll)
 	app.HandleFunc("POST /connections/{id}/sync", s.handleSyncConnection)
 	app.HandleFunc("GET /partials/overview", s.handleOverviewPartial)

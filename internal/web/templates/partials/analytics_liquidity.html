@@ -1,0 +1,27 @@
+{{define "analytics_liquidity"}}
+<section class="analytics-block">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Liquidity map</p>
+      <h2>Institution distribution</h2>
+      <p class="subtitle">Reconstructed end-of-day balances across linked institutions.</p>
+    </div>
+    <div class="segmented" role="group" aria-label="Liquidity window">
+      <button type="button" class="segmented-button active" data-liquidity-days="90" aria-pressed="true">90 days</button>
+      <button type="button" class="segmented-button" data-liquidity-days="180" aria-pressed="false">180 days</button>
+    </div>
+  </div>
+  <article class="panel chart-card">
+    <header class="chart-head">
+      <div>
+        <h3>Stacked liquidity</h3>
+        <p class="panel-sub" id="liquidity-summary">Loading balances…</p>
+      </div>
+    </header>
+    <div class="chart-body chart-body-tall">
+      <canvas id="liquidity-chart" role="img" aria-label="Liquidity distribution by institution"></canvas>
+      <p class="chart-empty" id="liquidity-chart-empty" hidden>No account balance history available.</p>
+    </div>
+  </article>
+</section>
+{{end}}
