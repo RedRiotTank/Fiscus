@@ -94,3 +94,13 @@ alerts:
 logging:
   level: "info"
   format: "text"
+
+# Optional transaction categorization rules. Rules are evaluated in order and
+# the first match wins; transactions that match no rule become "Uncategorized".
+# Patterns are Go regular expressions, matched against the counterparty and
+# description independently.
+rules:
+  - category: "Utilities"
+    pattern: "(?i)IBERDROLA|ENDESA|AGUAS"
+  - category: "Payroll"
+    pattern: "(?i)NOMINA|SALARY"

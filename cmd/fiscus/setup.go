@@ -11,6 +11,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/alerts"
 	"github.com/RedRiotTank/Fiscus/internal/banking/enablebanking"
 	"github.com/RedRiotTank/Fiscus/internal/banking/gocardless"
+	"github.com/RedRiotTank/Fiscus/internal/categories"
 	"github.com/RedRiotTank/Fiscus/internal/config"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/ingest"
@@ -193,6 +194,14 @@ func consentRenewalURL(cfg *config.Config) func(domain.Connection) string {
 	}
 }
 
+func buildCategoryClassifier(cfg *config.Config) (*categories.Classifier, error) {
+	rules := make([]categories.Rule, 0, len(cfg.Rules))
+	for _, rule := range cfg.Rules {
+		rules = append(rules, categories.Rule{Category: rule.Category, Pattern: rule.Pattern})
+	}
+	return categories.New(rules)
+}
+
 func buildWorker(cfg *config.Config, store *storage.Store, engine *alerts.Engine, logger *slog.Logger, metrics *observability.Metrics, bank ingest.Bank) (*ingest.Worker, error) {
 	if bank == nil {
 		return nil, nil
@@ -205,12 +214,17 @@ func buildWorker(cfg *config.Config, store *storage.Store, engine *alerts.Engine
 		lookbackDays = cfg.EnableBanking.InitialLookbackDays
 		overlapDays = cfg.EnableBanking.OverlapDays
 	}
+	classifier, err := buildCategoryClassifier(cfg)
+	if err != nil {
+		return nil, err
+	}
 	worker, err := ingest.New(bank, store, engine, logger, ingest.Config{
 		SyncInterval:        syncInterval,
 		SyncTimeout:         syncTimeout,
 		InitialLookbackDays: lookbackDays,
 		OverlapDays:         overlapDays,
 		SyncOnStart:         true,
+		Categorizer:         classifier,
 	})
 	if err != nil {
 		return nil, err

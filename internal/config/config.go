@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -21,6 +22,14 @@ type Config struct {
 	EnableBanking EnableBankingConfig `yaml:"enablebanking"`
 	Alerts        AlertsConfig        `yaml:"alerts"`
 	Logging       LoggingConfig       `yaml:"logging"`
+	Rules         []CategoryRule      `yaml:"rules"`
+}
+
+// CategoryRule tags a transaction whose counterparty or description matches
+// Pattern. Rules are applied in order; the first match wins.
+type CategoryRule struct {
+	Category string `yaml:"category"`
+	Pattern  string `yaml:"pattern"`
 }
 
 // ServerConfig controls the HTTP(S) dashboard.
@@ -301,6 +310,19 @@ func (c *Config) Validate() error {
 	}
 	if c.Logging.Format != "text" && c.Logging.Format != "json" {
 		errs = append(errs, fmt.Errorf("logging.format %q must be text or json", c.Logging.Format))
+	}
+	for i, rule := range c.Rules {
+		if strings.TrimSpace(rule.Category) == "" {
+			errs = append(errs, fmt.Errorf("rules[%d].category is required", i))
+		}
+		pattern := strings.TrimSpace(rule.Pattern)
+		if pattern == "" {
+			errs = append(errs, fmt.Errorf("rules[%d].pattern is required", i))
+			continue
+		}
+		if _, err := regexp.Compile(pattern); err != nil {
+			errs = append(errs, fmt.Errorf("rules[%d].pattern: %w", i, err))
+		}
 	}
 	return errors.Join(errs...)
 }

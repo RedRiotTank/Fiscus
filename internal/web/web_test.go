@@ -105,12 +105,12 @@ func newWebFixture(t *testing.T) *webFixture {
 		{
 			AccountID: "acc-1", ExternalID: "tx-1", AmountMinor: -1250, Currency: "EUR",
 			BookingDate: balanceAt.Add(-time.Hour), Counterparty: "Coffee Shop",
-			Description: "Flat white", Status: domain.TransactionStatusBooked,
+			Description: "Flat white", Category: "Dining", Status: domain.TransactionStatusBooked,
 		},
 		{
 			AccountID: "acc-1", ExternalID: "tx-2", AmountMinor: 300000, Currency: "EUR",
 			BookingDate: balanceAt.Add(-2 * time.Hour), Counterparty: "Employer",
-			Description: "Salary", Status: domain.TransactionStatusBooked,
+			Description: "Salary", Category: "Payroll", Status: domain.TransactionStatusBooked,
 		},
 		{
 			AccountID: "acc-2", ExternalID: "tx-3", AmountMinor: -999, Currency: "EUR",
@@ -202,6 +202,7 @@ func TestDashboardAuthAndContent(t *testing.T) {
 	for _, want := range []string{
 		"Cash position", "Everyday", "Savings", "€1,250.50", "€500.00",
 		"Coffee Shop", "Possible duplicate charge", "Low balance", "Dev Bank", "Linked",
+		"Spending by category", "Dining", "€12.50",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("dashboard missing %q", want)

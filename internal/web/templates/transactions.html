@@ -33,6 +33,7 @@
             <th scope="col">Booked</th>
             <th scope="col">Account</th>
             <th scope="col">Counterparty</th>
+            <th scope="col">Category</th>
             <th scope="col">Description</th>
             <th scope="col">Status</th>
             <th scope="col" class="right">Amount</th>
@@ -44,6 +45,7 @@
               <td class="nowrap">{{date .BookingDate}}</td>
               <td>{{.AccountName}}</td>
               <td>{{if .Counterparty}}{{.Counterparty}}{{else}}<span class="muted">—</span>{{end}}</td>
+              <td><span class="badge category">{{if .Category}}{{.Category}}{{else}}Uncategorized{{end}}</span></td>
               <td class="description">{{if .Description}}{{.Description}}{{else}}<span class="muted">—</span>{{end}}</td>
               <td><span class="badge {{if eq .Status "booked"}}ok{{else}}pending{{end}}">{{.Status}}</span></td>
               <td class="right amount {{if lt .AmountMinor 0}}debit{{else}}credit{{end}}">{{money .AmountMinor .Currency}}</td>

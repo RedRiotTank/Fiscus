@@ -92,6 +92,12 @@ var migrations = []migration{
 			`ALTER TABLE connections ADD COLUMN consent_expires_at TEXT`,
 		},
 	},
+	{
+		version: 4,
+		statements: []string{
+			`ALTER TABLE transactions ADD COLUMN category TEXT NOT NULL DEFAULT 'Uncategorized'`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and

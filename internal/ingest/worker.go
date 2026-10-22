@@ -52,6 +52,12 @@ type ConsentEvaluator interface {
 	OnConsentCheck(ctx context.Context) ([]domain.Alert, error)
 }
 
+// Categorizer assigns a category to a normalized transaction. A nil
+// categorizer leaves transactions in the storage default category.
+type Categorizer interface {
+	Classify(tx domain.Transaction) string
+}
+
 // Observer receives sync telemetry. Implementations must be safe for concurrent
 // use. A nil observer disables observation.
 type Observer interface {
@@ -68,6 +74,7 @@ type Config struct {
 	OverlapDays         int
 	SyncOnStart         bool
 	Now                 func() time.Time
+	Categorizer         Categorizer
 }
 
 // DefaultConfig returns production-oriented defaults.
@@ -468,6 +475,7 @@ func (w *Worker) syncTransactions(ctx context.Context, account domain.Account, c
 				"account_id", account.ID, "transaction_id", tx.TransactionID, "error", err)
 			continue
 		}
+		w.categorize(&normalized)
 		booked = append(booked, normalized)
 	}
 	pending := make([]domain.Transaction, 0, len(transactions.Pending))
@@ -478,6 +486,7 @@ func (w *Worker) syncTransactions(ctx context.Context, account domain.Account, c
 				"account_id", account.ID, "transaction_id", tx.TransactionID, "error", err)
 			continue
 		}
+		w.categorize(&normalized)
 		pending = append(pending, normalized)
 	}
 
@@ -507,6 +516,15 @@ func (w *Worker) syncTransactions(ctx context.Context, account domain.Account, c
 		}
 	}
 	return inserted, nil
+}
+
+func (w *Worker) categorize(tx *domain.Transaction) {
+	if w.cfg.Categorizer == nil {
+		return
+	}
+	if category := strings.TrimSpace(w.cfg.Categorizer.Classify(*tx)); category != "" {
+		tx.Category = category
+	}
 }
 
 func sortTransactions(txs []domain.Transaction) {

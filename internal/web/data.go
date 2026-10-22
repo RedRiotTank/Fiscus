@@ -17,6 +17,8 @@ type PageData struct {
 	Version           string
 	Now               time.Time
 	Summary           []CurrencySummary
+	CategorySpending  []CategorySpendingView
+	SpendingMonth     string
 	Accounts          []domain.Account
 	Transactions      []TransactionView
 	Alerts            []AlertView
@@ -37,6 +39,13 @@ type CurrencySummary struct {
 	Currency string
 	Minor    int64
 	Accounts int
+}
+
+// CategorySpendingView is a category total rendered on the overview.
+type CategorySpendingView struct {
+	Category string
+	Currency string
+	Minor    int64
 }
 
 // TransactionView augments a transaction with display metadata.
@@ -149,6 +158,18 @@ func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 	data.Accounts = accounts
 	data.Summary = summarizeAccounts(accounts)
 	data.TotalAccounts = len(accounts)
+	now := s.now().UTC()
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	data.SpendingMonth = monthStart.Format("January 2006")
+	spending, err := s.store.SpendingByCategory(ctx, monthStart, monthStart.AddDate(0, 1, 0))
+	if err != nil {
+		return err
+	}
+	for _, item := range spending {
+		data.CategorySpending = append(data.CategorySpending, CategorySpendingView{
+			Category: item.Category, Currency: item.Currency, Minor: item.Minor,
+		})
+	}
 	total, err := s.store.CountTransactions(ctx)
 	if err != nil {
 		return err
