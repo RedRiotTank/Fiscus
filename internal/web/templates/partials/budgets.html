@@ -1,0 +1,28 @@
+{{define "budget_panel"}}
+{{if .Budgets}}
+<section class="panel">
+  <header class="panel-head">
+    <div>
+      <h2>Budgets</h2>
+      <p class="panel-sub">Month-to-date category consumption and pacing</p>
+    </div>
+    <span class="muted small">{{.SpendingMonth}}</span>
+  </header>
+  <ul class="budget-list">
+    {{range .Budgets}}
+      <li class="budget-row budget-{{.Tone}}">
+        <div class="budget-top">
+          <span class="badge category">{{.Category}}</span>
+          <strong class="{{.Tone}}">{{.Percent}}%</strong>
+        </div>
+        <progress class="budget-progress {{.Tone}}" max="100" value="{{.BarWidth}}">{{.Percent}}%</progress>
+        <div class="budget-meta">
+          <span>{{money .SpentMinor .Currency}} of {{money .LimitMinor .Currency}}</span>
+          <span class="muted">{{.MonthElapsedPercent}}% of month elapsed</span>
+        </div>
+      </li>
+    {{end}}
+  </ul>
+</section>
+{{end}}
+{{end}}

@@ -74,6 +74,41 @@ rules:
 	}
 }
 
+func TestLoadBudgets(t *testing.T) {
+	path := writeConfig(t, `
+budgets:
+  - category: Restaurants
+    limit: 30000
+    notify_at_percent: [80, 100]
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Budgets) != 1 || cfg.Budgets[0].Category != "Restaurants" ||
+		cfg.Budgets[0].Limit != 30000 || len(cfg.Budgets[0].NotifyAtPercent) != 2 {
+		t.Fatalf("budgets = %+v", cfg.Budgets)
+	}
+}
+
+func TestInvalidBudgetsRejected(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+	}{
+		{name: "missing category", yaml: "budgets:\n  - limit: 100\n"},
+		{name: "non-positive limit", yaml: "budgets:\n  - category: Dining\n    limit: 0\n"},
+		{name: "invalid threshold", yaml: "budgets:\n  - category: Dining\n    limit: 100\n    notify_at_percent: [0]\n"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := Load(writeConfig(t, test.yaml)); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}
+
 func TestLoadEnableBankingConfig(t *testing.T) {
 	path := writeConfig(t, `
 provider: enablebanking
