@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/analysis"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
+	"github.com/RedRiotTank/Fiscus/internal/treasury"
 )
 
 // PageData is the common view model for all templates.
@@ -25,6 +27,7 @@ type PageData struct {
 	MonthlyCosts      []CurrencyAmountView
 	AnnualCosts       []CurrencyAmountView
 	FeeTotals         []CurrencyAmountView
+	Treasury          []RunwayView
 	Accounts          []domain.Account
 	Transactions      []TransactionView
 	Alerts            []AlertView
@@ -70,6 +73,12 @@ type FeeView struct {
 type CurrencyAmountView struct {
 	Currency string
 	Minor    int64
+}
+
+// RunwayView augments a treasury runway with a display label.
+type RunwayView struct {
+	treasury.Runway
+	RunwayLabel string
 }
 
 // TransactionView augments a transaction with display metadata.
@@ -216,6 +225,13 @@ func currencyAmountViews(items []analysis.CurrencyAmount) []CurrencyAmountView {
 	return out
 }
 
+func runwayLabel(runway treasury.Runway) string {
+	if !runway.RunwayKnown {
+		return "no burn"
+	}
+	return fmt.Sprintf("%d.%d months", runway.RunwayTenths/10, runway.RunwayTenths%10)
+}
+
 func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 	accounts, err := s.store.ListAccounts(ctx)
 	if err != nil {
@@ -234,6 +250,17 @@ func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 	for _, item := range spending {
 		data.CategorySpending = append(data.CategorySpending, CategorySpendingView{
 			Category: item.Category, Currency: item.Currency, Minor: item.Minor,
+		})
+	}
+	windowStart := now.Add(-time.Duration(treasury.DefaultBurnWindowDays) * 24 * time.Hour)
+	windowTransactions, err := s.store.ListTransactionsBetween(ctx, windowStart, now.Add(24*time.Hour))
+	if err != nil {
+		return err
+	}
+	for _, runway := range treasury.ComputeRunways(accounts, windowTransactions, now, treasury.DefaultBurnWindowDays) {
+		data.Treasury = append(data.Treasury, RunwayView{
+			Runway:      runway,
+			RunwayLabel: runwayLabel(runway),
 		})
 	}
 	total, err := s.store.CountTransactions(ctx)

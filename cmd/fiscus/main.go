@@ -43,6 +43,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runInstitutions(args[1:], stdout, stderr)
 	case "sync":
 		return runSync(args[1:], stdout, stderr)
+	case "export":
+		return runExport(args[1:], stdout, stderr)
 	case "version", "-version", "--version":
 		_, _ = fmt.Fprintf(stdout, "fiscus %s (commit %s, built %s, %s)\n", version, commit, date, runtime.Version())
 		return nil
@@ -63,6 +65,7 @@ Usage:
   fiscus connect        Create a GoCardless bank consent
   fiscus institutions   List available institutions for a country
   fiscus sync           Run one synchronization cycle and exit
+  fiscus export         Export transactions as CSV, hledger, or Beancount
   fiscus version        Print build information
 
 Run "fiscus <command> -h" for command flags.

@@ -6,6 +6,10 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/RedRiotTank/Fiscus/internal/domain"
+	"github.com/RedRiotTank/Fiscus/internal/treasury"
 )
 
 const syncRequestHeader = "X-Fiscus-Request"
@@ -73,6 +77,81 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 	}
 	data.TotalTransactions = total
 	s.render(w, "transactions", data)
+}
+
+func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	format, err := treasury.ParseFormat(query.Get("format"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	from, err := parseExportDate(query.Get("from"), false)
+	if err != nil {
+		http.Error(w, "Invalid from date: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	to, err := parseExportDate(query.Get("to"), true)
+	if err != nil {
+		http.Error(w, "Invalid to date: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if to.IsZero() {
+		to = s.now().UTC().Add(24 * time.Hour)
+	}
+	if !from.IsZero() && !from.Before(to) {
+		http.Error(w, "The from date must be before the to date", http.StatusBadRequest)
+		return
+	}
+	accountID := strings.TrimSpace(query.Get("account"))
+	transactions, err := s.store.ListTransactionsBetween(r.Context(), from, to)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if query.Get("include_transfers") != "1" {
+		pairs := treasury.PairTransfers(transactions, 3)
+		transactions = treasury.ExcludeTransfers(transactions, pairs)
+	}
+	if accountID != "" {
+		filtered := make([]domain.Transaction, 0, len(transactions))
+		for _, transaction := range transactions {
+			if transaction.AccountID == accountID {
+				filtered = append(filtered, transaction)
+			}
+		}
+		transactions = filtered
+	}
+	accounts, err := s.store.ListAccounts(r.Context())
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	data, err := treasury.Export(format, transactions, accounts)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", treasury.ContentType(format))
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="fiscus-export-%s%s"`, s.now().UTC().Format("2006-01-02"), treasury.Extension(format)))
+	// #nosec G705 -- the response is a non-HTML download with an attachment disposition.
+	_, _ = w.Write(data)
+}
+
+func parseExportDate(raw string, endOfDay bool) (time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, nil
+	}
+	parsed, err := time.Parse("2006-01-02", raw)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("use YYYY-MM-DD")
+	}
+	if endOfDay {
+		parsed = parsed.Add(24 * time.Hour)
+	}
+	return parsed, nil
 }
 
 func (s *Server) handleSubscriptions(w http.ResponseWriter, r *http.Request) {

@@ -19,6 +19,7 @@ for money.
   consent expiry, and subscription price increases
 - Regex-based transaction categorization and a monthly category breakdown
 - Recurring subscription and bank-fee detection
+- Operational burn rate, runway, and internal-transfer-aware accounting exports
 - Multi-channel notifications with retries and alert de-duplication
 - Interactive Telegram bot for balances, recent movements, and manual syncs
 - Embedded HTMX dashboard with Basic Auth protection
@@ -59,12 +60,29 @@ See [Banking providers](#banking-providers) for setup details.
 | `fiscus connect` | Create a bank consent and print the authorization link |
 | `fiscus institutions` | List banks or institutions for a country |
 | `fiscus sync` | Run one synchronization cycle and exit |
+| `fiscus export` | Export transactions as CSV, hledger, or Beancount |
 | `fiscus version` | Print build information |
 
 Every command accepts `-config <path>` (default `config.yaml`, or
 `FISCUS_CONFIG`). `connect` accepts `-institution`, `-name`, and `-reference`;
 Enable Banking additionally accepts `-country` and `-psu`. `institutions`
 accepts `-country` and, for Enable Banking, `-psu`.
+
+### Accounting exports
+
+`fiscus export` writes to standard output, so it composes with shell redirection:
+
+```sh
+fiscus export --format=csv --from=2026-01-01 --to=2026-12-31 > 2026.csv
+fiscus export --format=hledger > fiscus.journal
+fiscus export --format=beancount > fiscus.beancount
+```
+
+`--format` accepts `csv` (default), `hledger` (alias `journal`), or
+`beancount`. Dates are inclusive calendar dates in `YYYY-MM-DD` form. Offsetting
+equal transfers between your own accounts are paired and omitted by default to
+avoid double counting; pass `--include-transfers` to keep them. The Transactions
+page provides the same downloads for the current account filter.
 
 ## Banking providers
 

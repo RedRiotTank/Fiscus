@@ -23,7 +23,12 @@
       <h2>Transaction history</h2>
       <p class="panel-sub">Page {{.Page}} · 50 per page</p>
     </div>
-    {{if .FilterAccount}}<span class="badge muted">filtered</span>{{end}}
+    <div class="export-actions">
+      <span class="muted small">Export</span>
+      <a class="button ghost small" href="/transactions/export?format=csv{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}">CSV</a>
+      <a class="button ghost small" href="/transactions/export?format=hledger{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}">Journal</a>
+      <a class="button ghost small" href="/transactions/export?format=beancount{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}">Beancount</a>
+    </div>
   </header>
   {{if .Transactions}}
     <div class="table-wrap">

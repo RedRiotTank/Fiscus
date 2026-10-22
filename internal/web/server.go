@@ -170,6 +170,7 @@ func (s *Server) routes() http.Handler {
 	app := http.NewServeMux()
 	app.HandleFunc("GET /{$}", s.handleDashboard)
 	app.HandleFunc("GET /transactions", s.handleTransactions)
+	app.HandleFunc("GET /transactions/export", s.handleExport)
 	app.HandleFunc("GET /subscriptions", s.handleSubscriptions)
 	app.HandleFunc("GET /alerts", s.handleAlerts)
 	app.HandleFunc("GET /connections", s.handleConnections)
