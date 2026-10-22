@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/RedRiotTank/Fiscus/internal/analysis"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 )
@@ -19,6 +20,11 @@ type PageData struct {
 	Summary           []CurrencySummary
 	CategorySpending  []CategorySpendingView
 	SpendingMonth     string
+	Subscriptions     []SubscriptionView
+	Fees              []FeeView
+	MonthlyCosts      []CurrencyAmountView
+	AnnualCosts       []CurrencyAmountView
+	FeeTotals         []CurrencyAmountView
 	Accounts          []domain.Account
 	Transactions      []TransactionView
 	Alerts            []AlertView
@@ -44,6 +50,24 @@ type CurrencySummary struct {
 // CategorySpendingView is a category total rendered on the overview.
 type CategorySpendingView struct {
 	Category string
+	Currency string
+	Minor    int64
+}
+
+// SubscriptionView augments a detected subscription with its account name.
+type SubscriptionView struct {
+	analysis.Subscription
+	AccountName string
+}
+
+// FeeView augments a detected fee with its account name.
+type FeeView struct {
+	analysis.Fee
+	AccountName string
+}
+
+// CurrencyAmountView is a per-currency total for display.
+type CurrencyAmountView struct {
 	Currency string
 	Minor    int64
 }
@@ -146,6 +170,48 @@ func connectionViews(connections []domain.Connection, accounts []domain.Account)
 			Connection: connection,
 			Accounts:   byConnection[connection.ID],
 		})
+	}
+	return out
+}
+
+func accountDisplayName(accountID string, accounts map[string]domain.Account) string {
+	name := accountID
+	if account, ok := accounts[accountID]; ok {
+		if account.Name != "" {
+			name = account.Name
+		} else if account.IBAN != "" {
+			name = account.IBAN
+		}
+	}
+	return name
+}
+
+func subscriptionViews(subscriptions []analysis.Subscription, accounts map[string]domain.Account) []SubscriptionView {
+	out := make([]SubscriptionView, 0, len(subscriptions))
+	for _, subscription := range subscriptions {
+		out = append(out, SubscriptionView{
+			Subscription: subscription,
+			AccountName:  accountDisplayName(subscription.AccountID, accounts),
+		})
+	}
+	return out
+}
+
+func feeViews(fees []analysis.Fee, accounts map[string]domain.Account) []FeeView {
+	out := make([]FeeView, 0, len(fees))
+	for _, fee := range fees {
+		out = append(out, FeeView{
+			Fee:         fee,
+			AccountName: accountDisplayName(fee.AccountID, accounts),
+		})
+	}
+	return out
+}
+
+func currencyAmountViews(items []analysis.CurrencyAmount) []CurrencyAmountView {
+	out := make([]CurrencyAmountView, 0, len(items))
+	for _, item := range items {
+		out = append(out, CurrencyAmountView{Currency: item.Currency, Minor: item.Minor})
 	}
 	return out
 }

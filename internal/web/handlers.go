@@ -75,6 +75,28 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "transactions", data)
 }
 
+func (s *Server) handleSubscriptions(w http.ResponseWriter, r *http.Request) {
+	data := s.baseData("Subscriptions & Fees", "subscriptions")
+	ctx := r.Context()
+	snapshot, err := s.analyzer.Snapshot(ctx)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	accounts, err := s.store.ListAccounts(ctx)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	data.Accounts = accounts
+	data.Subscriptions = subscriptionViews(snapshot.Subscriptions, accountMap(accounts))
+	data.Fees = feeViews(snapshot.Fees, accountMap(accounts))
+	data.MonthlyCosts = currencyAmountViews(snapshot.MonthlyCosts)
+	data.AnnualCosts = currencyAmountViews(snapshot.AnnualCosts)
+	data.FeeTotals = currencyAmountViews(snapshot.FeeTotals)
+	s.render(w, "subscriptions", data)
+}
+
 func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
 	data := s.baseData("Alerts", "alerts")
 	if err := s.loadAlerts(r.Context(), &data, 200); err != nil {

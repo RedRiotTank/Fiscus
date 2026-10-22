@@ -34,6 +34,12 @@ type ConsentRule interface {
 	Evaluate(ctx context.Context) ([]domain.Alert, error)
 }
 
+// AnalysisRule inspects a historical transaction window.
+type AnalysisRule interface {
+	Name() string
+	Evaluate(ctx context.Context) ([]domain.Alert, error)
+}
+
 // DuplicateFinder finds prior transactions with the same counterparty and
 // amount inside a time window.
 type DuplicateFinder interface {

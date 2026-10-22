@@ -86,11 +86,12 @@ func (fakeCategorizer) Classify(tx domain.Transaction) string {
 }
 
 type fakeEvaluator struct {
-	mu           sync.Mutex
-	tx           []domain.Transaction
-	balances     []domain.Account
-	consentCalls int
-	err          error
+	mu            sync.Mutex
+	tx            []domain.Transaction
+	balances      []domain.Account
+	consentCalls  int
+	analysisCalls int
+	err           error
 }
 
 func (f *fakeEvaluator) OnTransaction(_ context.Context, tx domain.Transaction, _ domain.Account) ([]domain.Alert, error) {
@@ -114,10 +115,23 @@ func (f *fakeEvaluator) OnConsentCheck(context.Context) ([]domain.Alert, error) 
 	return nil, f.err
 }
 
+func (f *fakeEvaluator) OnAnalysis(context.Context) ([]domain.Alert, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.analysisCalls++
+	return nil, f.err
+}
+
 func (f *fakeEvaluator) consentCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.consentCalls
+}
+
+func (f *fakeEvaluator) analysisCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.analysisCalls
 }
 
 func (f *fakeEvaluator) txCount() int {
@@ -255,6 +269,9 @@ func TestWorkerSyncPersistsAndEvaluates(t *testing.T) {
 	}
 	if got := eval.consentCount(); got != 1 {
 		t.Fatalf("consent checks = %d, want 1", got)
+	}
+	if got := eval.analysisCount(); got != 1 {
+		t.Fatalf("analysis checks = %d, want 1", got)
 	}
 
 	conn, err := store.GetConnectionByRequisitionID(ctx, "req-1")

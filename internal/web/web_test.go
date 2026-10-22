@@ -219,6 +219,38 @@ func TestDashboardAuthAndContent(t *testing.T) {
 	}
 }
 
+func TestSubscriptionsAndFeesPage(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	ctx := context.Background()
+	now := time.Date(2026, 3, 10, 11, 0, 0, 0, time.UTC)
+	transactions := []domain.Transaction{
+		{AccountID: "acc-1", ExternalID: "sub-1", AmountMinor: -999, Currency: "EUR", BookingDate: time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC), Counterparty: "Streaming", Status: domain.TransactionStatusBooked, Category: "Subscriptions"},
+		{AccountID: "acc-1", ExternalID: "sub-2", AmountMinor: -999, Currency: "EUR", BookingDate: time.Date(2026, 2, 4, 0, 0, 0, 0, time.UTC), Counterparty: "Streaming", Status: domain.TransactionStatusBooked, Category: "Subscriptions"},
+		{AccountID: "acc-1", ExternalID: "sub-3", AmountMinor: -999, Currency: "EUR", BookingDate: time.Date(2026, 3, 5, 0, 0, 0, 0, time.UTC), Counterparty: "Streaming", Status: domain.TransactionStatusBooked, Category: "Subscriptions"},
+		{AccountID: "acc-1", ExternalID: "fee-1", AmountMinor: -1500, Currency: "EUR", BookingDate: now.Add(-48 * time.Hour), Counterparty: "Comisi\u00f3n mantenimiento", Status: domain.TransactionStatusBooked, Category: "Fees"},
+	}
+	for i := range transactions {
+		if _, _, err := f.store.UpsertTransaction(ctx, &transactions[i]); err != nil {
+			t.Fatalf("UpsertTransaction: %v", err)
+		}
+	}
+
+	resp := f.request(t, http.MethodGet, "/subscriptions", true, nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", resp.Code, resp.Body.String())
+	}
+	body := resp.Body.String()
+	for _, want := range []string{
+		"Subscriptions &amp; Fees", "Recurring subscriptions", "Streaming", "€9.99",
+		"€119.88", "Detected bank fees", "Maintenance fee", "€15.00",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("subscriptions page missing %q", want)
+		}
+	}
+}
+
 func TestBcryptAuth(t *testing.T) {
 	t.Parallel()
 	hash, err := bcrypt.GenerateFromPassword([]byte("hashed-secret"), bcrypt.MinCost)

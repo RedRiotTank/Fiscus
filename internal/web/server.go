@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/RedRiotTank/Fiscus/internal/analysis"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/money"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
@@ -35,6 +36,7 @@ type Store interface {
 	GetConnectionByID(ctx context.Context, id int64) (domain.Connection, error)
 	CountTransactions(ctx context.Context) (int, error)
 	SpendingByCategory(ctx context.Context, from, to time.Time) ([]storage.CategorySpending, error)
+	ListTransactionsBetween(ctx context.Context, from, to time.Time) ([]domain.Transaction, error)
 	Ping(ctx context.Context) error
 	SchemaVersion(ctx context.Context) (int, error)
 }
@@ -65,6 +67,7 @@ type Config struct {
 // Server renders dashboard pages and exposes health endpoints.
 type Server struct {
 	store          Store
+	analyzer       *analysis.Analyzer
 	trigger        SyncTrigger
 	logger         *slog.Logger
 	now            func() time.Time
@@ -98,8 +101,13 @@ func New(cfg Config, store Store, trigger SyncTrigger) (*Server, error) {
 	if cfg.Version == "" {
 		cfg.Version = "dev"
 	}
+	analyzer, err := analysis.NewAnalyzer(store, cfg.Now)
+	if err != nil {
+		return nil, err
+	}
 	s := &Server{
 		store:          store,
+		analyzer:       analyzer,
 		trigger:        trigger,
 		logger:         cfg.Logger,
 		now:            cfg.Now,
@@ -139,7 +147,7 @@ func (s *Server) templateFuncs() template.FuncMap {
 
 func (s *Server) parseTemplates() error {
 	s.pages = make(map[string]*template.Template)
-	for _, page := range []string{"dashboard", "transactions", "alerts", "connections", "error"} {
+	for _, page := range []string{"dashboard", "transactions", "subscriptions", "alerts", "connections", "error"} {
 		tmpl, err := template.New("layout").Funcs(s.templateFuncs()).ParseFS(assets,
 			"templates/layout.html",
 			"templates/partials/*.html",
@@ -162,6 +170,7 @@ func (s *Server) routes() http.Handler {
 	app := http.NewServeMux()
 	app.HandleFunc("GET /{$}", s.handleDashboard)
 	app.HandleFunc("GET /transactions", s.handleTransactions)
+	app.HandleFunc("GET /subscriptions", s.handleSubscriptions)
 	app.HandleFunc("GET /alerts", s.handleAlerts)
 	app.HandleFunc("GET /connections", s.handleConnections)
 	app.HandleFunc("POST /sync", s.handleSyncAll)
