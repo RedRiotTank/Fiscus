@@ -159,6 +159,7 @@ logging:
 	t.Setenv("FISCUS_GOCARDLESS_SYNC_INTERVAL", "10m")
 	t.Setenv("FISCUS_ALERTS_RETRY_ATTEMPTS", "5")
 	t.Setenv("FISCUS_LIQUIDITY_THRESHOLDS", "EUR:800.00, USD: 25.50")
+	t.Setenv("FISCUS_TELEGRAM_USER_ID", "1234")
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -178,6 +179,9 @@ logging:
 	}
 	if cfg.Alerts.RetryAttempts != 5 {
 		t.Fatalf("retry attempts = %d", cfg.Alerts.RetryAttempts)
+	}
+	if cfg.Alerts.Telegram.UserID != "1234" {
+		t.Fatalf("telegram user ID = %q", cfg.Alerts.Telegram.UserID)
 	}
 	thresholds, err := cfg.LiquidityThresholdsMinor()
 	if err != nil {

@@ -18,6 +18,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/ingest"
 	"github.com/RedRiotTank/Fiscus/internal/observability"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
+	"github.com/RedRiotTank/Fiscus/internal/telegram"
 	"github.com/RedRiotTank/Fiscus/internal/web"
 )
 
@@ -116,6 +117,24 @@ func buildNotifiers(cfg *config.Config) ([]alerts.Notifier, error) {
 		notifiers = append(notifiers, discord)
 	}
 	return notifiers, nil
+}
+
+func buildTelegramBot(cfg *config.Config, store *storage.Store, worker *ingest.Worker, logger *slog.Logger) (*telegram.Bot, error) {
+	if !cfg.TelegramConfigured() {
+		return nil, nil
+	}
+	var syncer telegram.Syncer
+	if worker != nil {
+		syncer = worker
+	}
+	return telegram.New(telegram.Config{
+		BotToken: cfg.Alerts.Telegram.BotToken,
+		ChatID:   cfg.Alerts.Telegram.ChatID,
+		UserID:   cfg.Alerts.Telegram.UserID,
+		Logger:   logger,
+		Store:    store,
+		Syncer:   syncer,
+	})
 }
 
 func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, metrics *observability.Metrics) (*alerts.Engine, error) {

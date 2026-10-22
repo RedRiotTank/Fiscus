@@ -360,6 +360,13 @@ func TestTransactionIdempotencyAndPromotion(t *testing.T) {
 	if len(recent) != 1 {
 		t.Fatalf("recent = %d, want 1", len(recent))
 	}
+	bookedOnly, err := s.RecentBookedTransactions(ctx, 10)
+	if err != nil {
+		t.Fatalf("RecentBookedTransactions: %v", err)
+	}
+	if len(bookedOnly) != 1 || bookedOnly[0].Status != domain.TransactionStatusBooked {
+		t.Fatalf("recent booked = %+v", bookedOnly)
+	}
 }
 
 func TestSpendingByCategory(t *testing.T) {

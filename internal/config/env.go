@@ -69,6 +69,7 @@ func applyEnv(cfg *Config) error {
 	}
 	stringEnv("FISCUS_TELEGRAM_BOT_TOKEN", &cfg.Alerts.Telegram.BotToken)
 	stringEnv("FISCUS_TELEGRAM_CHAT_ID", &cfg.Alerts.Telegram.ChatID)
+	stringEnv("FISCUS_TELEGRAM_USER_ID", &cfg.Alerts.Telegram.UserID)
 	stringEnv("FISCUS_DISCORD_WEBHOOK_URL", &cfg.Alerts.Discord.WebhookURL)
 
 	stringEnv("FISCUS_LOG_LEVEL", &cfg.Logging.Level)
