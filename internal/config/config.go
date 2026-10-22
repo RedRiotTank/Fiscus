@@ -15,15 +15,16 @@ import (
 
 // Config is the complete runtime configuration.
 type Config struct {
-	Provider      string              `yaml:"provider"`
-	Server        ServerConfig        `yaml:"server"`
-	Database      DatabaseConfig      `yaml:"database"`
-	GoCardless    GoCardlessConfig    `yaml:"gocardless"`
-	EnableBanking EnableBankingConfig `yaml:"enablebanking"`
-	Alerts        AlertsConfig        `yaml:"alerts"`
-	Logging       LoggingConfig       `yaml:"logging"`
-	Rules         []CategoryRule      `yaml:"rules"`
-	Budgets       []BudgetConfig      `yaml:"budgets"`
+	Provider        string                 `yaml:"provider"`
+	Server          ServerConfig           `yaml:"server"`
+	Database        DatabaseConfig         `yaml:"database"`
+	GoCardless      GoCardlessConfig       `yaml:"gocardless"`
+	EnableBanking   EnableBankingConfig    `yaml:"enablebanking"`
+	Alerts          AlertsConfig           `yaml:"alerts"`
+	Logging         LoggingConfig          `yaml:"logging"`
+	Rules           []CategoryRule         `yaml:"rules"`
+	Budgets         []BudgetConfig         `yaml:"budgets"`
+	ExpectedInflows []ExpectedInflowConfig `yaml:"expected_inflows"`
 }
 
 // CategoryRule tags a transaction whose counterparty or description matches
@@ -40,6 +41,17 @@ type BudgetConfig struct {
 	Limit           int64  `yaml:"limit"`
 	Currency        string `yaml:"currency"`
 	NotifyAtPercent []int  `yaml:"notify_at_percent"`
+}
+
+// ExpectedInflowConfig describes a recurring credit that should arrive each
+// month. AmountMin is in integer minor units. Days are calendar days of the
+// month; GraceDays defaults to 2 when omitted.
+type ExpectedInflowConfig struct {
+	Name         string `yaml:"name"`
+	AmountMin    int64  `yaml:"amount_min"`
+	Currency     string `yaml:"currency"`
+	ExpectedDays []int  `yaml:"expected_days"`
+	GraceDays    int    `yaml:"grace_days"`
 }
 
 // ServerConfig controls the HTTP(S) dashboard.
@@ -325,6 +337,25 @@ func (c *Config) Validate() error {
 	}
 	if c.Logging.Format != "text" && c.Logging.Format != "json" {
 		errs = append(errs, fmt.Errorf("logging.format %q must be text or json", c.Logging.Format))
+	}
+	for i, inflow := range c.ExpectedInflows {
+		if strings.TrimSpace(inflow.Name) == "" {
+			errs = append(errs, fmt.Errorf("expected_inflows[%d].name is required", i))
+		}
+		if inflow.AmountMin <= 0 {
+			errs = append(errs, fmt.Errorf("expected_inflows[%d].amount_min must be a positive integer minor-unit amount", i))
+		}
+		if len(inflow.ExpectedDays) == 0 {
+			errs = append(errs, fmt.Errorf("expected_inflows[%d].expected_days must not be empty", i))
+		}
+		for j, day := range inflow.ExpectedDays {
+			if day < 1 || day > 31 {
+				errs = append(errs, fmt.Errorf("expected_inflows[%d].expected_days[%d] must be between 1 and 31", i, j))
+			}
+		}
+		if inflow.GraceDays < 0 {
+			errs = append(errs, fmt.Errorf("expected_inflows[%d].grace_days cannot be negative", i))
+		}
 	}
 	for i, budget := range c.Budgets {
 		if strings.TrimSpace(budget.Category) == "" {

@@ -167,3 +167,42 @@ func TestSubscriptionRuleSkipsInactiveAndDecreases(t *testing.T) {
 		t.Fatalf("alerts = %+v, want none", alerts)
 	}
 }
+
+func TestSubscriptionStaleThresholds(t *testing.T) {
+	t.Parallel()
+	transactions := []domain.Transaction{
+		booked("acc-1", "Monthly Service", "EUR", -1000, "2026-01-01"),
+		booked("acc-1", "Monthly Service", "EUR", -1000, "2026-02-01"),
+		booked("acc-1", "Monthly Service", "EUR", -1000, "2026-03-01"),
+		booked("acc-1", "Yearly Service", "EUR", -12000, "2025-03-01"),
+		booked("acc-1", "Yearly Service", "EUR", -12000, "2026-03-01"),
+	}
+	find := func(snapshot Snapshot, name string) Subscription {
+		t.Helper()
+		for _, subscription := range snapshot.Subscriptions {
+			if subscription.Counterparty == name {
+				return subscription
+			}
+		}
+		t.Fatalf("subscription %q not found", name)
+		return Subscription{}
+	}
+
+	monthlyAtFortyFive := Analyze(transactions, time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC))
+	if !find(monthlyAtFortyFive, "Monthly Service").Active {
+		t.Fatal("monthly subscription aged 45 days should remain active")
+	}
+	monthlyAtFortySix := Analyze(transactions, time.Date(2026, 4, 16, 12, 0, 0, 0, time.UTC))
+	if find(monthlyAtFortySix, "Monthly Service").Active {
+		t.Fatal("monthly subscription aged 46 days should be inactive")
+	}
+
+	yearlyAtThreeNinety := Analyze(transactions, time.Date(2027, 3, 26, 12, 0, 0, 0, time.UTC))
+	if !find(yearlyAtThreeNinety, "Yearly Service").Active {
+		t.Fatal("yearly subscription aged 390 days should remain active")
+	}
+	yearlyAtThreeNinetyOne := Analyze(transactions, time.Date(2027, 3, 27, 12, 0, 0, 0, time.UTC))
+	if find(yearlyAtThreeNinetyOne, "Yearly Service").Active {
+		t.Fatal("yearly subscription aged 391 days should be inactive")
+	}
+}

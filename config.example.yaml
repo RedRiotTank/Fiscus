@@ -111,6 +111,16 @@ budgets:
     currency: "EUR"
     notify_at_percent: [80, 100]
 
+# Optional expected monthly credits. When a matching booked credit of at least
+# amount_min (integer minor units) does not arrive inside expected_days plus the
+# grace period, one alert is emitted for that month. Currency defaults to EUR.
+expected_inflows:
+  - name: "Payroll"
+    amount_min: 200000
+    currency: "EUR"
+    expected_days: [27, 31]
+    grace_days: 2
+
 # Optional transaction categorization rules. Rules are evaluated in order and
 # the first match wins; transactions that match no rule become "Uncategorized".
 # Patterns are Go regular expressions, matched against the counterparty and

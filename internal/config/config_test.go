@@ -109,6 +109,44 @@ func TestInvalidBudgetsRejected(t *testing.T) {
 	}
 }
 
+func TestLoadExpectedInflows(t *testing.T) {
+	path := writeConfig(t, `
+expected_inflows:
+  - name: Payroll
+    amount_min: 200000
+    expected_days: [27, 31]
+    grace_days: 3
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.ExpectedInflows) != 1 || cfg.ExpectedInflows[0].Name != "Payroll" ||
+		cfg.ExpectedInflows[0].AmountMin != 200000 || cfg.ExpectedInflows[0].GraceDays != 3 {
+		t.Fatalf("inflows = %+v", cfg.ExpectedInflows)
+	}
+}
+
+func TestInvalidExpectedInflowsRejected(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+	}{
+		{name: "missing name", yaml: "expected_inflows:\n  - amount_min: 100\n    expected_days: [1]\n"},
+		{name: "non-positive amount", yaml: "expected_inflows:\n  - name: Payroll\n    amount_min: 0\n    expected_days: [1]\n"},
+		{name: "missing days", yaml: "expected_inflows:\n  - name: Payroll\n    amount_min: 100\n"},
+		{name: "invalid day", yaml: "expected_inflows:\n  - name: Payroll\n    amount_min: 100\n    expected_days: [32]\n"},
+		{name: "negative grace", yaml: "expected_inflows:\n  - name: Payroll\n    amount_min: 100\n    expected_days: [1]\n    grace_days: -1\n"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := Load(writeConfig(t, test.yaml)); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}
+
 func TestLoadEnableBankingConfig(t *testing.T) {
 	path := writeConfig(t, `
 provider: enablebanking
