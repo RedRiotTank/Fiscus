@@ -8,7 +8,7 @@ import (
 )
 
 func (s *Server) handleAnalyticsPace(w http.ResponseWriter, r *http.Request) {
-	accounts, err := s.store.ListAccounts(r.Context())
+	accounts, state, err := s.analyticsWorkspaceAccounts(r)
 	if err != nil {
 		s.analyticsStoreError(w, r, err)
 		return
@@ -21,5 +21,6 @@ func (s *Server) handleAnalyticsPace(w http.ResponseWriter, r *http.Request) {
 		s.analyticsStoreError(w, r, err)
 		return
 	}
+	transactions = filterAnalyticsTransactions(transactions, accounts, state)
 	s.writeJSON(w, http.StatusOK, analytics.ComputePace(transactions, now, currency))
 }

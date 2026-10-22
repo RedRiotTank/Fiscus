@@ -18,7 +18,7 @@ func (s *Server) handleAnalyticsLiquidity(w http.ResponseWriter, r *http.Request
 		}
 		days = parsed
 	}
-	accounts, err := s.store.ListAccounts(r.Context())
+	accounts, state, err := s.analyticsWorkspaceAccounts(r)
 	if err != nil {
 		s.analyticsStoreError(w, r, err)
 		return
@@ -35,5 +35,6 @@ func (s *Server) handleAnalyticsLiquidity(w http.ResponseWriter, r *http.Request
 		s.analyticsStoreError(w, r, err)
 		return
 	}
+	transactions = filterAnalyticsTransactions(transactions, accounts, state)
 	s.writeJSON(w, http.StatusOK, analytics.ComputeLiquidity(accounts, connections, transactions, now, currency, days))
 }

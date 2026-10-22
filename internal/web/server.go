@@ -36,7 +36,9 @@ type Store interface {
 	ListConnections(ctx context.Context) ([]domain.Connection, error)
 	GetConnectionByID(ctx context.Context, id int64) (domain.Connection, error)
 	CountTransactions(ctx context.Context) (int, error)
+	CountTransactionsFiltered(ctx context.Context, accountIDs []string) (int, error)
 	SpendingByCategory(ctx context.Context, from, to time.Time) ([]storage.CategorySpending, error)
+	SpendingByCategoryForAccounts(ctx context.Context, from, to time.Time, accountIDs []string) ([]storage.CategorySpending, error)
 	ListTransactionsBetween(ctx context.Context, from, to time.Time) ([]domain.Transaction, error)
 	Recategorize(ctx context.Context, classify func(domain.Transaction) string, apply bool) (storage.RecategorizeResult, error)
 	Ping(ctx context.Context) error
@@ -64,6 +66,7 @@ type Config struct {
 	Username       string
 	Password       string
 	PasswordHash   string
+	Profile        string
 	Version        string
 	Logger         *slog.Logger
 	Now            func() time.Time
@@ -85,6 +88,7 @@ type Server struct {
 	username       string
 	password       string
 	passwordHash   string
+	profile        string
 	readyTimeout   time.Duration
 	metricsHandler http.Handler
 	authHandler    AuthorizationCallback
@@ -113,6 +117,7 @@ func New(cfg Config, store Store, trigger SyncTrigger) (*Server, error) {
 	if cfg.Version == "" {
 		cfg.Version = "dev"
 	}
+	profile := domain.NormalizeWorkspaceProfile(cfg.Profile)
 	analyzer, err := analysis.NewAnalyzer(store, cfg.Now)
 	if err != nil {
 		return nil, err
@@ -127,6 +132,7 @@ func New(cfg Config, store Store, trigger SyncTrigger) (*Server, error) {
 		username:       cfg.Username,
 		password:       cfg.Password,
 		passwordHash:   cfg.PasswordHash,
+		profile:        profile,
 		readyTimeout:   cfg.ReadyTimeout,
 		metricsHandler: cfg.MetricsHandler,
 		authHandler:    cfg.AuthHandler,
@@ -219,7 +225,7 @@ func (s *Server) routes() http.Handler {
 	if s.metricsHandler != nil {
 		root.Handle("GET /metrics", s.metricsHandler)
 	}
-	root.Handle("/", s.requireAuth(app))
+	root.Handle("/", s.requireAuth(s.workspaceMiddleware(app)))
 
 	return s.recoverer(s.securityHeaders(s.requestLogger(root)))
 }

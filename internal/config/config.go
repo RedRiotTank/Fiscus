@@ -16,6 +16,8 @@ import (
 // Config is the complete runtime configuration.
 type Config struct {
 	Provider        string                 `yaml:"provider"`
+	Profile         string                 `yaml:"profile"`
+	Accounts        []AccountConfig        `yaml:"accounts"`
 	Server          ServerConfig           `yaml:"server"`
 	Database        DatabaseConfig         `yaml:"database"`
 	GoCardless      GoCardlessConfig       `yaml:"gocardless"`
@@ -34,6 +36,13 @@ type Config struct {
 type CategoryRule struct {
 	Category string `yaml:"category"`
 	Pattern  string `yaml:"pattern"`
+}
+
+// AccountConfig assigns a workspace type to a bank account. The ID matches the
+// provider account ID shown on the Connections page.
+type AccountConfig struct {
+	ID   string `yaml:"id"`
+	Type string `yaml:"type"`
 }
 
 // BudgetConfig caps month-to-date spending for one category. Limit is in
@@ -160,6 +169,8 @@ type LoggingConfig struct {
 func Default() *Config {
 	return &Config{
 		Provider: "gocardless",
+		Profile:  "hybrid",
+		Accounts: []AccountConfig{},
 		Server: ServerConfig{
 			Address:           ":8080",
 			ReadHeaderTimeout: Duration(10 * time.Second),
@@ -243,6 +254,28 @@ func (c *Config) Validate() error {
 	case "gocardless", "enablebanking":
 	default:
 		errs = append(errs, fmt.Errorf("provider %q must be gocardless or enablebanking", c.Provider))
+	}
+	switch strings.ToLower(strings.TrimSpace(c.Profile)) {
+	case "", "personal", "business", "hybrid":
+	default:
+		errs = append(errs, fmt.Errorf("profile %q must be personal, business, or hybrid", c.Profile))
+	}
+	seenAccounts := make(map[string]struct{}, len(c.Accounts))
+	for i, account := range c.Accounts {
+		id := strings.TrimSpace(account.ID)
+		if id == "" {
+			errs = append(errs, fmt.Errorf("accounts[%d].id is required", i))
+			continue
+		}
+		if _, exists := seenAccounts[id]; exists {
+			errs = append(errs, fmt.Errorf("accounts[%d].id %q is duplicated", i, id))
+		}
+		seenAccounts[id] = struct{}{}
+		switch strings.ToLower(strings.TrimSpace(account.Type)) {
+		case "personal", "business":
+		default:
+			errs = append(errs, fmt.Errorf("accounts[%d].type %q must be personal or business", i, account.Type))
+		}
 	}
 	if strings.TrimSpace(c.Server.Address) == "" {
 		errs = append(errs, errors.New("server.address is required"))
@@ -430,6 +463,36 @@ func (c *Config) Validate() error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// WorkspaceProfile returns the normalized workspace profile.
+func (c *Config) WorkspaceProfile() string {
+	switch strings.ToLower(strings.TrimSpace(c.Profile)) {
+	case "personal":
+		return "personal"
+	case "business":
+		return "business"
+	default:
+		return "hybrid"
+	}
+}
+
+// AccountTypes returns configured account ID to workspace type mappings.
+func (c *Config) AccountTypes() map[string]string {
+	out := make(map[string]string, len(c.Accounts))
+	for _, account := range c.Accounts {
+		id := strings.TrimSpace(account.ID)
+		if id == "" {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(account.Type)) {
+		case "business":
+			out[id] = "business"
+		case "personal":
+			out[id] = "personal"
+		}
+	}
+	return out
 }
 
 // ProviderName returns the normalized banking provider.

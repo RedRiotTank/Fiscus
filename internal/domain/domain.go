@@ -4,7 +4,10 @@
 // euro cents). Floating point is deliberately never used for money.
 package domain
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Severity describes how urgent an alert is.
 type Severity string
@@ -21,6 +24,55 @@ const (
 	TransactionStatusBooked  = "booked"
 	TransactionStatusPending = "pending"
 )
+
+// Workspace profiles separate personal and business treasury views.
+const (
+	// WorkspacePersonal shows only personal finance workflows.
+	WorkspacePersonal = "personal"
+	// WorkspaceBusiness shows only business and freelance workflows.
+	WorkspaceBusiness = "business"
+	// WorkspaceHybrid enables both workspaces with a switcher.
+	WorkspaceHybrid = "hybrid"
+	// WorkspaceAll is the unified hybrid view.
+	WorkspaceAll = "all"
+)
+
+// AccountType classifies an account as personal or business.
+const (
+	AccountTypePersonal = "personal"
+	AccountTypeBusiness = "business"
+)
+
+// NormalizeWorkspaceProfile returns a valid configured profile, defaulting to
+// hybrid for unknown values.
+func NormalizeWorkspaceProfile(profile string) string {
+	switch strings.ToLower(strings.TrimSpace(profile)) {
+	case WorkspacePersonal:
+		return WorkspacePersonal
+	case WorkspaceBusiness:
+		return WorkspaceBusiness
+	default:
+		return WorkspaceHybrid
+	}
+}
+
+// NormalizeAccountType returns a valid account type, defaulting to personal.
+func NormalizeAccountType(accountType string) string {
+	if strings.EqualFold(strings.TrimSpace(accountType), AccountTypeBusiness) {
+		return AccountTypeBusiness
+	}
+	return AccountTypePersonal
+}
+
+// ValidWorkspaceView reports whether value is a selectable hybrid view.
+func ValidWorkspaceView(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case WorkspacePersonal, WorkspaceBusiness, WorkspaceAll:
+		return true
+	default:
+		return false
+	}
+}
 
 // Connection is a GoCardless requisition (one bank consent) tracked locally.
 type Connection struct {
@@ -59,6 +111,7 @@ type Account struct {
 	Name                string
 	OwnerName           string
 	Currency            string
+	Type                string
 	BalanceMinor        int64
 	BalanceType         string
 	BalanceUpdatedAt    *time.Time

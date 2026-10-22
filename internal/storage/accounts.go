@@ -12,7 +12,7 @@ import (
 )
 
 const accountColumns = `id, connection_id, iban, name, owner_name, currency,
-	balance_minor, balance_type, balance_updated_at, rate_limited_until,
+	type, balance_minor, balance_type, balance_updated_at, rate_limited_until,
 	last_rate_limit_reason, created_at, updated_at`
 
 func scanAccount(row rowScanner) (domain.Account, error) {
@@ -26,7 +26,7 @@ func scanAccount(row rowScanner) (domain.Account, error) {
 	)
 	if err := row.Scan(
 		&a.ID, &a.ConnectionID, &a.IBAN, &a.Name, &a.OwnerName, &a.Currency,
-		&a.BalanceMinor, &a.BalanceType, &balanceAt, &rateLimited, &rateLimitNote,
+		&a.Type, &a.BalanceMinor, &a.BalanceType, &balanceAt, &rateLimited, &rateLimitNote,
 		&createdAt, &updatedAt,
 	); err != nil {
 		return domain.Account{}, err
@@ -39,6 +39,9 @@ func scanAccount(row rowScanner) (domain.Account, error) {
 		return domain.Account{}, err
 	}
 	a.LastRateLimitReason = rateLimitNote.String
+	if a.Type == "" {
+		a.Type = domain.AccountTypePersonal
+	}
 	if a.CreatedAt, err = decodeTime(createdAt); err != nil {
 		return domain.Account{}, err
 	}
@@ -67,24 +70,62 @@ func (s *Store) UpsertAccount(ctx context.Context, a *domain.Account) error {
 		a.Currency = "EUR"
 	}
 
+	typeHint := nullableString(a.Type)
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO accounts (
 			id, connection_id, iban, name, owner_name, currency,
-			balance_minor, balance_type, balance_updated_at, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			type, balance_minor, balance_type, balance_updated_at, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, 'personal'), ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			connection_id = excluded.connection_id,
 			iban = excluded.iban,
 			name = excluded.name,
 			owner_name = excluded.owner_name,
 			currency = excluded.currency,
+			type = CASE WHEN ? IS NOT NULL THEN ? ELSE accounts.type END,
 			updated_at = excluded.updated_at`,
 		a.ID, a.ConnectionID, a.IBAN, a.Name, a.OwnerName, a.Currency,
-		a.BalanceMinor, a.BalanceType, encodeNullTime(a.BalanceUpdatedAt),
+		typeHint, a.BalanceMinor, a.BalanceType, encodeNullTime(a.BalanceUpdatedAt),
 		encodeTime(a.CreatedAt), encodeTime(a.UpdatedAt),
+		typeHint, typeHint,
 	)
 	if err != nil {
 		return fmt.Errorf("storage: upsert account %q: %w", a.ID, err)
+	}
+	return nil
+}
+
+func nullableString(value string) any {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return value
+}
+
+// SetAccountType assigns the workspace type (personal or business) to an
+// account. Unknown accounts return ErrNotFound.
+func (s *Store) SetAccountType(ctx context.Context, accountID, accountType string) error {
+	if accountID == "" {
+		return errors.New("storage: account ID is required")
+	}
+	accountType = strings.ToLower(strings.TrimSpace(accountType))
+	switch accountType {
+	case domain.AccountTypePersonal, domain.AccountTypeBusiness:
+	default:
+		return fmt.Errorf("storage: account type %q must be personal or business", accountType)
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE accounts SET type = ?, updated_at = ? WHERE id = ?`,
+		accountType, encodeTime(nowUTC()), accountID)
+	if err != nil {
+		return fmt.Errorf("storage: set account type: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("storage: set account type: %w", err)
+	}
+	if n == 0 {
+		return ErrNotFound
 	}
 	return nil
 }

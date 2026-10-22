@@ -32,6 +32,17 @@
           <small>treasury monitor</small>
         </span>
       </a>
+      {{if .Workspace.Profile}}
+        {{if .Workspace.Locked}}
+          <span class="workspace-lock badge muted" title="Workspace profile is locked by configuration">{{.Workspace.Label}}</span>
+        {{else}}
+          <nav class="workspace-switcher" aria-label="Workspace">
+            {{range .Workspace.Options}}
+              <a href="{{$.Path}}?workspace={{.Value}}" class="{{if eq .Value $.Workspace.View}}active{{end}}">{{.Label}}</a>
+            {{end}}
+          </nav>
+        {{end}}
+      {{end}}
       <nav class="nav" aria-label="Main navigation">
         <a href="/" class="{{if eq .Active "dashboard"}}active{{end}}">Overview</a>
         <a href="/analytics" class="{{if eq .Active "analytics"}}active{{end}}">Analytics</a>

@@ -13,6 +13,7 @@ func applyEnv(cfg *Config) error {
 	var errs []error
 
 	stringEnv("FISCUS_PROVIDER", &cfg.Provider)
+	stringEnv("FISCUS_PROFILE", &cfg.Profile)
 	stringEnv("FISCUS_SERVER_ADDRESS", &cfg.Server.Address)
 	stringEnv("FISCUS_SERVER_USERNAME", &cfg.Server.Username)
 	stringEnv("FISCUS_SERVER_PASSWORD", &cfg.Server.Password)

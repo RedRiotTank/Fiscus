@@ -107,6 +107,13 @@ var migrations = []migration{
 			`ALTER TABLE accounts ADD COLUMN last_rate_limit_reason TEXT`,
 		},
 	},
+	{
+		version: 6,
+		statements: []string{
+			`ALTER TABLE accounts ADD COLUMN type TEXT NOT NULL DEFAULT 'personal'`,
+			`CREATE INDEX IF NOT EXISTS idx_accounts_type ON accounts(type)`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and
