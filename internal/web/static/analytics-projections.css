@@ -1,0 +1,44 @@
+.projection-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.control-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 180px;
+  color: var(--muted);
+  font-size: 0.73rem;
+}
+
+.control-field > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.control-field output {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.control-field input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+@media (max-width: 620px) {
+  .projection-controls {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .control-field {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+}
