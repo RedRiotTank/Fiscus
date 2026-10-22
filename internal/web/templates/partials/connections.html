@@ -35,7 +35,11 @@
             </div>
           </header>
 
-          {{if .LastError}}<p class="inline-error">{{.LastError}}</p>{{end}}
+          {{if .RateLimited}}
+            <p class="inline-warning"><span class="badge pending">Quota Exceeded (Cooldown until {{datetime .CooldownUntil}})</span></p>
+          {{else if .LastError}}
+            <p class="inline-error">{{.LastError}}</p>
+          {{end}}
 
           {{if .Accounts}}
             <div class="table-wrap">

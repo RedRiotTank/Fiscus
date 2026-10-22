@@ -322,6 +322,39 @@ func TestTransactionsAndDelete(t *testing.T) {
 	}
 }
 
+func TestASPSPRateLimitIsNotRetried(t *testing.T) {
+	t.Parallel()
+	var attempts atomic.Int32
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v2/token/new/" {
+			tokenHandler(t, "access-1")(w, r)
+			return
+		}
+		attempts.Add(1)
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"error":"ASPSP_RATE_LIMIT_EXCEEDED","message":"Maximum daily access exceeded"}`)
+	})
+	c := newTestClient(t, ts, nil)
+
+	_, err := c.GetBalances(context.Background(), "acc-1")
+	if err == nil {
+		t.Fatal("expected rate limit error")
+	}
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("error type = %T, want *APIError", err)
+	}
+	if apiErr.HTTPStatusCode() != http.StatusTooManyRequests {
+		t.Fatalf("status = %d", apiErr.HTTPStatusCode())
+	}
+	if !strings.Contains(apiErr.HTTPErrorBody(), "ASPSP_RATE_LIMIT_EXCEEDED") {
+		t.Fatalf("body = %q", apiErr.HTTPErrorBody())
+	}
+	if got := attempts.Load(); got != 1 {
+		t.Fatalf("provider attempts = %d, want 1 (429 must not be retried)", got)
+	}
+}
+
 func TestAPIError(t *testing.T) {
 	t.Parallel()
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {

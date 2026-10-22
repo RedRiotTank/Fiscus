@@ -16,6 +16,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -346,6 +347,35 @@ func TestAccountDetailsBalancesAndTransactions(t *testing.T) {
 	}
 	if transactions.Pending[0].TransactionAmount.Value != "-7.25" || transactions.Pending[0].BookingDate != "2026-10-21" {
 		t.Fatalf("pending transaction = %+v", transactions.Pending[0])
+	}
+}
+
+func TestASPSPRateLimitIsNotRetried(t *testing.T) {
+	t.Parallel()
+	var attempts atomic.Int32
+	tc := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		attempts.Add(1)
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"error":"ASPSP_RATE_LIMIT_EXCEEDED","message":"Maximum daily access exceeded"}`)
+	})
+	tc.client.retryAttempts = 3
+
+	_, err := tc.client.GetBalances(context.Background(), "acc-1")
+	if err == nil {
+		t.Fatal("expected rate limit error")
+	}
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("error type = %T, want *APIError", err)
+	}
+	if apiErr.HTTPStatusCode() != http.StatusTooManyRequests {
+		t.Fatalf("status = %d", apiErr.HTTPStatusCode())
+	}
+	if !strings.Contains(apiErr.HTTPErrorBody(), "ASPSP_RATE_LIMIT_EXCEEDED") {
+		t.Fatalf("body = %q", apiErr.HTTPErrorBody())
+	}
+	if got := attempts.Load(); got != 1 {
+		t.Fatalf("provider attempts = %d, want 1 (429 must not be retried)", got)
 	}
 }
 

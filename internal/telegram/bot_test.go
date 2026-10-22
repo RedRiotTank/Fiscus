@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/RedRiotTank/Fiscus/internal/banking/ratelimit"
 	"github.com/RedRiotTank/Fiscus/internal/budgets"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
@@ -299,6 +300,32 @@ func TestSyncCommandReportsOutcome(t *testing.T) {
 	defer api.mu.Unlock()
 	if len(api.sent) != 2 || !strings.Contains(api.sent[1].Text, "falló") {
 		t.Fatalf("reply = %+v", api.sent)
+	}
+}
+
+func TestSyncCommandReportsRateLimitCooldown(t *testing.T) {
+	t.Parallel()
+	api, server := newFakeAPI(t)
+	until := time.Date(2026, 3, 10, 18, 0, 0, 0, time.UTC)
+	syncer := &fakeSyncer{err: &ratelimit.Error{
+		Reason: ratelimit.CodeASPSPDailyLimit,
+		Until:  until,
+	}}
+	bot := newTestBot(t, api, server, &fakeStore{}, syncer)
+	bot.handleUpdate(context.Background(), messageUpdate(42, 7, "/sync"))
+	if syncer.calls != 1 {
+		t.Fatalf("sync calls = %d, want 1", syncer.calls)
+	}
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if len(api.sent) != 1 {
+		t.Fatalf("sent = %+v", api.sent)
+	}
+	text := api.sent[0].Text
+	if !strings.Contains(text, "Límite de acceso bancario alcanzado (máximo diario PSD2).") ||
+		!strings.Contains(text, "Mostrando datos en caché.") ||
+		!strings.Contains(text, "Próxima sincronización disponible: 2026-03-10 18:00 UTC.") {
+		t.Fatalf("reply = %q", text)
 	}
 }
 

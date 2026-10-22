@@ -56,6 +56,22 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("enablebanking: %s %s returned HTTP %d: %s", e.Method, e.Path, e.StatusCode, body)
 }
 
+// HTTPStatusCode exposes the provider HTTP status to rate-limit classifiers.
+func (e *APIError) HTTPStatusCode() int {
+	if e == nil {
+		return 0
+	}
+	return e.StatusCode
+}
+
+// HTTPErrorBody exposes the provider response body to rate-limit classifiers.
+func (e *APIError) HTTPErrorBody() string {
+	if e == nil {
+		return ""
+	}
+	return e.Body
+}
+
 // Client is a concurrency-safe Enable Banking API client. Every request is
 // authenticated with a short-lived RS256 JWT signed by the application key.
 type Client struct {
@@ -615,7 +631,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 			attempt--
 			continue
 		}
-		if (resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500) && attempt < maxAttempts {
+		if resp.StatusCode >= 500 && attempt < maxAttempts {
 			delay := c.backoff(attempt)
 			if after := parseRetryAfter(resp.Header.Get("Retry-After")); after > 0 {
 				delay = min(after, 10*time.Second)

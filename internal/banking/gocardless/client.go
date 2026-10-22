@@ -53,6 +53,22 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("gocardless: %s %s returned HTTP %d: %s", e.Method, e.Path, e.StatusCode, body)
 }
 
+// HTTPStatusCode exposes the provider HTTP status to rate-limit classifiers.
+func (e *APIError) HTTPStatusCode() int {
+	if e == nil {
+		return 0
+	}
+	return e.StatusCode
+}
+
+// HTTPErrorBody exposes the provider response body to rate-limit classifiers.
+func (e *APIError) HTTPErrorBody() string {
+	if e == nil {
+		return ""
+	}
+	return e.Body
+}
+
 // Client is a concurrency-safe, read-oriented GoCardless API client. It manages
 // access-token acquisition and refresh automatically.
 type Client struct {
@@ -313,8 +329,9 @@ func expiry(now time.Time, seconds int64) time.Time {
 	return now.Add(time.Duration(seconds) * time.Second)
 }
 
-// do performs an API request. GET requests are retried on rate limits,
-// transient server errors, and transport errors.
+// do performs an API request. GET requests are retried on transient server and
+// transport errors. HTTP 429 is never retried because an ASPSP daily quota
+// cannot recover by hammering the same endpoint.
 func (c *Client) do(ctx context.Context, method, path string, query url.Values, body, out any, auth, retry bool) error {
 	endpoint := c.baseURL + path
 	if len(query) > 0 {
@@ -387,7 +404,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 			continue
 		}
 
-		if (resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500) && attempt < maxAttempts {
+		if resp.StatusCode >= 500 && attempt < maxAttempts {
 			delay := c.backoff(attempt)
 			if after := parseRetryAfter(resp.Header.Get("Retry-After")); after > 0 {
 				delay = min(after, 10*time.Second)

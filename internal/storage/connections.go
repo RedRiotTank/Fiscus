@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/domain"
@@ -15,19 +16,23 @@ type rowScanner interface {
 }
 
 const connectionColumns = `id, requisition_id, institution_id, institution_name, status, link,
-	reference, agreement_id, last_error, consent_expires_at, last_synced_at, created_at, updated_at`
+	reference, agreement_id, last_error, consent_expires_at, last_synced_at,
+	rate_limited_until, last_rate_limit_reason, created_at, updated_at`
 
 func scanConnection(row rowScanner) (domain.Connection, error) {
 	var (
-		c          domain.Connection
-		expiresAt  sql.NullString
-		lastSynced sql.NullString
-		createdAt  string
-		updatedAt  string
+		c             domain.Connection
+		expiresAt     sql.NullString
+		lastSynced    sql.NullString
+		rateLimited   sql.NullString
+		rateLimitNote sql.NullString
+		createdAt     string
+		updatedAt     string
 	)
 	if err := row.Scan(
 		&c.ID, &c.RequisitionID, &c.InstitutionID, &c.InstitutionName, &c.Status, &c.Link,
-		&c.Reference, &c.AgreementID, &c.LastError, &expiresAt, &lastSynced, &createdAt, &updatedAt,
+		&c.Reference, &c.AgreementID, &c.LastError, &expiresAt, &lastSynced,
+		&rateLimited, &rateLimitNote, &createdAt, &updatedAt,
 	); err != nil {
 		return domain.Connection{}, err
 	}
@@ -38,6 +43,10 @@ func scanConnection(row rowScanner) (domain.Connection, error) {
 	if c.LastSyncedAt, err = decodeNullTime(lastSynced); err != nil {
 		return domain.Connection{}, err
 	}
+	if c.RateLimitedUntil, err = decodeNullTime(rateLimited); err != nil {
+		return domain.Connection{}, err
+	}
+	c.LastRateLimitReason = rateLimitNote.String
 	if c.CreatedAt, err = decodeTime(createdAt); err != nil {
 		return domain.Connection{}, err
 	}
@@ -48,8 +57,8 @@ func scanConnection(row rowScanner) (domain.Connection, error) {
 }
 
 // UpsertConnection inserts or updates a connection identified by its GoCardless
-// requisition ID. Sync bookkeeping fields (last_synced_at, last_error) are owned
-// by UpdateConnectionSync and are not overwritten here.
+// requisition ID. Sync and rate-limit bookkeeping fields are owned by the
+// dedicated update methods and are not overwritten here.
 func (s *Store) UpsertConnection(ctx context.Context, c *domain.Connection) error {
 	if c.RequisitionID == "" {
 		return errors.New("storage: connection requisition ID is required")
@@ -149,6 +158,7 @@ func (s *Store) UpdateConnectionAuthorization(
 		UPDATE connections SET
 			requisition_id = ?, status = ?, link = ?, institution_id = ?,
 			institution_name = ?, agreement_id = ?, reference = '', last_error = '',
+			rate_limited_until = NULL, last_rate_limit_reason = NULL,
 			updated_at = ?
 		WHERE id = ?`,
 		requisitionID, status, link, institutionID, institutionName, agreementID,
@@ -182,6 +192,43 @@ func (s *Store) UpdateConnectionConsentExpiry(ctx context.Context, id int64, exp
 	}
 	if n == 0 {
 		return ErrNotFound
+	}
+	return nil
+}
+
+// SetConnectionRateLimit records a PSD2 cooldown for a connection. The reason is
+// stored for diagnostics and the UI, but only until matters for scheduling.
+func (s *Store) SetConnectionRateLimit(ctx context.Context, id int64, until time.Time, reason string) error {
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE connections
+		SET rate_limited_until = ?, last_rate_limit_reason = ?, updated_at = ?
+		WHERE id = ?`,
+		encodeTime(until), strings.TrimSpace(reason), encodeTime(nowUTC()), id,
+	)
+	if err != nil {
+		return fmt.Errorf("storage: set connection rate limit: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("storage: set connection rate limit: %w", err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ClearConnectionRateLimit removes a connection cooldown after a successful
+// provider sync.
+func (s *Store) ClearConnectionRateLimit(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE connections
+		SET rate_limited_until = NULL, last_rate_limit_reason = NULL, updated_at = ?
+		WHERE id = ? AND (rate_limited_until IS NOT NULL OR last_rate_limit_reason IS NOT NULL)`,
+		encodeTime(nowUTC()), id,
+	)
+	if err != nil {
+		return fmt.Errorf("storage: clear connection rate limit: %w", err)
 	}
 	return nil
 }

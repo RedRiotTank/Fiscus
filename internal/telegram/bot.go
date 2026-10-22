@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/RedRiotTank/Fiscus/internal/banking/ratelimit"
 	"github.com/RedRiotTank/Fiscus/internal/budgets"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/money"
@@ -474,6 +475,11 @@ func (b *Bot) sync(ctx context.Context) string {
 		return "La sincronización bancaria no está configurada."
 	}
 	if err := b.syncer.SyncAll(ctx); err != nil {
+		var limited *ratelimit.Error
+		if errors.As(err, &limited) {
+			when := limited.Until.UTC().Format("2006-01-02 15:04 UTC")
+			return "Límite de acceso bancario alcanzado (máximo diario PSD2). Mostrando datos en caché. Próxima sincronización disponible: " + when + "."
+		}
 		return "La sincronización falló: " + b.sanitize(err.Error())
 	}
 	return "Sincronización completada."

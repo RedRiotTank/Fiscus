@@ -26,7 +26,7 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Server.Address != ":8080" || cfg.Database.Path != "data/fiscus.db" {
 		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
-	if cfg.GoCardless.SyncInterval.Std() != 15*time.Minute {
+	if cfg.GoCardless.SyncInterval.Std() != 6*time.Hour {
 		t.Fatalf("sync interval = %v", cfg.GoCardless.SyncInterval)
 	}
 	if cfg.BankingConfigured() || cfg.AuthConfigured() || cfg.TelegramConfigured() || cfg.DiscordConfigured() {
@@ -38,7 +38,7 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.EnableBanking.BaseURL != "https://api.enablebanking.com" ||
 		cfg.EnableBanking.ConsentValidityDays != 90 ||
 		cfg.EnableBanking.PSUType != "personal" ||
-		cfg.EnableBanking.SyncInterval.Std() != 15*time.Minute {
+		cfg.EnableBanking.SyncInterval.Std() != 6*time.Hour {
 		t.Fatalf("enablebanking defaults = %+v", cfg.EnableBanking)
 	}
 	if err := cfg.Validate(); err != nil {

@@ -16,10 +16,12 @@ import (
 	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/banking/gocardless"
+	"github.com/RedRiotTank/Fiscus/internal/banking/ratelimit"
 	"github.com/RedRiotTank/Fiscus/internal/categories"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/events"
 	"github.com/RedRiotTank/Fiscus/internal/money"
+	"github.com/RedRiotTank/Fiscus/internal/storage"
 )
 
 // Bank is the subset of the GoCardless API used by the worker.
@@ -36,9 +38,14 @@ type Store interface {
 	GetConnectionByRequisitionID(ctx context.Context, requisitionID string) (domain.Connection, error)
 	UpsertConnection(ctx context.Context, c *domain.Connection) error
 	UpdateConnectionSync(ctx context.Context, id int64, syncedAt time.Time, syncErr string) error
+	SetConnectionRateLimit(ctx context.Context, id int64, until time.Time, reason string) error
+	ClearConnectionRateLimit(ctx context.Context, id int64) error
 	UpsertAccount(ctx context.Context, a *domain.Account) error
 	UpdateAccountBalance(ctx context.Context, accountID string, balanceMinor int64, balanceType string, at time.Time) error
+	SetAccountRateLimit(ctx context.Context, accountID string, until time.Time, reason string) error
+	ClearAccountRateLimit(ctx context.Context, accountID string) error
 	GetAccount(ctx context.Context, accountID string) (domain.Account, error)
+	ListAccountsByConnection(ctx context.Context, connectionID int64) ([]domain.Account, error)
 	UpsertTransaction(ctx context.Context, t *domain.Transaction) (inserted bool, promoted bool, err error)
 }
 
@@ -93,7 +100,7 @@ type Config struct {
 // DefaultConfig returns production-oriented defaults.
 func DefaultConfig() Config {
 	return Config{
-		SyncInterval:        15 * time.Minute,
+		SyncInterval:        6 * time.Hour,
 		SyncTimeout:         5 * time.Minute,
 		InitialLookbackDays: 90,
 		OverlapDays:         3,
@@ -248,6 +255,12 @@ func (w *Worker) runTimed(ctx context.Context, requisitionID string) {
 		err = w.SyncConnection(syncCtx, requisitionID)
 	}
 	if err != nil {
+		if ratelimit.Is(err) {
+			// The rate-limit handler already emitted a warning with the cooldown
+			// time. Background syncs treat this as a pause, not a failure.
+			w.logger.Debug("bank sync paused by rate limit", "requisition_id", requisitionID)
+			return
+		}
 		w.logger.Error("bank sync failed", "requisition_id", requisitionID, "error", err)
 	}
 }
@@ -363,14 +376,39 @@ func (w *Worker) syncConnection(ctx context.Context, connection domain.Connectio
 		w.observeSync(connection.RequisitionID, w.cfg.Now().Sub(started), syncErr)
 	}()
 
+	if connection.CoolingDown(w.cfg.Now()) {
+		w.logger.Debug("bank connection is cooling down; skipping sync",
+			"requisition_id", connection.RequisitionID,
+			"until", connection.RateLimitedUntil,
+			"reason", connection.LastRateLimitReason)
+		syncErr = &ratelimit.Error{
+			Reason: connection.LastRateLimitReason,
+			Until:  *connection.RateLimitedUntil,
+		}
+		return syncErr
+	}
+
 	if pendingAuthorizationStatus(connection.Status) {
 		w.logger.Info("bank authorization is pending; skipping sync",
 			"requisition_id", connection.RequisitionID, "status", connection.Status)
 		return nil
 	}
 
+	if connection.Linked() {
+		if limited, ok := w.allAccountsCooling(ctx, connection); ok {
+			w.logger.Debug("all bank accounts are cooling down; skipping sync",
+				"requisition_id", connection.RequisitionID, "until", limited.Until)
+			syncErr = limited
+			return limited
+		}
+	}
+
 	requisition, err := w.bank.GetRequisition(ctx, connection.RequisitionID)
 	if err != nil {
+		if limited := w.markRateLimited(ctx, connection, "", err); limited != nil {
+			syncErr = limited
+			return limited
+		}
 		syncErr = fmt.Errorf("fetch requisition: %w", err)
 		w.recordSyncFailure(ctx, connection, syncErr)
 		return syncErr
@@ -412,6 +450,10 @@ func (w *Worker) syncConnection(ctx context.Context, connection domain.Connectio
 	var errs []error
 	for _, accountID := range requisition.Accounts {
 		if err := w.syncAccount(ctx, connection, accountID); err != nil {
+			if ratelimit.Is(err) {
+				syncErr = err
+				return err
+			}
 			w.logger.Error("account sync failed",
 				"requisition_id", connection.RequisitionID, "account_id", accountID, "error", err)
 			errs = append(errs, fmt.Errorf("account %s: %w", accountID, err))
@@ -423,7 +465,7 @@ func (w *Worker) syncConnection(ctx context.Context, connection domain.Connectio
 }
 
 func (w *Worker) recordSyncFailure(ctx context.Context, connection domain.Connection, err error) {
-	if connection.ID == 0 {
+	if connection.ID == 0 || ratelimit.Is(err) {
 		return
 	}
 	// Use a background context so a cancelled sync can still record its error.
@@ -435,6 +477,9 @@ func (w *Worker) recordSyncFailure(ctx context.Context, connection domain.Connec
 }
 
 func (w *Worker) recordSyncResult(ctx context.Context, connection domain.Connection, syncErr error) {
+	if ratelimit.Is(syncErr) {
+		return
+	}
 	msg := ""
 	if syncErr != nil {
 		msg = truncate(syncErr.Error(), 1000)
@@ -442,38 +487,70 @@ func (w *Worker) recordSyncResult(ctx context.Context, connection domain.Connect
 	if err := w.store.UpdateConnectionSync(ctx, connection.ID, w.cfg.Now(), msg); err != nil {
 		w.logger.Error("failed to record sync result", "requisition_id", connection.RequisitionID, "error", err)
 	}
+	if syncErr == nil {
+		if err := w.store.ClearConnectionRateLimit(ctx, connection.ID); err != nil {
+			w.logger.Error("failed to clear connection rate limit", "requisition_id", connection.RequisitionID, "error", err)
+		}
+	}
 }
 
 func (w *Worker) syncAccount(ctx context.Context, connection domain.Connection, accountID string) error {
 	var errs []error
+	now := w.cfg.Now()
 
-	details, err := w.bank.GetAccountDetails(ctx, accountID)
-	if err != nil {
-		return fmt.Errorf("account details: %w", err)
+	account, err := w.store.GetAccount(ctx, accountID)
+	switch {
+	case err == nil:
+		if account.CoolingDown(now) {
+			w.logger.Debug("bank account is cooling down; skipping sync",
+				"account_id", accountID, "until", account.RateLimitedUntil,
+				"reason", account.LastRateLimitReason)
+			return nil
+		}
+	case errors.Is(err, storage.ErrNotFound):
+		account = domain.Account{ID: accountID, ConnectionID: connection.ID}
+	default:
+		return fmt.Errorf("load account metadata: %w", err)
 	}
-	account := domain.Account{
-		ID:           accountID,
-		ConnectionID: connection.ID,
-		IBAN:         details.IBAN,
-		Name:         details.Name,
-		OwnerName:    details.OwnerName,
-		Currency:     strings.ToUpper(details.Currency),
-	}
-	if account.Currency == "" {
-		account.Currency = "EUR"
-	}
-	if account.Name == "" {
-		account.Name = account.IBAN
-	}
-	if account.Name == "" {
-		account.Name = accountID
-	}
-	if err := w.store.UpsertAccount(ctx, &account); err != nil {
-		return fmt.Errorf("persist account: %w", err)
+
+	// Account details are static. Only fetch them when SQLite has no cached
+	// metadata, so routine syncs spend the PSD2 quota on balances and
+	// transactions instead of repeating /details.
+	if !metadataCached(account) {
+		details, detailsErr := w.bank.GetAccountDetails(ctx, accountID)
+		if detailsErr != nil {
+			if limited := w.markRateLimited(ctx, connection, accountID, detailsErr); limited != nil {
+				return limited
+			}
+			return fmt.Errorf("account details: %w", detailsErr)
+		}
+		account = domain.Account{
+			ID:           accountID,
+			ConnectionID: connection.ID,
+			IBAN:         details.IBAN,
+			Name:         details.Name,
+			OwnerName:    details.OwnerName,
+			Currency:     strings.ToUpper(details.Currency),
+		}
+		if account.Currency == "" {
+			account.Currency = "EUR"
+		}
+		if account.Name == "" {
+			account.Name = account.IBAN
+		}
+		if account.Name == "" {
+			account.Name = accountID
+		}
+		if upsertErr := w.store.UpsertAccount(ctx, &account); upsertErr != nil {
+			return fmt.Errorf("persist account: %w", upsertErr)
+		}
 	}
 
 	balances, balanceErr := w.bank.GetBalances(ctx, accountID)
 	if balanceErr != nil {
+		if limited := w.markRateLimited(ctx, connection, accountID, balanceErr); limited != nil {
+			return limited
+		}
 		errs = append(errs, fmt.Errorf("balances: %w", balanceErr))
 	} else if chosen, ok := selectBalance(balances); ok {
 		balanceCurrency := strings.ToUpper(chosen.BalanceAmount.Currency)
@@ -497,12 +574,89 @@ func (w *Worker) syncAccount(ctx context.Context, connection domain.Connection, 
 
 	inserted, err := w.syncTransactions(ctx, account, connection)
 	if err != nil {
+		if limited := w.markRateLimited(ctx, connection, accountID, err); limited != nil {
+			return limited
+		}
 		errs = append(errs, err)
 	}
 	if inserted > 0 {
 		w.observeTransactions(accountID, inserted)
 	}
-	return errors.Join(errs...)
+	result := errors.Join(errs...)
+	if result == nil {
+		if clearErr := w.store.ClearAccountRateLimit(ctx, accountID); clearErr != nil {
+			w.logger.Error("failed to clear account rate limit", "account_id", accountID, "error", clearErr)
+		}
+	}
+	return result
+}
+
+func metadataCached(account domain.Account) bool {
+	return strings.TrimSpace(account.Name) != "" && strings.TrimSpace(account.Currency) != ""
+}
+
+// allAccountsCooling reports whether every known account for a connection is
+// still inside its rate-limit cooldown.
+func (w *Worker) allAccountsCooling(ctx context.Context, connection domain.Connection) (*ratelimit.Error, bool) {
+	if connection.ID == 0 {
+		return nil, false
+	}
+	accounts, err := w.store.ListAccountsByConnection(ctx, connection.ID)
+	if err != nil || len(accounts) == 0 {
+		return nil, false
+	}
+	now := w.cfg.Now()
+	var until time.Time
+	reason := ""
+	for _, account := range accounts {
+		if !account.CoolingDown(now) {
+			return nil, false
+		}
+		if until.IsZero() || account.RateLimitedUntil.Before(until) {
+			until = *account.RateLimitedUntil
+			reason = account.LastRateLimitReason
+		}
+	}
+	if until.IsZero() {
+		return nil, false
+	}
+	return &ratelimit.Error{Reason: reason, Until: until}, true
+}
+
+// markRateLimited persists a cooldown for the affected connection and, when it
+// already exists locally, the account. It returns nil when err is not a
+// provider rate limit.
+func (w *Worker) markRateLimited(ctx context.Context, connection domain.Connection, accountID string, cause error) *ratelimit.Error {
+	reason, ok := ratelimit.Detect(cause)
+	if !ok {
+		return nil
+	}
+	limited := ratelimit.NewError(cause, w.cfg.Now())
+	limited.Reason = reason
+
+	updateCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
+	if connection.ID != 0 {
+		if err := w.store.SetConnectionRateLimit(updateCtx, connection.ID, limited.Until, limited.Reason); err != nil {
+			w.logger.Error("failed to persist connection rate limit",
+				"requisition_id", connection.RequisitionID, "error", err)
+		}
+	}
+	if accountID != "" {
+		if err := w.store.SetAccountRateLimit(updateCtx, accountID, limited.Until, limited.Reason); err != nil && !errors.Is(err, storage.ErrNotFound) {
+			w.logger.Error("failed to persist account rate limit",
+				"account_id", accountID, "error", err)
+		}
+	}
+
+	w.logger.Warn("bank rate limit reached; pausing sync until cooldown",
+		"requisition_id", connection.RequisitionID,
+		"account_id", accountID,
+		"reason", limited.Reason,
+		"next_sync_at", limited.Until,
+	)
+	return limited
 }
 
 func (w *Worker) evaluateBalance(ctx context.Context, accountID string) error {

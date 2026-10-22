@@ -473,6 +473,56 @@ func TestSyncHandlers(t *testing.T) {
 	}
 }
 
+func TestSyncHandlersRespectRateLimitCooldown(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	ctx := context.Background()
+	until := time.Date(2026, 3, 10, 18, 0, 0, 0, time.UTC)
+	if err := f.store.UpdateConnectionSync(ctx, 1, time.Date(2026, 3, 10, 10, 0, 0, 0, time.UTC), "generic sync error"); err != nil {
+		t.Fatalf("UpdateConnectionSync: %v", err)
+	}
+	connections, err := f.store.ListConnections(ctx)
+	if err != nil {
+		t.Fatalf("ListConnections: %v", err)
+	}
+	for _, connection := range connections {
+		if err := f.store.SetConnectionRateLimit(ctx, connection.ID, until, "ASPSP_RATE_LIMIT_EXCEEDED"); err != nil {
+			t.Fatalf("SetConnectionRateLimit: %v", err)
+		}
+	}
+
+	page := f.request(t, http.MethodGet, "/connections", true, nil)
+	if page.Code != http.StatusOK {
+		t.Fatalf("connections page = %d", page.Code)
+	}
+	body := page.Body.String()
+	if !strings.Contains(body, "Quota Exceeded (Cooldown until 10 Mar 2026 18:00)") {
+		t.Fatalf("connections page missing cooldown badge: %s", body)
+	}
+	if strings.Contains(body, "generic sync error") {
+		t.Fatal("cooldown badge should replace the generic sync error")
+	}
+
+	headers := map[string]string{"X-Fiscus-Request": "1"}
+	for _, path := range []string{"/connections/1/sync", "/sync"} {
+		resp := f.request(t, http.MethodPost, path, true, headers)
+		if resp.Code != http.StatusOK {
+			t.Fatalf("%s status = %d, want 200", path, resp.Code)
+		}
+		message := resp.Body.String()
+		if !strings.Contains(message, "Bank rate limit reached (PSD2 max daily limit).") ||
+			!strings.Contains(message, "Displaying cached data.") ||
+			!strings.Contains(message, "Next sync available at 2026-03-10 18:00 UTC.") {
+			t.Fatalf("%s message = %s", path, message)
+		}
+	}
+	f.trigger.mu.Lock()
+	defer f.trigger.mu.Unlock()
+	if len(f.trigger.targets) != 0 {
+		t.Fatalf("sync was triggered during cooldown: %v", f.trigger.targets)
+	}
+}
+
 func TestRecategorizeTrigger(t *testing.T) {
 	t.Parallel()
 	f := newWebFixture(t)

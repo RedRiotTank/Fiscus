@@ -24,19 +24,21 @@ const (
 
 // Connection is a GoCardless requisition (one bank consent) tracked locally.
 type Connection struct {
-	ID               int64
-	RequisitionID    string
-	InstitutionID    string
-	InstitutionName  string
-	Status           string
-	Link             string
-	Reference        string
-	AgreementID      string
-	LastError        string
-	ConsentExpiresAt *time.Time
-	LastSyncedAt     *time.Time
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID                  int64
+	RequisitionID       string
+	InstitutionID       string
+	InstitutionName     string
+	Status              string
+	Link                string
+	Reference           string
+	AgreementID         string
+	LastError           string
+	ConsentExpiresAt    *time.Time
+	LastSyncedAt        *time.Time
+	RateLimitedUntil    *time.Time
+	LastRateLimitReason string
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 // Linked reports whether the requisition can provide account data.
@@ -44,19 +46,35 @@ func (c Connection) Linked() bool {
 	return c.Status == "LN" || c.Status == "SA"
 }
 
+// CoolingDown reports whether the PSD2 rate-limit cooldown is still active.
+func (c Connection) CoolingDown(now time.Time) bool {
+	return coolingDown(c.RateLimitedUntil, now)
+}
+
 // Account is a bank account exposed by GoCardless.
 type Account struct {
-	ID               string
-	ConnectionID     int64
-	IBAN             string
-	Name             string
-	OwnerName        string
-	Currency         string
-	BalanceMinor     int64
-	BalanceType      string
-	BalanceUpdatedAt *time.Time
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID                  string
+	ConnectionID        int64
+	IBAN                string
+	Name                string
+	OwnerName           string
+	Currency            string
+	BalanceMinor        int64
+	BalanceType         string
+	BalanceUpdatedAt    *time.Time
+	RateLimitedUntil    *time.Time
+	LastRateLimitReason string
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
+// CoolingDown reports whether the PSD2 rate-limit cooldown is still active.
+func (a Account) CoolingDown(now time.Time) bool {
+	return coolingDown(a.RateLimitedUntil, now)
+}
+
+func coolingDown(until *time.Time, now time.Time) bool {
+	return until != nil && now.UTC().Before(until.UTC())
 }
 
 // Transaction is a single booked or pending bank transaction.
