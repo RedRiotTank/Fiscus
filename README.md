@@ -16,9 +16,14 @@ for money.
   (consents, balances, booked and pending transactions)
 - Idempotent SQLite persistence with embedded, versioned migrations
 - Alert rules for duplicate charges, spending spikes, low-balance liquidity,
-  consent expiry, and subscription price increases
-- Regex-based transaction categorization and a monthly category breakdown
-- Recurring subscription and bank-fee detection
+  consent expiry, subscription price increases, expected inflows, budget caps,
+  and dormant (“ghost”) subscriptions
+- Regex-based transaction categorization, retroactive rule re-evaluation, and
+  YAML rule suggestions for frequent Uncategorized counterparties
+- Monthly category budgets with threshold pacing alerts and dashboard progress
+  bars
+- Recurring subscription and bank-fee detection with Inactive / Potential Ghost
+  marking when a charge goes quiet
 - Operational burn rate, runway, and internal-transfer-aware accounting exports
 - Interactive analytics workspace with category donut, income/expense trend,
   monthly cash-flow waterfall, cumulative spending pace, activity matrix,
@@ -26,7 +31,12 @@ for money.
 - Chart.js bundled locally in the binary (`embed.FS`); no CDN or runtime network
   dependency for charts
 - Multi-channel notifications with retries and alert de-duplication
-- Interactive Telegram bot for balances, recent movements, and manual syncs
+- Interactive Telegram bot for balances, recent movements, manual syncs,
+  inline-keyboard categorization, runway, and budget status
+- Gzipped online SQLite backups from the CLI and optional weekly Telegram
+  delivery
+- Asynchronous generic outbound webhooks with retries and optional
+  HMAC-SHA256 signing
 - Embedded HTMX dashboard with Basic Auth protection
 - `/healthz`, `/readyz`, and Prometheus `/metrics` endpoints
 - Single static binary; non-root container image and Compose deployment
@@ -65,6 +75,8 @@ See [Banking providers](#banking-providers) for setup details.
 | `fiscus connect` | Create a bank consent and print the authorization link |
 | `fiscus institutions` | List banks or institutions for a country |
 | `fiscus sync` | Run one synchronization cycle and exit |
+| `fiscus recategorize` | Preview or apply category rules to historical transactions |
+| `fiscus backup` | Write a gzipped online SQLite backup |
 | `fiscus export` | Export transactions as CSV, hledger, or Beancount |
 | `fiscus version` | Print build information |
 
@@ -89,6 +101,24 @@ equal transfers between your own accounts are paired and omitted by default to
 avoid double counting; pass `--include-transfers` to keep them. The Transactions
 page provides the same downloads for the current account filter.
 
+### Retroactive categorization
+
+After changing `rules`, re-evaluate existing transactions without touching the
+database by default:
+
+```sh
+fiscus recategorize                 # preview proposed changes
+fiscus recategorize --force         # commit proposed changes
+fiscus recategorize --dry-run       # explicit preview
+fiscus recategorize --suggest       # print YAML rules for frequent unknowns
+```
+
+The preview and apply phases run in one storage transaction. `--dry-run` and
+`--force` are mutually exclusive. `--suggest` aggregates counterparties that
+remain `Uncategorized` at least three times and prints quoted, case-insensitive
+YAML patterns that are safe to paste under `rules`. The Transactions page
+exposes the same preview/apply action.
+
 ## Analytics
 
 Open **Analytics** in the dashboard for the interactive charts. The same data is
@@ -108,6 +138,46 @@ chart are reconstructed from current balances and transaction history; Fiscus
 does not need a separate balance-snapshot table. The endpoints and all chart
 assets are served by the embedded HTTP server and require the same Basic Auth as
 the rest of the dashboard.
+
+## Budgets and expected inflows
+
+Monthly category budgets use integer minor units. Currency defaults to EUR. The
+overview dashboard shows month-to-date consumption and a progress bar for each
+budget; the bar turns warning or critical as thresholds are crossed.
+
+```yaml
+budgets:
+  - category: "Restaurants"
+    limit: 30000          # 300.00 EUR
+    currency: "EUR"
+    notify_at_percent: [80, 100]
+```
+
+`notify_at_percent` is optional. The 100% threshold is always included and is
+critical. Fiscus reports the highest newly crossed threshold in each evaluation,
+and de-duplicates alerts per threshold, category, and calendar month so a busy
+day does not produce repeated notifications.
+
+Expected inflows catch a missing salary or other recurring credit:
+
+```yaml
+expected_inflows:
+  - name: "Payroll"
+    amount_min: 200000    # 2,000.00 EUR
+    currency: "EUR"
+    expected_days: [27, 31]
+    grace_days: 2
+```
+
+A booked credit must match `name` against the counterparty or description, meet
+the minimum amount, and use the configured currency inside the expected-day
+window. If it has not arrived after the grace period, one warning is emitted for
+that month. The default grace period is two days and the default currency is
+EUR.
+
+Detected subscriptions are marked `Inactive / Potential Ghost` and notified once
+when no charge has appeared for more than 45 days for a monthly subscription or
+more than 390 days for a yearly subscription.
 
 ## Banking providers
 
@@ -357,9 +427,19 @@ not be public.
 5. **Subscription price increase**: a detected recurring charge is higher than
    its previous charge. The alert reports the old and new amounts and is
    deduplicated per merchant and charge.
+6. **Expected inflow missing**: a configured monthly credit has not arrived
+   inside its expected-day window plus grace period. The alert is emitted once
+   per inflow and month.
+7. **Potential ghost subscription**: a recurring charge has gone quiet beyond the
+   monthly or yearly stale threshold. The subscription is marked inactive in the
+   dashboard and notified once per last-charge date.
+8. **Budget threshold**: month-to-date spending in a configured category crosses
+   a warning or critical percentage. Alerts are de-duplicated per threshold,
+   category, and month.
 
 The **Subscriptions & Fees** dashboard view estimates the monthly and annualized
-cost of active subscriptions and lists detected bank commissions.
+cost of active subscriptions and lists detected bank commissions. Subscriptions
+without a recent charge are labelled `Inactive / Potential Ghost`.
 
 Alerts are persisted before dispatch. A deterministic de-duplication key prevents
 the same condition from notifying twice. Telegram and Discord deliveries are
@@ -377,9 +457,70 @@ for group chats). Supported commands:
 | `/saldo` | Consolidated balance and per-account breakdown |
 | `/sync` | Run a bank synchronization and report the outcome |
 | `/ultimos [n]` | Last `n` confirmed transactions with categories (max 50) |
+| `/runway` | Liquid balance, monthly burn, and runway in months per currency |
+| `/presupuesto` | Current-month category budget consumption |
 | `/help` | Show available commands |
 
-The polling loop stops cleanly as part of the daemon's SIGTERM/SIGINT shutdown.
+When a booked transaction cannot be categorized, Fiscus can send an inline
+keyboard with up to five configured categories plus **Ignore**; tapping a button
+updates the stored transaction category and answers the callback. This behavior
+is controlled by `alerts.telegram.notify_uncategorized` and is enabled by
+default when the bot is configured. The polling loop stops cleanly as part of
+the daemon's SIGTERM/SIGINT shutdown.
+
+## Backups
+
+`fiscus backup` uses SQLite's online backup API, so it is safe to run while the
+daemon is serving traffic. Output is always gzipped:
+
+```sh
+fiscus backup --out=/var/backups/fiscus-$(date +%F).sqlite.gz
+fiscus backup   # default: backups/fiscus-YYYYMMDD-HHMMSS.sqlite.gz
+```
+
+Optional weekly backup delivery to the configured Telegram chat requires both
+`backups.enabled` and `backups.telegram`:
+
+```yaml
+backups:
+  enabled: true
+  telegram: true
+  directory: "backups"
+  interval: 168h
+```
+
+Each run writes a local `.sqlite.gz` file and uploads the same document through
+the Telegram bot. The backup directory should be on persistent storage and
+protected with restrictive filesystem permissions. To restore, stop the daemon,
+decompress the archive, and place the resulting SQLite file at
+`database.path` (or point the configuration at it).
+
+## Webhooks
+
+Generic webhooks POST an asynchronous JSON envelope to any HTTP(S) endpoint:
+
+```yaml
+webhooks:
+  - url: "https://example.com/fiscus/events"
+    secret: "replace-with-a-long-random-secret"
+    events: ["transaction.created", "alert.triggered", "sync.completed"]
+```
+
+Events are `transaction.created` (a new transaction was first stored),
+`alert.triggered` (an alert was persisted), and `sync.completed` (a sync cycle
+finished, successfully or not). Delivery happens off the request path and retries
+transient failures with exponential backoff. A 2xx response succeeds; most 4xx
+responses are not retried.
+
+When `secret` is set, each request carries:
+
+- `X-Fiscus-Event`: the event name.
+- `X-Fiscus-Timestamp`: the envelope timestamp in RFC 3339.
+- `X-Fiscus-Signature`: `sha256=<hex HMAC-SHA256>` over the exact request body.
+
+Verify the signature before trusting a payload, and keep webhook secrets out of
+version control. The JSON body has the form
+`{"event":"...","timestamp":"...","data":{...}}`.
 
 ## Deployment
 
@@ -426,9 +567,10 @@ volumes:
 ```
 
 The database, configuration, environment files, and private keys are git-ignored.
-Back up the SQLite file (or use a volume snapshot) while the daemon is stopped.
-`/healthz` reports process liveness, `/readyz` verifies database access, and
-`/metrics` is the Prometheus endpoint. To expose the dashboard publicly, terminate
+Use `fiscus backup` for an online snapshot (or stop the daemon before taking a
+volume snapshot). `/healthz` reports process liveness, `/readyz` verifies
+database access, and `/metrics` is the Prometheus endpoint. To expose the
+dashboard publicly, terminate
 TLS at a reverse proxy and keep `FISCUS_SERVER_ADDRESS` bound to the private
 network. Enable Banking's redirect URL must point at the public `/callback` path
 when Fiscus is reached through a proxy.
