@@ -20,6 +20,11 @@ for money.
 - Regex-based transaction categorization and a monthly category breakdown
 - Recurring subscription and bank-fee detection
 - Operational burn rate, runway, and internal-transfer-aware accounting exports
+- Interactive analytics workspace with category donut, income/expense trend,
+  monthly cash-flow waterfall, cumulative spending pace, activity matrix,
+  wealth projections, and multi-institution liquidity distribution
+- Chart.js bundled locally in the binary (`embed.FS`); no CDN or runtime network
+  dependency for charts
 - Multi-channel notifications with retries and alert de-duplication
 - Interactive Telegram bot for balances, recent movements, and manual syncs
 - Embedded HTMX dashboard with Basic Auth protection
@@ -83,6 +88,26 @@ fiscus export --format=beancount > fiscus.beancount
 equal transfers between your own accounts are paired and omitted by default to
 avoid double counting; pass `--include-transfers` to keep them. The Transactions
 page provides the same downloads for the current account filter.
+
+## Analytics
+
+Open **Analytics** in the dashboard for the interactive charts. The same data is
+available as authenticated JSON under `/api/analytics`:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/analytics/spending?period=month\|quarter\|ytd` | Category shares, six-month income/expense trend, and the current-month cash-flow waterfall |
+| `GET /api/analytics/pace` | Current cumulative spending curve and the previous six monthly baselines |
+| `GET /api/analytics/activity` | Weekday and amount-bracket distribution over the last 90 days |
+| `GET /api/analytics/projections?extra_monthly_minor=0&yield_bp=300` | Net-savings mean, sample deviation, and 1/5/10/15-year projection cones |
+| `GET /api/analytics/liquidity?days=90\|180` | Reconstructed per-institution balance series |
+
+Spending, pacing, activity, and projection calculations exclude internal
+transfers between owned accounts. Historical account balances for the liquidity
+chart are reconstructed from current balances and transaction history; Fiscus
+does not need a separate balance-snapshot table. The endpoints and all chart
+assets are served by the embedded HTTP server and require the same Basic Auth as
+the rest of the dashboard.
 
 ## Banking providers
 
