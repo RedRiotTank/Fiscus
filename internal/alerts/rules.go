@@ -10,9 +10,10 @@ import (
 
 // Rule names used in alerts and metrics.
 const (
-	RuleDuplicate = "duplicate"
-	RuleAnomaly   = "anomaly"
-	RuleLiquidity = "liquidity"
+	RuleDuplicate         = "duplicate"
+	RuleAnomaly           = "anomaly"
+	RuleLiquidity         = "liquidity"
+	RuleConsentExpiration = "consent_expiration"
 )
 
 // TransactionRule inspects a single transaction, usually against history.
@@ -25,6 +26,12 @@ type TransactionRule interface {
 type BalanceRule interface {
 	Name() string
 	Evaluate(ctx context.Context, account domain.Account) ([]domain.Alert, error)
+}
+
+// ConsentRule inspects bank connection consent validity.
+type ConsentRule interface {
+	Name() string
+	Evaluate(ctx context.Context) ([]domain.Alert, error)
 }
 
 // DuplicateFinder finds prior transactions with the same counterparty and

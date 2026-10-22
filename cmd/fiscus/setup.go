@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"strings"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/banking/enablebanking"
 	"github.com/RedRiotTank/Fiscus/internal/banking/gocardless"
 	"github.com/RedRiotTank/Fiscus/internal/config"
+	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/ingest"
 	"github.com/RedRiotTank/Fiscus/internal/observability"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
@@ -132,6 +134,10 @@ func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, 
 		return nil, err
 	}
 	liquidityRule := alerts.NewLiquidityRule(thresholds)
+	consentRule, err := alerts.NewConsentRule(store, nil, consentRenewalURL(cfg))
+	if err != nil {
+		return nil, err
+	}
 	notifiers, err := buildNotifiers(cfg)
 	if err != nil {
 		return nil, err
@@ -154,6 +160,7 @@ func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, 
 		Logger:       logger,
 		TxRules:      []alerts.TransactionRule{duplicateRule, anomalyRule},
 		BalanceRules: []alerts.BalanceRule{liquidityRule},
+		ConsentRules: []alerts.ConsentRule{consentRule},
 		Observer:     engineObserver,
 	})
 	if err != nil {
@@ -163,6 +170,27 @@ func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, 
 		logger.Warn("no notification channels configured; alerts will only appear in the dashboard")
 	}
 	return engine, nil
+}
+
+func consentRenewalURL(cfg *config.Config) func(domain.Connection) string {
+	fallback := "/connections"
+	redirect := cfg.GoCardless.RedirectURL
+	if cfg.ProviderName() == "enablebanking" {
+		redirect = cfg.EnableBanking.RedirectURL
+	}
+	if parsed, err := url.Parse(strings.TrimSpace(redirect)); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+		parsed.Path = "/connections"
+		parsed.RawQuery = ""
+		parsed.Fragment = ""
+		fallback = parsed.String()
+	}
+	return func(connection domain.Connection) string {
+		link := strings.TrimSpace(connection.Link)
+		if strings.HasPrefix(link, "https://") || strings.HasPrefix(link, "http://") {
+			return link
+		}
+		return fallback
+	}
 }
 
 func buildWorker(cfg *config.Config, store *storage.Store, engine *alerts.Engine, logger *slog.Logger, metrics *observability.Metrics, bank ingest.Bank) (*ingest.Worker, error) {

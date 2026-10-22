@@ -77,10 +77,11 @@ func (f *fakeBank) GetTransactions(_ context.Context, id string, from, to time.T
 }
 
 type fakeEvaluator struct {
-	mu       sync.Mutex
-	tx       []domain.Transaction
-	balances []domain.Account
-	err      error
+	mu           sync.Mutex
+	tx           []domain.Transaction
+	balances     []domain.Account
+	consentCalls int
+	err          error
 }
 
 func (f *fakeEvaluator) OnTransaction(_ context.Context, tx domain.Transaction, _ domain.Account) ([]domain.Alert, error) {
@@ -95,6 +96,19 @@ func (f *fakeEvaluator) OnBalance(_ context.Context, account domain.Account) ([]
 	defer f.mu.Unlock()
 	f.balances = append(f.balances, account)
 	return nil, f.err
+}
+
+func (f *fakeEvaluator) OnConsentCheck(context.Context) ([]domain.Alert, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.consentCalls++
+	return nil, f.err
+}
+
+func (f *fakeEvaluator) consentCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.consentCalls
 }
 
 func (f *fakeEvaluator) txCount() int {
@@ -223,6 +237,9 @@ func TestWorkerSyncPersistsAndEvaluates(t *testing.T) {
 	}
 	if got := eval.balanceCount(); got != 1 {
 		t.Fatalf("evaluated balances = %d, want 1", got)
+	}
+	if got := eval.consentCount(); got != 1 {
+		t.Fatalf("consent checks = %d, want 1", got)
 	}
 
 	conn, err := store.GetConnectionByRequisitionID(ctx, "req-1")

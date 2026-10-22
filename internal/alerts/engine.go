@@ -36,6 +36,7 @@ type EngineConfig struct {
 	Now          func() time.Time
 	TxRules      []TransactionRule
 	BalanceRules []BalanceRule
+	ConsentRules []ConsentRule
 	Observer     EngineObserver
 }
 
@@ -48,6 +49,7 @@ type Engine struct {
 	now          func() time.Time
 	txRules      []TransactionRule
 	balanceRules []BalanceRule
+	consentRules []ConsentRule
 	observer     EngineObserver
 }
 
@@ -69,6 +71,7 @@ func NewEngine(cfg EngineConfig) (*Engine, error) {
 		now:          cfg.Now,
 		txRules:      cfg.TxRules,
 		balanceRules: cfg.BalanceRules,
+		consentRules: cfg.ConsentRules,
 		observer:     cfg.Observer,
 	}, nil
 }
@@ -120,6 +123,29 @@ func (e *Engine) OnBalance(ctx context.Context, account domain.Account) ([]domai
 			if alert.AccountID == "" {
 				alert.AccountID = account.ID
 			}
+			produced = append(produced, alert)
+			if err := e.persistAndDispatch(ctx, &produced[len(produced)-1]); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	return produced, errors.Join(errs...)
+}
+
+// OnConsentCheck implements ingest.ConsentEvaluator.
+func (e *Engine) OnConsentCheck(ctx context.Context) ([]domain.Alert, error) {
+	var (
+		produced []domain.Alert
+		errs     []error
+	)
+	for _, rule := range e.consentRules {
+		alerts, err := rule.Evaluate(ctx)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("rule %s: %w", rule.Name(), err))
+			continue
+		}
+		for i := range alerts {
+			alert := alerts[i]
 			produced = append(produced, alert)
 			if err := e.persistAndDispatch(ctx, &produced[len(produced)-1]); err != nil {
 				errs = append(errs, err)

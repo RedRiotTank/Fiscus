@@ -2,6 +2,8 @@
 // Account Data API (PSD2 account information services).
 package gocardless
 
+import "time"
+
 // Token is the response of the token endpoints.
 type Token struct {
 	Access         string `json:"access"`
@@ -12,18 +14,19 @@ type Token struct {
 
 // Requisition represents a bank consent / account selection.
 type Requisition struct {
-	ID                string   `json:"id"`
-	Created           string   `json:"created"`
-	Redirect          string   `json:"redirect"`
-	Status            string   `json:"status"`
-	InstitutionID     string   `json:"institution_id"`
-	AgreementID       string   `json:"agreement"`
-	Reference         string   `json:"reference"`
-	Accounts          []string `json:"accounts"`
-	Link              string   `json:"link"`
-	SSN               string   `json:"ssn"`
-	AccountSelection  bool     `json:"account_selection"`
-	RedirectImmediate bool     `json:"redirect_immediate"`
+	ID                string     `json:"id"`
+	Created           string     `json:"created"`
+	Redirect          string     `json:"redirect"`
+	Status            string     `json:"status"`
+	InstitutionID     string     `json:"institution_id"`
+	AgreementID       string     `json:"agreement"`
+	Reference         string     `json:"reference"`
+	Accounts          []string   `json:"accounts"`
+	Link              string     `json:"link"`
+	SSN               string     `json:"ssn"`
+	AccountSelection  bool       `json:"account_selection"`
+	RedirectImmediate bool       `json:"redirect_immediate"`
+	ConsentExpiresAt  *time.Time `json:"-"`
 }
 
 // Institution describes a supported bank.

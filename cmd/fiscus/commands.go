@@ -220,13 +220,14 @@ func connectEnableBanking(cfg *config.Config, options connectOptions, stdout, st
 		displayName = firstNonEmpty(aspsp.Name, institution)
 	}
 	connection := domain.Connection{
-		RequisitionID:   authorization.AuthorizationID,
-		InstitutionID:   aspsp.Name,
-		InstitutionName: displayName,
-		Status:          "PENDING_AUTHORIZATION",
-		Link:            authorization.URL,
-		Reference:       authorization.State,
-		AgreementID:     authorization.AuthorizationID,
+		RequisitionID:    authorization.AuthorizationID,
+		InstitutionID:    aspsp.Name,
+		InstitutionName:  displayName,
+		Status:           "PENDING_AUTHORIZATION",
+		Link:             authorization.URL,
+		Reference:        authorization.State,
+		AgreementID:      authorization.AuthorizationID,
+		ConsentExpiresAt: &validUntil,
 	}
 	if err := store.UpsertConnection(ctx, &connection); err != nil {
 		return err

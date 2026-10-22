@@ -62,6 +62,9 @@ func TestAuthFlowCompleteAuthorization(t *testing.T) {
 	if store.conn.InstitutionName != "Banco Santander" || store.conn.InstitutionID != "Banco Santander" {
 		t.Fatalf("institution = %+v", store.conn)
 	}
+	if store.conn.ConsentExpiresAt == nil || store.conn.ConsentExpiresAt.Year() != 2027 {
+		t.Fatalf("consent expiry = %v", store.conn.ConsentExpiresAt)
+	}
 }
 
 func TestAuthFlowRejectsUnknownState(t *testing.T) {

@@ -255,6 +255,9 @@ func TestCreateSessionAndGetRequisition(t *testing.T) {
 	if requisition.InstitutionID != "Banco Santander" {
 		t.Fatalf("institution = %q", requisition.InstitutionID)
 	}
+	if requisition.ConsentExpiresAt == nil || requisition.ConsentExpiresAt.Year() != 2027 {
+		t.Fatalf("consent expiry = %v", requisition.ConsentExpiresAt)
+	}
 }
 
 func TestAccountDetailsBalancesAndTransactions(t *testing.T) {
@@ -404,5 +407,13 @@ func (f *fakeConnectionStore) UpdateConnectionAuthorization(_ context.Context, i
 	f.conn.InstitutionName = institutionName
 	f.conn.AgreementID = agreementID
 	f.conn.Reference = ""
+	return nil
+}
+
+func (f *fakeConnectionStore) UpdateConnectionConsentExpiry(_ context.Context, id int64, expiresAt *time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.conn.ID = id
+	f.conn.ConsentExpiresAt = expiresAt
 	return nil
 }

@@ -117,6 +117,8 @@ func TestConnectionLifecycle(t *testing.T) {
 	}
 
 	got.Link = "https://example.test/new"
+	expiresAt := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	got.ConsentExpiresAt = &expiresAt
 	if err := s.UpsertConnection(ctx, &got); err != nil {
 		t.Fatalf("update connection: %v", err)
 	}
@@ -126,6 +128,24 @@ func TestConnectionLifecycle(t *testing.T) {
 	}
 	if byID.Link != "https://example.test/new" {
 		t.Fatalf("link = %q", byID.Link)
+	}
+	if byID.ConsentExpiresAt == nil || !byID.ConsentExpiresAt.Equal(expiresAt) {
+		t.Fatalf("ConsentExpiresAt = %v, want %v", byID.ConsentExpiresAt, expiresAt)
+	}
+
+	renewedAt := expiresAt.AddDate(0, 6, 0)
+	if err := s.UpdateConnectionConsentExpiry(ctx, c.ID, &renewedAt); err != nil {
+		t.Fatalf("UpdateConnectionConsentExpiry: %v", err)
+	}
+	byID, err = s.GetConnectionByID(ctx, c.ID)
+	if err != nil {
+		t.Fatalf("GetConnectionByID: %v", err)
+	}
+	if byID.ConsentExpiresAt == nil || !byID.ConsentExpiresAt.Equal(renewedAt) {
+		t.Fatalf("renewed ConsentExpiresAt = %v, want %v", byID.ConsentExpiresAt, renewedAt)
+	}
+	if err := s.UpdateConnectionConsentExpiry(ctx, 9999, &renewedAt); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("UpdateConnectionConsentExpiry missing error = %v, want ErrNotFound", err)
 	}
 
 	syncedAt := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)

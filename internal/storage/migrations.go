@@ -86,6 +86,12 @@ var migrations = []migration{
 			`CREATE INDEX IF NOT EXISTS idx_connections_reference ON connections(reference)`,
 		},
 	},
+	{
+		version: 3,
+		statements: []string{
+			`ALTER TABLE connections ADD COLUMN consent_expires_at TEXT`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and

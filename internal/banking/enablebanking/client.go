@@ -262,28 +262,31 @@ func (c *Client) GetRequisition(ctx context.Context, sessionID string) (*gocardl
 		}
 	}
 	status := mapSessionStatus(session.Status)
-	if status == "LN" && consentExpired(session.Access.ValidUntil, c.now()) {
+	expiresAt := parseConsentExpiry(session.Access.ValidUntil)
+	if status == "LN" && expiresAt != nil && c.now().After(*expiresAt) {
 		status = "EX"
 	}
 	return &gocardless.Requisition{
-		ID:            session.SessionID,
-		Status:        status,
-		InstitutionID: session.ASPSP.Name,
-		Accounts:      accounts,
+		ID:               session.SessionID,
+		Status:           status,
+		InstitutionID:    session.ASPSP.Name,
+		Accounts:         accounts,
+		ConsentExpiresAt: expiresAt,
 	}, nil
 }
 
-func consentExpired(validUntil string, now time.Time) bool {
+func parseConsentExpiry(validUntil string) *time.Time {
 	validUntil = strings.TrimSpace(validUntil)
 	if validUntil == "" {
-		return false
+		return nil
 	}
 	for _, layout := range []string{time.RFC3339Nano, time.RFC3339} {
 		if parsed, err := time.Parse(layout, validUntil); err == nil {
-			return now.After(parsed)
+			parsed = parsed.UTC()
+			return &parsed
 		}
 	}
-	return false
+	return nil
 }
 
 // GetAccountDetails fetches account metadata.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 )
@@ -14,6 +15,7 @@ import (
 type ConnectionStore interface {
 	GetConnectionByReference(ctx context.Context, reference string) (domain.Connection, error)
 	UpdateConnectionAuthorization(ctx context.Context, id int64, requisitionID, status, link, institutionID, institutionName, agreementID string) error
+	UpdateConnectionConsentExpiry(ctx context.Context, id int64, expiresAt *time.Time) error
 }
 
 // AuthFlow completes an Enable Banking consent after the bank redirects the
@@ -63,6 +65,11 @@ func (f *AuthFlow) CompleteAuthorization(ctx context.Context, code, state string
 	if err := f.store.UpdateConnectionAuthorization(ctx, connection.ID, session.SessionID, "LN",
 		connection.Link, institutionID, institutionName, agreementID); err != nil {
 		return "", fmt.Errorf("enablebanking: store authorized connection: %w", err)
+	}
+	if expiresAt := parseConsentExpiry(session.Access.ValidUntil); expiresAt != nil {
+		if err := f.store.UpdateConnectionConsentExpiry(ctx, connection.ID, expiresAt); err != nil {
+			return "", fmt.Errorf("enablebanking: store consent expiry: %w", err)
+		}
 	}
 	f.logger.Info("bank connection authorized",
 		"session_id", session.SessionID, "institution", institutionName, "accounts", len(session.Accounts))

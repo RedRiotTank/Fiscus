@@ -15,22 +15,26 @@ type rowScanner interface {
 }
 
 const connectionColumns = `id, requisition_id, institution_id, institution_name, status, link,
-	reference, agreement_id, last_error, last_synced_at, created_at, updated_at`
+	reference, agreement_id, last_error, consent_expires_at, last_synced_at, created_at, updated_at`
 
 func scanConnection(row rowScanner) (domain.Connection, error) {
 	var (
 		c          domain.Connection
+		expiresAt  sql.NullString
 		lastSynced sql.NullString
 		createdAt  string
 		updatedAt  string
 	)
 	if err := row.Scan(
 		&c.ID, &c.RequisitionID, &c.InstitutionID, &c.InstitutionName, &c.Status, &c.Link,
-		&c.Reference, &c.AgreementID, &c.LastError, &lastSynced, &createdAt, &updatedAt,
+		&c.Reference, &c.AgreementID, &c.LastError, &expiresAt, &lastSynced, &createdAt, &updatedAt,
 	); err != nil {
 		return domain.Connection{}, err
 	}
 	var err error
+	if c.ConsentExpiresAt, err = decodeNullTime(expiresAt); err != nil {
+		return domain.Connection{}, err
+	}
 	if c.LastSyncedAt, err = decodeNullTime(lastSynced); err != nil {
 		return domain.Connection{}, err
 	}
@@ -59,8 +63,8 @@ func (s *Store) UpsertConnection(ctx context.Context, c *domain.Connection) erro
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO connections (
 			requisition_id, institution_id, institution_name, status, link, reference,
-			agreement_id, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			agreement_id, consent_expires_at, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(requisition_id) DO UPDATE SET
 			institution_id = excluded.institution_id,
 			institution_name = excluded.institution_name,
@@ -68,9 +72,10 @@ func (s *Store) UpsertConnection(ctx context.Context, c *domain.Connection) erro
 			link = excluded.link,
 			reference = excluded.reference,
 			agreement_id = excluded.agreement_id,
+			consent_expires_at = excluded.consent_expires_at,
 			updated_at = excluded.updated_at`,
 		c.RequisitionID, c.InstitutionID, c.InstitutionName, c.Status, c.Link, c.Reference,
-		c.AgreementID, encodeTime(c.CreatedAt), encodeTime(c.UpdatedAt),
+		c.AgreementID, encodeNullTime(c.ConsentExpiresAt), encodeTime(c.CreatedAt), encodeTime(c.UpdatedAt),
 	)
 	if err != nil {
 		return fmt.Errorf("storage: upsert connection: %w", err)
@@ -155,6 +160,25 @@ func (s *Store) UpdateConnectionAuthorization(
 	n, err := res.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("storage: update connection authorization: %w", err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// UpdateConnectionConsentExpiry stores the provider-reported consent expiry.
+func (s *Store) UpdateConnectionConsentExpiry(ctx context.Context, id int64, expiresAt *time.Time) error {
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE connections SET consent_expires_at = ?, updated_at = ? WHERE id = ?`,
+		encodeNullTime(expiresAt), encodeTime(nowUTC()), id,
+	)
+	if err != nil {
+		return fmt.Errorf("storage: update connection consent expiry: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("storage: update connection consent expiry: %w", err)
 	}
 	if n == 0 {
 		return ErrNotFound
