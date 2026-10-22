@@ -147,7 +147,7 @@ func (s *Server) templateFuncs() template.FuncMap {
 
 func (s *Server) parseTemplates() error {
 	s.pages = make(map[string]*template.Template)
-	for _, page := range []string{"dashboard", "transactions", "subscriptions", "alerts", "connections", "error"} {
+	for _, page := range []string{"dashboard", "transactions", "subscriptions", "alerts", "connections", "analytics", "error"} {
 		tmpl, err := template.New("layout").Funcs(s.templateFuncs()).ParseFS(assets,
 			"templates/layout.html",
 			"templates/partials/*.html",
@@ -174,6 +174,8 @@ func (s *Server) routes() http.Handler {
 	app.HandleFunc("GET /subscriptions", s.handleSubscriptions)
 	app.HandleFunc("GET /alerts", s.handleAlerts)
 	app.HandleFunc("GET /connections", s.handleConnections)
+	app.HandleFunc("GET /analytics", s.handleAnalytics)
+	app.HandleFunc("GET /api/analytics/spending", s.handleAnalyticsSpending)
 	app.HandleFunc("POST /sync", s.handleSyncAll)
 	app.HandleFunc("POST /connections/{id}/sync", s.handleSyncConnection)
 	app.HandleFunc("GET /partials/overview", s.handleOverviewPartial)

@@ -1,0 +1,57 @@
+{{define "analytics_spending"}}
+<section class="analytics-block" id="spending-analytics">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Spending intelligence</p>
+      <h2>Where the money goes</h2>
+      <p class="subtitle">Category shares, six-month momentum, and this month's cash-flow bridge. Internal transfers are excluded.</p>
+    </div>
+    <a class="link" href="/analytics">Open analytics workspace →</a>
+  </div>
+  <div class="chart-grid chart-grid-3">
+    <article class="panel chart-card">
+      <header class="chart-head">
+        <div>
+          <h3>Category breakdown</h3>
+          <p class="panel-sub" id="spending-period-label">Current month</p>
+        </div>
+        <div class="segmented" role="group" aria-label="Spending period">
+          <button type="button" class="segmented-button active" data-spending-period="month" aria-pressed="true">Month</button>
+          <button type="button" class="segmented-button" data-spending-period="quarter" aria-pressed="false">Quarter</button>
+          <button type="button" class="segmented-button" data-spending-period="ytd" aria-pressed="false">YTD</button>
+        </div>
+      </header>
+      <div class="chart-body">
+        <canvas id="spending-donut" role="img" aria-label="Spending share by category"></canvas>
+        <p class="chart-empty" id="spending-donut-empty" hidden>No outgoing transactions in this period.</p>
+      </div>
+    </article>
+
+    <article class="panel chart-card">
+      <header class="chart-head">
+        <div>
+          <h3>Income vs expenses</h3>
+          <p class="panel-sub">Last six months</p>
+        </div>
+      </header>
+      <div class="chart-body">
+        <canvas id="spending-trend" role="img" aria-label="Monthly income and expenses"></canvas>
+        <p class="chart-empty" id="spending-trend-empty" hidden>No monthly activity yet.</p>
+      </div>
+    </article>
+
+    <article class="panel chart-card">
+      <header class="chart-head">
+        <div>
+          <h3>Monthly waterfall</h3>
+          <p class="panel-sub" id="spending-waterfall-label">Opening balance to current position</p>
+        </div>
+      </header>
+      <div class="chart-body">
+        <canvas id="spending-waterfall" role="img" aria-label="Current month cash-flow waterfall"></canvas>
+        <p class="chart-empty" id="spending-waterfall-empty" hidden>No cash flow recorded this month.</p>
+      </div>
+    </article>
+  </div>
+</section>
+{{end}}
