@@ -256,6 +256,14 @@ code, .mono {
   gap: 8px;
 }
 
+.export-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .sync-status {
   min-height: 20px;
   font-size: 0.8rem;

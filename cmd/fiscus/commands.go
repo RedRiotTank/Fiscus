@@ -17,6 +17,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/banking/gocardless"
 	"github.com/RedRiotTank/Fiscus/internal/config"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
+	"github.com/RedRiotTank/Fiscus/internal/treasury"
 )
 
 func commandContext(timeout time.Duration) (context.Context, context.CancelFunc) {
@@ -417,6 +418,88 @@ func runSync(args []string, stdout, stderr io.Writer) error {
 	}
 	_, _ = fmt.Fprintln(stdout, "Synchronization complete.")
 	return nil
+}
+
+func runExport(args []string, stdout, stderr io.Writer) error {
+	fs := newFlagSet("export", stderr)
+	configPath := fs.String("config", defaultConfigPath(), "path to YAML configuration")
+	formatRaw := fs.String("format", "csv", "export format: csv, hledger, or beancount")
+	fromRaw := fs.String("from", "", "include transactions on or after this date (YYYY-MM-DD)")
+	toRaw := fs.String("to", "", "include transactions on or before this date (YYYY-MM-DD)")
+	includeTransfers := fs.Bool("include-transfers", false, "include internal transfers between own accounts")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	format, err := treasury.ParseFormat(*formatRaw)
+	if err != nil {
+		return err
+	}
+	from, err := parseExportDateFlag(*fromRaw, false)
+	if err != nil {
+		return fmt.Errorf("export: --from: %w", err)
+	}
+	to, err := parseExportDateFlag(*toRaw, true)
+	if err != nil {
+		return fmt.Errorf("export: --to: %w", err)
+	}
+	if to.IsZero() {
+		to = time.Now().UTC().Add(24 * time.Hour)
+	}
+	if !from.IsZero() && !from.Before(to) {
+		return errors.New("export: --from must be before --to")
+	}
+
+	cfg, err := loadConfig(*configPath)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := commandContext(2 * time.Minute)
+	defer cancel()
+	store, err := openStore(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			_, _ = fmt.Fprintf(stderr, "fiscus: close database: %v\n", err)
+		}
+	}()
+
+	transactions, err := store.ListTransactionsBetween(ctx, from, to)
+	if err != nil {
+		return err
+	}
+	if !*includeTransfers {
+		pairs := treasury.PairTransfers(transactions, 3)
+		transactions = treasury.ExcludeTransfers(transactions, pairs)
+	}
+	accounts, err := store.ListAccounts(ctx)
+	if err != nil {
+		return err
+	}
+	data, err := treasury.Export(format, transactions, accounts)
+	if err != nil {
+		return err
+	}
+	if _, err := stdout.Write(data); err != nil {
+		return fmt.Errorf("export: write output: %w", err)
+	}
+	return nil
+}
+
+func parseExportDateFlag(raw string, endOfDay bool) (time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, nil
+	}
+	parsed, err := time.Parse("2006-01-02", raw)
+	if err != nil {
+		return time.Time{}, errors.New("use YYYY-MM-DD")
+	}
+	if endOfDay {
+		parsed = parsed.Add(24 * time.Hour)
+	}
+	return parsed, nil
 }
 
 func firstNonEmpty(values ...string) string {

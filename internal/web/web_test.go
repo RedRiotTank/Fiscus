@@ -202,7 +202,7 @@ func TestDashboardAuthAndContent(t *testing.T) {
 	for _, want := range []string{
 		"Cash position", "Everyday", "Savings", "€1,250.50", "€500.00",
 		"Coffee Shop", "Possible duplicate charge", "Low balance", "Dev Bank", "Linked",
-		"Spending by category", "Dining", "€12.50",
+		"Spending by category", "Dining", "€12.50", "monthly burn", "Runway",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("dashboard missing %q", want)
@@ -248,6 +248,91 @@ func TestSubscriptionsAndFeesPage(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("subscriptions page missing %q", want)
 		}
+	}
+}
+
+func TestExportDownloads(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	ctx := context.Background()
+	transferTime := time.Date(2026, 3, 10, 9, 30, 0, 0, time.UTC)
+	transfers := []domain.Transaction{
+		{AccountID: "acc-1", ExternalID: "move-out", AmountMinor: -5000, Currency: "EUR", BookingDate: transferTime, Counterparty: "Own savings", Status: domain.TransactionStatusBooked},
+		{AccountID: "acc-2", ExternalID: "move-in", AmountMinor: 5000, Currency: "EUR", BookingDate: transferTime, Counterparty: "Own checking", Status: domain.TransactionStatusBooked},
+	}
+	for i := range transfers {
+		if _, _, err := f.store.UpsertTransaction(ctx, &transfers[i]); err != nil {
+			t.Fatalf("UpsertTransaction: %v", err)
+		}
+	}
+
+	csvResponse := f.request(t, http.MethodGet, "/transactions/export?format=csv", true, nil)
+	if csvResponse.Code != http.StatusOK {
+		t.Fatalf("csv status = %d body=%s", csvResponse.Code, csvResponse.Body.String())
+	}
+	if got := csvResponse.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/csv") {
+		t.Fatalf("csv content type = %q", got)
+	}
+	if got := csvResponse.Header().Get("Content-Disposition"); !strings.Contains(got, ".csv") {
+		t.Fatalf("csv disposition = %q", got)
+	}
+	body := csvResponse.Body.String()
+	if !strings.Contains(body, "Coffee Shop") || !strings.Contains(body, "-12.50") {
+		t.Fatalf("csv missing transactions: %s", body)
+	}
+	if strings.Contains(body, "Own savings") || strings.Contains(body, "Own checking") {
+		t.Fatalf("internal transfer was exported by default: %s", body)
+	}
+
+	included := f.request(t, http.MethodGet, "/transactions/export?format=csv&include_transfers=1", true, nil)
+	if included.Code != http.StatusOK || !strings.Contains(included.Body.String(), "Own savings") {
+		t.Fatalf("include_transfers did not include transfer: %d %s", included.Code, included.Body.String())
+	}
+
+	journal := f.request(t, http.MethodGet, "/transactions/export?format=hledger&account=acc-1", true, nil)
+	if journal.Code != http.StatusOK {
+		t.Fatalf("journal status = %d", journal.Code)
+	}
+	if got := journal.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/plain") {
+		t.Fatalf("journal content type = %q", got)
+	}
+	if got := journal.Header().Get("Content-Disposition"); !strings.Contains(got, ".journal") {
+		t.Fatalf("journal disposition = %q", got)
+	}
+	journalBody := journal.Body.String()
+	if !strings.Contains(journalBody, "assets:bank:everyday") || !strings.Contains(journalBody, "expenses:dining") {
+		t.Fatalf("journal missing expected accounts: %s", journalBody)
+	}
+	if strings.Contains(journalBody, "Cafe") {
+		t.Fatalf("journal account filter not applied: %s", journalBody)
+	}
+
+	beancount := f.request(t, http.MethodGet, "/transactions/export?format=beancount&from=2026-03-10&to=2026-03-10", true, nil)
+	if beancount.Code != http.StatusOK {
+		t.Fatalf("beancount status = %d body=%s", beancount.Code, beancount.Body.String())
+	}
+	if got := beancount.Header().Get("Content-Disposition"); !strings.Contains(got, ".beancount") {
+		t.Fatalf("beancount disposition = %q", got)
+	}
+	if !strings.Contains(beancount.Body.String(), "2000-01-01 open") || !strings.Contains(beancount.Body.String(), "Coffee Shop") {
+		t.Fatalf("beancount missing content: %s", beancount.Body.String())
+	}
+}
+
+func TestExportRejectsInvalidParameters(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	if got := f.request(t, http.MethodGet, "/transactions/export?format=pdf", true, nil).Code; got != http.StatusBadRequest {
+		t.Fatalf("invalid format status = %d, want 400", got)
+	}
+	if got := f.request(t, http.MethodGet, "/transactions/export?from=10-03-2026", true, nil).Code; got != http.StatusBadRequest {
+		t.Fatalf("invalid date status = %d, want 400", got)
+	}
+	if got := f.request(t, http.MethodGet, "/transactions/export?from=2026-03-11&to=2026-03-10", true, nil).Code; got != http.StatusBadRequest {
+		t.Fatalf("inverted range status = %d, want 400", got)
+	}
+	if got := f.request(t, http.MethodGet, "/transactions/export?format=csv", false, nil).Code; got != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated export status = %d, want 401", got)
 	}
 }
 

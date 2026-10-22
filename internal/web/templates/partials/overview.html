@@ -9,6 +9,13 @@
           <span class="stat-meta">{{.Accounts}} account{{if ne .Accounts 1}}s{{end}} · consolidated</span>
         </article>
       {{end}}
+      {{range .Treasury}}
+        <article class="stat">
+          <span class="stat-label">{{.Currency}} monthly burn</span>
+          <strong class="stat-value">{{money .MonthlyBurnMinor .Currency}}</strong>
+          <span class="stat-meta">Runway {{.RunwayLabel}} · {{money .LiquidMinor .Currency}} liquid</span>
+        </article>
+      {{end}}
       <article class="stat subtle">
         <span class="stat-label">Accounts</span>
         <strong class="stat-value">{{.TotalAccounts}}</strong>
