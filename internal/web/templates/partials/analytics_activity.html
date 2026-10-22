@@ -1,0 +1,23 @@
+{{define "analytics_activity"}}
+<section class="analytics-block">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Spending rhythm</p>
+      <h2>Activity matrix</h2>
+      <p class="subtitle">Transaction frequency by weekday and amount bracket over the last 90 days.</p>
+    </div>
+  </div>
+  <article class="panel chart-card">
+    <header class="chart-head">
+      <div>
+        <h3>When and how you spend</h3>
+        <p class="panel-sub" id="activity-summary">Loading activity…</p>
+      </div>
+    </header>
+    <div class="activity-wrap">
+      <div id="activity-matrix" class="activity-matrix" aria-live="polite"></div>
+      <p class="chart-empty" id="activity-empty" hidden>No outgoing transactions in the last 90 days.</p>
+    </div>
+  </article>
+</section>
+{{end}}

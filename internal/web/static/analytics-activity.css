@@ -1,0 +1,77 @@
+.activity-wrap {
+  padding: 16px 18px 20px;
+  overflow-x: auto;
+}
+
+.activity-matrix {
+  min-width: 620px;
+}
+
+.matrix-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 4px;
+  font-size: 0.8rem;
+}
+
+.matrix-table th {
+  padding: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  text-align: center;
+  font-size: 0.68rem;
+}
+
+.matrix-table th.matrix-row-label {
+  min-width: 82px;
+  text-align: left;
+  color: var(--text-soft);
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.matrix-table td {
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 10px 8px;
+  text-align: center;
+  color: var(--text-soft);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.matrix-table tbody tr:hover {
+  background: transparent;
+}
+
+.heat-0 {
+  background: rgba(148, 163, 184, 0.04);
+  color: var(--muted) !important;
+}
+
+.heat-1 {
+  background: rgba(56, 189, 248, 0.10);
+}
+
+.heat-2 {
+  background: rgba(56, 189, 248, 0.18);
+}
+
+.heat-3 {
+  background: rgba(56, 189, 248, 0.27);
+  color: #e0f2fe !important;
+}
+
+.heat-4 {
+  background: rgba(56, 189, 248, 0.38);
+  color: #f0f9ff !important;
+}
+
+@media (max-width: 620px) {
+  .activity-wrap {
+    padding: 12px;
+  }
+}
