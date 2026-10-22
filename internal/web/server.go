@@ -37,8 +37,15 @@ type Store interface {
 	CountTransactions(ctx context.Context) (int, error)
 	SpendingByCategory(ctx context.Context, from, to time.Time) ([]storage.CategorySpending, error)
 	ListTransactionsBetween(ctx context.Context, from, to time.Time) ([]domain.Transaction, error)
+	Recategorize(ctx context.Context, classify func(domain.Transaction) string, apply bool) (storage.RecategorizeResult, error)
 	Ping(ctx context.Context) error
 	SchemaVersion(ctx context.Context) (int, error)
+}
+
+// Classifier applies configured category rules to a transaction.
+type Classifier interface {
+	Classify(tx domain.Transaction) string
+	RuleCount() int
 }
 
 // SyncTrigger requests an asynchronous bank sync.
@@ -62,6 +69,7 @@ type Config struct {
 	ReadyTimeout   time.Duration
 	MetricsHandler http.Handler
 	AuthHandler    AuthorizationCallback
+	Classifier     Classifier
 }
 
 // Server renders dashboard pages and exposes health endpoints.
@@ -78,6 +86,7 @@ type Server struct {
 	readyTimeout   time.Duration
 	metricsHandler http.Handler
 	authHandler    AuthorizationCallback
+	classifier     Classifier
 
 	pages    map[string]*template.Template
 	partials *template.Template
@@ -118,6 +127,7 @@ func New(cfg Config, store Store, trigger SyncTrigger) (*Server, error) {
 		readyTimeout:   cfg.ReadyTimeout,
 		metricsHandler: cfg.MetricsHandler,
 		authHandler:    cfg.AuthHandler,
+		classifier:     cfg.Classifier,
 	}
 	if err := s.parseTemplates(); err != nil {
 		return nil, err
@@ -181,6 +191,7 @@ func (s *Server) routes() http.Handler {
 	app.HandleFunc("GET /api/analytics/projections", s.handleAnalyticsProjections)
 	app.HandleFunc("GET /api/analytics/liquidity", s.handleAnalyticsLiquidity)
 	app.HandleFunc("POST /sync", s.handleSyncAll)
+	app.HandleFunc("POST /recategorize", s.handleRecategorize)
 	app.HandleFunc("POST /connections/{id}/sync", s.handleSyncConnection)
 	app.HandleFunc("GET /partials/overview", s.handleOverviewPartial)
 	app.HandleFunc("GET /partials/alerts", s.handleAlertsPartial)

@@ -303,6 +303,25 @@ func (s *Server) handleSyncConnection(w http.ResponseWriter, r *http.Request) {
 	s.syncNotice(w, http.StatusAccepted, "info", "A sync is already queued or running.")
 }
 
+func (s *Server) handleRecategorize(w http.ResponseWriter, r *http.Request) {
+	if !validSyncRequest(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	if s.classifier == nil || s.classifier.RuleCount() == 0 {
+		s.syncNotice(w, http.StatusServiceUnavailable, "error", "No categorization rules are configured.")
+		return
+	}
+	result, err := s.store.Recategorize(r.Context(), s.classifier.Classify, true)
+	if err != nil {
+		s.logger.Error("recategorize transactions", "error", err)
+		s.syncNotice(w, http.StatusInternalServerError, "error", "Could not re-run category rules.")
+		return
+	}
+	message := fmt.Sprintf("Examined %d transactions; updated %d.", result.Examined, result.Changed)
+	s.syncNotice(w, http.StatusOK, "success", message)
+}
+
 func validSyncRequest(r *http.Request) bool {
 	return r.Header.Get(syncRequestHeader) == "1"
 }

@@ -265,6 +265,10 @@ func buildWorker(cfg *config.Config, store *storage.Store, engine *alerts.Engine
 }
 
 func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger, logger *slog.Logger, metrics *observability.Metrics, authHandler web.AuthorizationCallback) (*web.Server, error) {
+	classifier, err := buildCategoryClassifier(cfg)
+	if err != nil {
+		return nil, err
+	}
 	return web.New(web.Config{
 		Username:       cfg.Server.Username,
 		Password:       cfg.Server.Password,
@@ -273,6 +277,7 @@ func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger,
 		Logger:         logger,
 		MetricsHandler: metrics.Handler(),
 		AuthHandler:    authHandler,
+		Classifier:     classifier,
 	}, store, trigger)
 }
 

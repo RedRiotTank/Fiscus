@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/RedRiotTank/Fiscus/internal/categories"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"golang.org/x/crypto/bcrypt"
@@ -152,6 +153,10 @@ func newWebFixture(t *testing.T) *webFixture {
 		Now:      func() time.Time { return balanceAt.Add(time.Hour) },
 		MetricsHandler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			_, _ = w.Write([]byte("fiscus_test_metric 1\n"))
+		}),
+		Classifier: categories.MustNew([]categories.Rule{
+			{Category: "Dining", Pattern: "(?i)coffee|cafe"},
+			{Category: "Payroll", Pattern: "(?i)employer"},
 		}),
 	}, store, trigger)
 	if err != nil {
@@ -460,6 +465,56 @@ func TestSyncHandlers(t *testing.T) {
 	// GET is not allowed on POST-only routes.
 	if got := f.request(t, http.MethodGet, "/sync", true, nil).Code; got != http.StatusMethodNotAllowed {
 		t.Fatalf("GET /sync = %d, want 405", got)
+	}
+}
+
+func TestRecategorizeTrigger(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	headers := map[string]string{"X-Fiscus-Request": "1"}
+
+	page := f.request(t, http.MethodGet, "/transactions", true, nil)
+	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "Re-run Rules") {
+		t.Fatalf("transactions page missing re-run control: %d", page.Code)
+	}
+
+	forbidden := f.request(t, http.MethodPost, "/recategorize", true, nil)
+	if forbidden.Code != http.StatusForbidden {
+		t.Fatalf("missing header status = %d", forbidden.Code)
+	}
+	resp := f.request(t, http.MethodPost, "/recategorize", true, headers)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("recategorize status = %d body=%s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "updated 1") {
+		t.Fatalf("recategorize body = %s", resp.Body.String())
+	}
+	ctx := context.Background()
+	transactions, err := f.store.ListTransactions(ctx, storage.TransactionFilter{})
+	if err != nil {
+		t.Fatalf("ListTransactions: %v", err)
+	}
+	found := false
+	for _, tx := range transactions {
+		if tx.ExternalID == "tx-3" {
+			found = true
+			if tx.Category != "Dining" {
+				t.Fatalf("tx-3 category = %q, want Dining", tx.Category)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("tx-3 not found")
+	}
+}
+
+func TestRecategorizeWithoutRules(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	f.server.classifier = nil
+	resp := f.request(t, http.MethodPost, "/recategorize", true, map[string]string{"X-Fiscus-Request": "1"})
+	if resp.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", resp.Code)
 	}
 }
 

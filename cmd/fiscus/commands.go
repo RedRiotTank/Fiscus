@@ -15,8 +15,10 @@ import (
 
 	"github.com/RedRiotTank/Fiscus/internal/banking/enablebanking"
 	"github.com/RedRiotTank/Fiscus/internal/banking/gocardless"
+	"github.com/RedRiotTank/Fiscus/internal/categories"
 	"github.com/RedRiotTank/Fiscus/internal/config"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
+	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"github.com/RedRiotTank/Fiscus/internal/treasury"
 )
 
@@ -418,6 +420,86 @@ func runSync(args []string, stdout, stderr io.Writer) error {
 	}
 	_, _ = fmt.Fprintln(stdout, "Synchronization complete.")
 	return nil
+}
+
+func runRecategorize(args []string, stdout, stderr io.Writer) error {
+	fs := newFlagSet("recategorize", stderr)
+	configPath := fs.String("config", defaultConfigPath(), "path to YAML configuration")
+	dryRun := fs.Bool("dry-run", false, "preview proposed category changes without writing them")
+	force := fs.Bool("force", false, "apply proposed category changes immediately")
+	suggest := fs.Bool("suggest", false, "print YAML rule suggestions for frequent Uncategorized counterparties")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *dryRun && *force {
+		return errors.New("recategorize: --dry-run and --force cannot be used together")
+	}
+	cfg, err := loadConfig(*configPath)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := commandContext(5 * time.Minute)
+	defer cancel()
+	store, err := openStore(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			_, _ = fmt.Fprintf(stderr, "fiscus: close database: %v\n", err)
+		}
+	}()
+
+	if *suggest {
+		transactions, err := store.ListTransactionsBetween(ctx, time.Time{}, time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC))
+		if err != nil {
+			return fmt.Errorf("recategorize: load transactions for rule discovery: %w", err)
+		}
+		suggestions := categories.Suggest(transactions, 3)
+		if len(suggestions) == 0 {
+			_, _ = fmt.Fprintln(stdout, "No Uncategorized counterparties appeared at least 3 times.")
+			return nil
+		}
+		_, _ = fmt.Fprint(stdout, categories.YAML(suggestions))
+		return nil
+	}
+
+	if len(cfg.Rules) == 0 {
+		return errors.New("recategorize: no categorization rules are configured")
+	}
+	classifier, err := buildCategoryClassifier(cfg)
+	if err != nil {
+		return err
+	}
+	apply := *force && !*dryRun
+	result, err := store.Recategorize(ctx, classifier.Classify, apply)
+	if err != nil {
+		return fmt.Errorf("recategorize: %w", err)
+	}
+	printRecategorizeResult(stdout, result, apply)
+	return nil
+}
+
+func printRecategorizeResult(stdout io.Writer, result storage.RecategorizeResult, applied bool) {
+	if result.Changed == 0 {
+		_, _ = fmt.Fprintf(stdout, "Examined %d transactions; no category changes proposed.\n", result.Examined)
+		return
+	}
+	verb := "proposed"
+	if applied {
+		verb = "applied"
+	}
+	_, _ = fmt.Fprintf(stdout, "Examined %d transactions; %d category change(s) %s.\n\n",
+		result.Examined, result.Changed, verb)
+	w := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
+	_, _ = fmt.Fprintln(w, "FROM\tTO\tTRANSACTIONS")
+	for _, shift := range result.Shifts {
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%d\n", shift.From, shift.To, shift.Count)
+	}
+	_ = w.Flush()
+	if !applied {
+		_, _ = fmt.Fprintln(stdout, "\nDry run: no changes committed. Re-run with --force to apply.")
+	}
 }
 
 func runExport(args []string, stdout, stderr io.Writer) error {

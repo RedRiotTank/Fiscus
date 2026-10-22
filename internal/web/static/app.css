@@ -865,6 +865,19 @@ select {
   color: #bae6fd;
 }
 
+.toast {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 50;
+  max-width: min(420px, calc(100vw - 48px));
+  filter: drop-shadow(0 16px 30px rgba(0, 0, 0, 0.45));
+}
+
+.toast:empty {
+  display: none;
+}
+
 @media (max-width: 900px) {
   .grid-two {
     grid-template-columns: 1fr;

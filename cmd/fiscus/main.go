@@ -43,6 +43,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runInstitutions(args[1:], stdout, stderr)
 	case "sync":
 		return runSync(args[1:], stdout, stderr)
+	case "recategorize":
+		return runRecategorize(args[1:], stdout, stderr)
 	case "export":
 		return runExport(args[1:], stdout, stderr)
 	case "version", "-version", "--version":
@@ -65,6 +67,7 @@ Usage:
   fiscus connect        Create a GoCardless bank consent
   fiscus institutions   List available institutions for a country
   fiscus sync           Run one synchronization cycle and exit
+  fiscus recategorize   Re-run category rules over historical transactions
   fiscus export         Export transactions as CSV, hledger, or Beancount
   fiscus version        Print build information
 
