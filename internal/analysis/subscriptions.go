@@ -28,6 +28,10 @@ const (
 	monthlyMaxDays = 35
 	yearlyMinDays  = 350
 	yearlyMaxDays  = 380
+
+	// A subscription becomes inactive after this many days without a charge.
+	monthlyStaleDays = 45
+	yearlyStaleDays  = 390
 )
 
 // Subscription is a detected recurring outgoing charge.
@@ -198,11 +202,11 @@ func detectSubscription(group []domain.Transaction, now time.Time) (Subscription
 	}
 	frequency := Monthly
 	interval := average(gaps)
-	maxAgeDays := monthlyMaxDays + 10
+	maxAgeDays := monthlyStaleDays
 	if yearly {
 		frequency = Yearly
 		interval = average(gaps)
-		maxAgeDays = yearlyMaxDays + 20
+		maxAgeDays = yearlyStaleDays
 	}
 
 	last := group[len(group)-1]
@@ -212,7 +216,8 @@ func detectSubscription(group []domain.Transaction, now time.Time) (Subscription
 		previous = -group[len(group)-2].AmountMinor
 	}
 	priceIncrease := current - previous
-	active := !last.BookingDate.After(now) && last.BookingDate.AddDate(0, 0, maxAgeDays).After(now)
+	ageDays := int(now.Sub(last.BookingDate).Hours() / 24)
+	active := !last.BookingDate.After(now) && ageDays <= maxAgeDays
 	next := nextExpected(last.BookingDate, frequency)
 	return Subscription{
 		AccountID:           last.AccountID,

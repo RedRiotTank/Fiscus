@@ -17,6 +17,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/config"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/ingest"
+	"github.com/RedRiotTank/Fiscus/internal/monitoring"
 	"github.com/RedRiotTank/Fiscus/internal/observability"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"github.com/RedRiotTank/Fiscus/internal/telegram"
@@ -174,6 +175,14 @@ func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, 
 	if err != nil {
 		return nil, err
 	}
+	ghostRule, err := monitoring.NewGhostSubscriptionRule(analyzer, nil)
+	if err != nil {
+		return nil, err
+	}
+	inflowRule, err := monitoring.NewInflowRule(store, configuredInflows(cfg), nil)
+	if err != nil {
+		return nil, err
+	}
 	notifiers, err := buildNotifiers(cfg)
 	if err != nil {
 		return nil, err
@@ -197,7 +206,7 @@ func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, 
 		TxRules:       []alerts.TransactionRule{duplicateRule, anomalyRule},
 		BalanceRules:  []alerts.BalanceRule{liquidityRule},
 		ConsentRules:  []alerts.ConsentRule{consentRule},
-		AnalysisRules: []alerts.AnalysisRule{subscriptionRule, budgetRule},
+		AnalysisRules: []alerts.AnalysisRule{subscriptionRule, budgetRule, ghostRule, inflowRule},
 		Observer:      engineObserver,
 	})
 	if err != nil {
@@ -246,6 +255,20 @@ func configuredBudgets(cfg *config.Config) []budgets.Budget {
 			LimitMinor:      item.Limit,
 			Currency:        item.Currency,
 			NotifyAtPercent: item.NotifyAtPercent,
+		})
+	}
+	return out
+}
+
+func configuredInflows(cfg *config.Config) []monitoring.Inflow {
+	out := make([]monitoring.Inflow, 0, len(cfg.ExpectedInflows))
+	for _, item := range cfg.ExpectedInflows {
+		out = append(out, monitoring.Inflow{
+			Name:         item.Name,
+			AmountMin:    item.AmountMin,
+			Currency:     item.Currency,
+			ExpectedDays: item.ExpectedDays,
+			GraceDays:    item.GraceDays,
 		})
 	}
 	return out

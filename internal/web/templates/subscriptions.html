@@ -69,7 +69,7 @@
               <td class="right amount debit">{{money .AmountMinor .Currency}}</td>
               <td class="right amount">{{money .MonthlyMinor .Currency}}</td>
               <td class="right amount">{{money .AnnualMinor .Currency}}</td>
-              <td>{{if .Active}}<span class="badge ok">active</span>{{else}}<span class="badge muted">inactive</span>{{end}}</td>
+              <td>{{if .Active}}<span class="badge ok">active</span>{{else}}<span class="badge muted">inactive / potential ghost</span>{{end}}</td>
             </tr>
           {{end}}
         </tbody>
