@@ -9,7 +9,11 @@
   <title>{{.Title}} · Fiscus</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230ea5e9'/%3E%3Cpath d='M20 18h26v8H29v8h14v8H29v12h-9z' fill='%23031018'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/analytics.css">
   <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/chart.umd.min.js" defer></script>
+  <script src="/static/analytics-core.js" defer></script>
+  <script src="/static/analytics-spending.js" defer></script>
 </head>
 <body hx-headers='{"X-Fiscus-Request":"1"}'>
   <header class="topbar">
@@ -23,6 +27,7 @@
       </a>
       <nav class="nav" aria-label="Main navigation">
         <a href="/" class="{{if eq .Active "dashboard"}}active{{end}}">Overview</a>
+        <a href="/analytics" class="{{if eq .Active "analytics"}}active{{end}}">Analytics</a>
         <a href="/transactions" class="{{if eq .Active "transactions"}}active{{end}}">Transactions</a>
         <a href="/subscriptions" class="{{if eq .Active "subscriptions"}}active{{end}}">Subscriptions</a>
         <a href="/alerts" class="{{if eq .Active "alerts"}}active{{end}}">Alerts</a>
