@@ -25,6 +25,8 @@ type Config struct {
 	Rules           []CategoryRule         `yaml:"rules"`
 	Budgets         []BudgetConfig         `yaml:"budgets"`
 	ExpectedInflows []ExpectedInflowConfig `yaml:"expected_inflows"`
+	Backups         BackupsConfig          `yaml:"backups"`
+	Webhooks        []WebhookConfig        `yaml:"webhooks"`
 }
 
 // CategoryRule tags a transaction whose counterparty or description matches
@@ -52,6 +54,22 @@ type ExpectedInflowConfig struct {
 	Currency     string `yaml:"currency"`
 	ExpectedDays []int  `yaml:"expected_days"`
 	GraceDays    int    `yaml:"grace_days"`
+}
+
+// BackupsConfig controls optional scheduled backups and Telegram delivery.
+type BackupsConfig struct {
+	Enabled   bool     `yaml:"enabled"`
+	Telegram  bool     `yaml:"telegram"`
+	Directory string   `yaml:"directory"`
+	Interval  Duration `yaml:"interval"`
+}
+
+// WebhookConfig describes a generic outbound JSON webhook. Secret is optional;
+// when set it is used to compute an HMAC-SHA256 signature.
+type WebhookConfig struct {
+	URL    string   `yaml:"url"`
+	Secret string   `yaml:"secret"`
+	Events []string `yaml:"events"`
 }
 
 // ServerConfig controls the HTTP(S) dashboard.
@@ -180,6 +198,10 @@ func Default() *Config {
 			Telegram: TelegramConfig{
 				NotifyUncategorized: true,
 			},
+		},
+		Backups: BackupsConfig{
+			Directory: "backups",
+			Interval:  Duration(7 * 24 * time.Hour),
 		},
 		Logging: LoggingConfig{Level: "info", Format: "text"},
 	}
@@ -337,6 +359,30 @@ func (c *Config) Validate() error {
 	}
 	if c.Logging.Format != "text" && c.Logging.Format != "json" {
 		errs = append(errs, fmt.Errorf("logging.format %q must be text or json", c.Logging.Format))
+	}
+	if strings.TrimSpace(c.Backups.Directory) == "" {
+		errs = append(errs, errors.New("backups.directory is required"))
+	}
+	if c.Backups.Interval <= 0 {
+		errs = append(errs, errors.New("backups.interval must be positive"))
+	}
+	if c.Backups.Telegram && !c.Backups.Enabled {
+		errs = append(errs, errors.New("backups.telegram requires backups.enabled"))
+	}
+	for i, hook := range c.Webhooks {
+		if !validHTTPURL(hook.URL) {
+			errs = append(errs, fmt.Errorf("webhooks[%d].url must be an absolute http(s) URL", i))
+		}
+		if len(hook.Events) == 0 {
+			errs = append(errs, fmt.Errorf("webhooks[%d].events must not be empty", i))
+		}
+		for j, event := range hook.Events {
+			switch strings.TrimSpace(event) {
+			case "transaction.created", "alert.triggered", "sync.completed":
+			default:
+				errs = append(errs, fmt.Errorf("webhooks[%d].events[%d] %q is not supported", i, j, event))
+			}
+		}
 	}
 	for i, inflow := range c.ExpectedInflows {
 		if strings.TrimSpace(inflow.Name) == "" {

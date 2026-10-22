@@ -13,6 +13,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/RedRiotTank/Fiscus/internal/backup"
 	"github.com/RedRiotTank/Fiscus/internal/banking/enablebanking"
 	"github.com/RedRiotTank/Fiscus/internal/banking/gocardless"
 	"github.com/RedRiotTank/Fiscus/internal/categories"
@@ -398,7 +399,12 @@ func runSync(args []string, stdout, stderr io.Writer) error {
 			logger.Error("close database", "error", err)
 		}
 	}()
-	engine, err := buildEngine(cfg, store, logger, nil)
+	sink, err := buildEventSink(cfg, logger)
+	if err != nil {
+		return err
+	}
+	defer sink.Wait()
+	engine, err := buildEngine(cfg, store, logger, nil, sink)
 	if err != nil {
 		return err
 	}
@@ -406,7 +412,7 @@ func runSync(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	worker, err := buildWorker(cfg, store, engine, logger, nil, bank)
+	worker, err := buildWorker(cfg, store, engine, logger, nil, bank, sink)
 	if err != nil {
 		return err
 	}
@@ -419,6 +425,41 @@ func runSync(args []string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("sync: %w", err)
 	}
 	_, _ = fmt.Fprintln(stdout, "Synchronization complete.")
+	return nil
+}
+
+func runBackup(args []string, stdout, stderr io.Writer) error {
+	fs := newFlagSet("backup", stderr)
+	configPath := fs.String("config", defaultConfigPath(), "path to YAML configuration")
+	out := fs.String("out", "", "output .sqlite.gz path (default: timestamped file in backups.directory)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := loadConfig(*configPath)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := commandContext(10 * time.Minute)
+	defer cancel()
+	store, err := openStore(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			_, _ = fmt.Fprintf(stderr, "fiscus: close database: %v\n", err)
+		}
+	}()
+	path := strings.TrimSpace(*out)
+	if path == "" {
+		path = backup.DefaultPath(cfg.Backups.Directory, time.Now().UTC())
+	}
+	result, err := backup.CreateGzip(ctx, store, path)
+	if err != nil {
+		return fmt.Errorf("backup: %w", err)
+	}
+	_, _ = fmt.Fprintf(stdout, "Backup written to %s (%d bytes, %d pages).\n",
+		result.Path, result.CompressedBytes, result.Pages)
 	return nil
 }
 

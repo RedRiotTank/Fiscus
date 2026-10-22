@@ -16,12 +16,14 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/categories"
 	"github.com/RedRiotTank/Fiscus/internal/config"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
+	"github.com/RedRiotTank/Fiscus/internal/events"
 	"github.com/RedRiotTank/Fiscus/internal/ingest"
 	"github.com/RedRiotTank/Fiscus/internal/monitoring"
 	"github.com/RedRiotTank/Fiscus/internal/observability"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"github.com/RedRiotTank/Fiscus/internal/telegram"
 	"github.com/RedRiotTank/Fiscus/internal/web"
+	"github.com/RedRiotTank/Fiscus/internal/webhooks"
 )
 
 type syncTrigger = web.SyncTrigger
@@ -141,7 +143,7 @@ func buildTelegramBot(cfg *config.Config, store *storage.Store, worker *ingest.W
 	})
 }
 
-func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, metrics *observability.Metrics) (*alerts.Engine, error) {
+func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, metrics *observability.Metrics, sink events.Sink) (*alerts.Engine, error) {
 	thresholds, err := cfg.LiquidityThresholdsMinor()
 	if err != nil {
 		return nil, err
@@ -208,6 +210,7 @@ func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, 
 		ConsentRules:  []alerts.ConsentRule{consentRule},
 		AnalysisRules: []alerts.AnalysisRule{subscriptionRule, budgetRule, ghostRule, inflowRule},
 		Observer:      engineObserver,
+		Events:        sink,
 	})
 	if err != nil {
 		return nil, err
@@ -285,7 +288,20 @@ func configuredCategories(cfg *config.Config) []string {
 	return out
 }
 
-func buildWorker(cfg *config.Config, store *storage.Store, engine *alerts.Engine, logger *slog.Logger, metrics *observability.Metrics, bank ingest.Bank) (*ingest.Worker, error) {
+func buildEventSink(cfg *config.Config, logger *slog.Logger) (*webhooks.Dispatcher, error) {
+	if len(cfg.Webhooks) == 0 {
+		return nil, nil
+	}
+	configs := make([]webhooks.Config, 0, len(cfg.Webhooks))
+	for _, hook := range cfg.Webhooks {
+		configs = append(configs, webhooks.Config{
+			URL: hook.URL, Secret: hook.Secret, Events: hook.Events,
+		})
+	}
+	return webhooks.New(configs, logger)
+}
+
+func buildWorker(cfg *config.Config, store *storage.Store, engine *alerts.Engine, logger *slog.Logger, metrics *observability.Metrics, bank ingest.Bank, sink events.Sink) (*ingest.Worker, error) {
 	if bank == nil {
 		return nil, nil
 	}
@@ -315,6 +331,7 @@ func buildWorker(cfg *config.Config, store *storage.Store, engine *alerts.Engine
 	if metrics != nil {
 		worker.SetObserver(metrics)
 	}
+	worker.SetEventSink(sink)
 	return worker, nil
 }
 

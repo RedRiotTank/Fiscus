@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/domain"
+	"github.com/RedRiotTank/Fiscus/internal/events"
 )
 
 // AlertStore persists alerts and their delivery state.
@@ -39,6 +40,7 @@ type EngineConfig struct {
 	ConsentRules  []ConsentRule
 	AnalysisRules []AnalysisRule
 	Observer      EngineObserver
+	Events        events.Sink
 }
 
 // Engine runs transaction and balance rules, persists de-duplicated alerts, and
@@ -53,6 +55,7 @@ type Engine struct {
 	consentRules  []ConsentRule
 	analysisRules []AnalysisRule
 	observer      EngineObserver
+	events        events.Sink
 }
 
 // NewEngine validates the configuration and returns an Engine.
@@ -76,6 +79,7 @@ func NewEngine(cfg EngineConfig) (*Engine, error) {
 		consentRules:  cfg.ConsentRules,
 		analysisRules: cfg.AnalysisRules,
 		observer:      cfg.Observer,
+		events:        cfg.Events,
 	}, nil
 }
 
@@ -197,6 +201,13 @@ func (e *Engine) persistAndDispatch(ctx context.Context, alert *domain.Alert) er
 	}
 	if e.observer != nil {
 		e.observer.ObserveAlert(*alert)
+	}
+	if e.events != nil {
+		e.events.Emit(ctx, events.AlertTriggered, map[string]any{
+			"id": alert.ID, "rule": alert.Rule, "severity": alert.Severity,
+			"title": alert.Title, "message": alert.Message,
+			"account_id": alert.AccountID, "dedup_key": alert.DedupKey,
+		})
 	}
 	if e.dispatcher == nil {
 		return nil

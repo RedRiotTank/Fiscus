@@ -85,6 +85,32 @@ func (fakeCategorizer) Classify(tx domain.Transaction) string {
 	return "Uncategorized"
 }
 
+type fakeEvent struct {
+	name string
+	data any
+}
+
+type fakeEventSink struct {
+	mu     sync.Mutex
+	events []fakeEvent
+}
+
+func (f *fakeEventSink) Emit(_ context.Context, event string, data any) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.events = append(f.events, fakeEvent{name: event, data: data})
+}
+
+func (f *fakeEventSink) names() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]string, 0, len(f.events))
+	for _, event := range f.events {
+		out = append(out, event.name)
+	}
+	return out
+}
+
 type fakeNotifier struct {
 	mu sync.Mutex
 	tx []domain.Transaction
@@ -396,6 +422,32 @@ func TestWorkerNotifiesNewlyBookedUncategorizedTransactions(t *testing.T) {
 	}
 	if notifier.tx[0].ExternalID != "tx-3" || notifier.tx[0].Category != "Uncategorized" {
 		t.Fatalf("notified transaction = %+v", notifier.tx[0])
+	}
+}
+
+func TestWorkerEmitsTransactionAndSyncEvents(t *testing.T) {
+	t.Parallel()
+	bank := standardBank()
+	eval := &fakeEvaluator{}
+	w, _, _ := newIngestTest(t, bank, eval)
+	sink := &fakeEventSink{}
+	w.SetEventSink(sink)
+	if err := w.SyncAll(context.Background()); err != nil {
+		t.Fatalf("SyncAll: %v", err)
+	}
+	names := sink.names()
+	transactions := 0
+	completed := 0
+	for _, name := range names {
+		switch name {
+		case "transaction.created":
+			transactions++
+		case "sync.completed":
+			completed++
+		}
+	}
+	if transactions != 3 || completed != 1 {
+		t.Fatalf("events = %v", names)
 	}
 }
 
