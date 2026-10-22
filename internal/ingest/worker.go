@@ -46,6 +46,12 @@ type Evaluator interface {
 	OnBalance(ctx context.Context, account domain.Account) ([]domain.Alert, error)
 }
 
+// ConsentEvaluator is an optional extension for rules that inspect connection
+// consent validity after a sync.
+type ConsentEvaluator interface {
+	OnConsentCheck(ctx context.Context) ([]domain.Alert, error)
+}
+
 // Observer receives sync telemetry. Implementations must be safe for concurrent
 // use. A nil observer disables observation.
 type Observer interface {
@@ -227,6 +233,7 @@ func (w *Worker) SyncAll(ctx context.Context) error {
 			errs = append(errs, fmt.Errorf("requisition %s: %w", c.RequisitionID, err))
 		}
 	}
+	w.evaluateConsents(ctx)
 	return errors.Join(errs...)
 }
 
@@ -236,7 +243,19 @@ func (w *Worker) SyncConnection(ctx context.Context, requisitionID string) error
 	if err != nil {
 		return fmt.Errorf("ingest: load connection %q: %w", requisitionID, err)
 	}
-	return w.syncConnection(ctx, connection)
+	err = w.syncConnection(ctx, connection)
+	w.evaluateConsents(ctx)
+	return err
+}
+
+func (w *Worker) evaluateConsents(ctx context.Context) {
+	evaluator, ok := w.evaluator.(ConsentEvaluator)
+	if !ok {
+		return
+	}
+	if _, err := evaluator.OnConsentCheck(ctx); err != nil {
+		w.logger.Error("consent expiration rules failed", "error", err)
+	}
 }
 
 func (w *Worker) syncConnection(ctx context.Context, connection domain.Connection) error {
@@ -265,6 +284,9 @@ func (w *Worker) syncConnection(ctx context.Context, connection domain.Connectio
 	}
 	if requisition.AgreementID != "" {
 		connection.AgreementID = requisition.AgreementID
+	}
+	if requisition.ConsentExpiresAt != nil {
+		connection.ConsentExpiresAt = requisition.ConsentExpiresAt
 	}
 	if connection.InstitutionID == "" {
 		connection.InstitutionID = requisition.InstitutionID

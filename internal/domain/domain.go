@@ -24,18 +24,19 @@ const (
 
 // Connection is a GoCardless requisition (one bank consent) tracked locally.
 type Connection struct {
-	ID              int64
-	RequisitionID   string
-	InstitutionID   string
-	InstitutionName string
-	Status          string
-	Link            string
-	Reference       string
-	AgreementID     string
-	LastError       string
-	LastSyncedAt    *time.Time
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID               int64
+	RequisitionID    string
+	InstitutionID    string
+	InstitutionName  string
+	Status           string
+	Link             string
+	Reference        string
+	AgreementID      string
+	LastError        string
+	ConsentExpiresAt *time.Time
+	LastSyncedAt     *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // Linked reports whether the requisition can provide account data.
