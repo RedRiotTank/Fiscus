@@ -70,6 +70,7 @@ type Transaction struct {
 	ValueDate    *time.Time
 	Counterparty string
 	Description  string
+	Category     string
 	Status       string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time

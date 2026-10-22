@@ -46,6 +46,34 @@ func TestDefaultConfig(t *testing.T) {
 	}
 }
 
+func TestLoadCategoryRules(t *testing.T) {
+	path := writeConfig(t, `
+rules:
+  - category: Utilities
+    pattern: "(?i)IBERDROLA|ENDESA|AGUAS"
+  - category: Payroll
+    pattern: "(?i)NOMINA|SALARY"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Rules) != 2 || cfg.Rules[0].Category != "Utilities" || cfg.Rules[1].Pattern != "(?i)NOMINA|SALARY" {
+		t.Fatalf("rules = %+v", cfg.Rules)
+	}
+}
+
+func TestInvalidCategoryRuleRejected(t *testing.T) {
+	path := writeConfig(t, `
+rules:
+  - category: Broken
+    pattern: "("
+`)
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected invalid regex error")
+	}
+}
+
 func TestLoadEnableBankingConfig(t *testing.T) {
 	path := writeConfig(t, `
 provider: enablebanking

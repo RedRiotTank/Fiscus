@@ -272,6 +272,18 @@ configured per currency as decimal strings in major units, for example
 environment. They are parsed into integer minor units at startup and must be
 positive.
 
+Transaction categories are defined with top-level `rules` in YAML. Rules are
+evaluated in order against the counterparty and description, and the first match
+wins. Unmatched transactions become `Uncategorized`.
+
+```yaml
+rules:
+  - category: "Utilities"
+    pattern: "(?i)IBERDROLA|ENDESA|AGUAS"
+  - category: "Payroll"
+    pattern: "(?i)NOMINA|SALARY"
+```
+
 Set either `server.password` or `server.password_hash` (bcrypt), never both. If
 neither a username nor a password is set, the dashboard is unauthenticated, which
 is only appropriate behind a trusted reverse proxy. `CONNECT` requests to the
@@ -292,6 +304,9 @@ not be public.
    than the configured percentage (default 30%) with enough history.
 3. **Liquidity guard**: available balance below the configured per-currency
    threshold.
+4. **Consent expiration**: a linked PSD2 consent is within 14 or 3 days of
+   expiring. The alert includes a renewal link and is deduplicated per
+   connection, expiry, and threshold.
 
 Alerts are persisted before dispatch. A deterministic de-duplication key prevents
 the same condition from notifying twice. Telegram and Discord deliveries are

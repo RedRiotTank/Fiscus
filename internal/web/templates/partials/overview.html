@@ -20,6 +20,29 @@
   <section class="panel">
     <header class="panel-head">
       <div>
+        <h2>Spending by category</h2>
+        <p class="panel-sub">Booked debits in {{.SpendingMonth}}</p>
+      </div>
+    </header>
+    {{if .CategorySpending}}
+      <ul class="category-spending">
+        {{range .CategorySpending}}
+          <li>
+            <span class="badge category">{{.Category}}</span>
+            <strong class="amount debit">{{money .Minor .Currency}}</strong>
+          </li>
+        {{end}}
+      </ul>
+    {{else}}
+      <div class="empty compact">
+        <p>No booked spending this month yet.</p>
+      </div>
+    {{end}}
+  </section>
+
+  <section class="panel">
+    <header class="panel-head">
+      <div>
         <h2>Accounts</h2>
         <p class="panel-sub">Cached balances from the latest sync</p>
       </div>

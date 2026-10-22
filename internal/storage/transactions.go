@@ -12,7 +12,7 @@ import (
 )
 
 const transactionColumns = `id, account_id, external_id, amount_minor, currency, booking_date,
-	value_date, counterparty, description, status, created_at, updated_at`
+	value_date, counterparty, description, category, status, created_at, updated_at`
 
 // TransactionFilter controls transaction listing.
 type TransactionFilter struct {
@@ -41,7 +41,7 @@ func scanTransaction(row rowScanner) (domain.Transaction, error) {
 	)
 	if err := row.Scan(
 		&t.ID, &t.AccountID, &t.ExternalID, &t.AmountMinor, &t.Currency, &booking,
-		&valueDate, &t.Counterparty, &t.Description, &t.Status, &createdAt, &updatedAt,
+		&valueDate, &t.Counterparty, &t.Description, &t.Category, &t.Status, &createdAt, &updatedAt,
 	); err != nil {
 		return domain.Transaction{}, err
 	}
@@ -78,6 +78,9 @@ func (s *Store) UpsertTransaction(ctx context.Context, t *domain.Transaction) (i
 	if t.Status == "" {
 		t.Status = domain.TransactionStatusBooked
 	}
+	if strings.TrimSpace(t.Category) == "" {
+		t.Category = "Uncategorized"
+	}
 	if t.BookingDate.IsZero() {
 		t.BookingDate = nowUTC()
 	}
@@ -110,10 +113,10 @@ func (s *Store) UpsertTransaction(ctx context.Context, t *domain.Transaction) (i
 		res, execErr := tx.ExecContext(ctx, `
 			INSERT INTO transactions (
 				account_id, external_id, amount_minor, currency, booking_date, value_date,
-				counterparty, description, status, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				counterparty, description, category, status, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			t.AccountID, t.ExternalID, t.AmountMinor, t.Currency, encodeTime(t.BookingDate),
-			encodeNullTime(t.ValueDate), t.Counterparty, t.Description, t.Status,
+			encodeNullTime(t.ValueDate), t.Counterparty, t.Description, t.Category, t.Status,
 			encodeTime(t.CreatedAt), encodeTime(t.UpdatedAt),
 		)
 		if execErr != nil {
@@ -138,10 +141,10 @@ func (s *Store) UpsertTransaction(ctx context.Context, t *domain.Transaction) (i
 		_, execErr := tx.ExecContext(ctx, `
 			UPDATE transactions SET
 				amount_minor = ?, currency = ?, booking_date = ?, value_date = ?,
-				counterparty = ?, description = ?, status = ?, updated_at = ?
+				counterparty = ?, description = ?, category = ?, status = ?, updated_at = ?
 			WHERE id = ?`,
 			t.AmountMinor, t.Currency, encodeTime(t.BookingDate), encodeNullTime(t.ValueDate),
-			t.Counterparty, t.Description, t.Status, encodeTime(t.UpdatedAt), existingID,
+			t.Counterparty, t.Description, t.Category, t.Status, encodeTime(t.UpdatedAt), existingID,
 		)
 		if execErr != nil {
 			return false, false, fmt.Errorf("storage: update transaction: %w", execErr)
@@ -196,6 +199,73 @@ func (s *Store) ListTransactions(ctx context.Context, filter TransactionFilter) 
 // RecentTransactions returns the newest transactions across all accounts.
 func (s *Store) RecentTransactions(ctx context.Context, limit int) ([]domain.Transaction, error) {
 	return s.ListTransactions(ctx, TransactionFilter{Limit: limit})
+}
+
+// CategorySpending is the absolute booked spending for one category and
+// currency within a period.
+type CategorySpending struct {
+	Category string
+	Currency string
+	Minor    int64
+}
+
+// SpendingByCategory aggregates booked debits in [from, to) by category and
+// currency. Returned amounts are positive.
+func (s *Store) SpendingByCategory(ctx context.Context, from, to time.Time) ([]CategorySpending, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT COALESCE(NULLIF(TRIM(category), ''), 'Uncategorized'), currency,
+			COALESCE(SUM(-amount_minor), 0)
+		FROM transactions
+		WHERE amount_minor < 0 AND status = ? AND booking_date >= ? AND booking_date < ?
+		GROUP BY 1, 2
+		ORDER BY 1 ASC, 2 ASC`,
+		domain.TransactionStatusBooked, encodeTime(from), encodeTime(to),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("storage: spending by category: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []CategorySpending
+	for rows.Next() {
+		var item CategorySpending
+		if err := rows.Scan(&item.Category, &item.Currency, &item.Minor); err != nil {
+			return nil, fmt.Errorf("storage: scan category spending: %w", err)
+		}
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("storage: iterate category spending: %w", err)
+	}
+	return out, nil
+}
+
+// ListTransactionsBetween returns booked and pending transactions with booking
+// dates in [from, to), oldest first. It is used by offline analysis and exports.
+func (s *Store) ListTransactionsBetween(ctx context.Context, from, to time.Time) ([]domain.Transaction, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+transactionColumns+` FROM transactions
+		WHERE booking_date >= ? AND booking_date < ?
+		ORDER BY booking_date ASC, id ASC`,
+		encodeTime(from), encodeTime(to),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("storage: list transactions between: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.Transaction
+	for rows.Next() {
+		t, err := scanTransaction(rows)
+		if err != nil {
+			return nil, fmt.Errorf("storage: scan transaction: %w", err)
+		}
+		out = append(out, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("storage: iterate transactions: %w", err)
+	}
+	return out, nil
 }
 
 // CountTransactions returns the total number of stored transactions.

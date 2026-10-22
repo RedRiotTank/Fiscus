@@ -76,6 +76,15 @@ func (f *fakeBank) GetTransactions(_ context.Context, id string, from, to time.T
 	return &txs, nil
 }
 
+type fakeCategorizer struct{}
+
+func (fakeCategorizer) Classify(tx domain.Transaction) string {
+	if strings.EqualFold(tx.Counterparty, "Shop") {
+		return "Shopping"
+	}
+	return "Uncategorized"
+}
+
 type fakeEvaluator struct {
 	mu           sync.Mutex
 	tx           []domain.Transaction
@@ -148,6 +157,7 @@ func newIngestTest(t *testing.T, bank *fakeBank, eval Evaluator) (*Worker, *stor
 	cfg.Now = func() time.Time { return now }
 	cfg.SyncOnStart = false
 	cfg.SyncTimeout = 10 * time.Second
+	cfg.Categorizer = fakeCategorizer{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	w, err := New(bank, store, eval, logger, cfg)
 	if err != nil {
@@ -231,6 +241,11 @@ func TestWorkerSyncPersistsAndEvaluates(t *testing.T) {
 	}
 	if len(txs) != 3 {
 		t.Fatalf("transactions = %d, want 3", len(txs))
+	}
+	for _, tx := range txs {
+		if tx.Counterparty == "Shop" && tx.Category != "Shopping" {
+			t.Fatalf("category for %s = %q, want Shopping", tx.ExternalID, tx.Category)
+		}
 	}
 	if got := eval.txCount(); got != 2 {
 		t.Fatalf("evaluated transactions = %d, want 2", got)

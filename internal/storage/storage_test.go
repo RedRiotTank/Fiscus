@@ -298,6 +298,7 @@ func TestTransactionIdempotencyAndPromotion(t *testing.T) {
 		BookingDate:  booking,
 		Counterparty: "Coffee Shop",
 		Description:  "Flat white",
+		Category:     "Dining",
 		Status:       domain.TransactionStatusPending,
 	}
 	inserted, promoted, err := s.UpsertTransaction(ctx, &tx)
@@ -337,7 +338,7 @@ func TestTransactionIdempotencyAndPromotion(t *testing.T) {
 	if len(list) != 1 {
 		t.Fatalf("transactions = %d, want 1", len(list))
 	}
-	if list[0].Description != "updated" || list[0].Status != domain.TransactionStatusBooked {
+	if list[0].Description != "updated" || list[0].Status != domain.TransactionStatusBooked || list[0].Category != "Dining" {
 		t.Fatalf("unexpected transaction: %+v", list[0])
 	}
 	if !list[0].CreatedAt.Equal(tx.CreatedAt) {
@@ -358,6 +359,43 @@ func TestTransactionIdempotencyAndPromotion(t *testing.T) {
 	}
 	if len(recent) != 1 {
 		t.Fatalf("recent = %d, want 1", len(recent))
+	}
+}
+
+func TestSpendingByCategory(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	ctx := context.Background()
+	c := seedConnection(t, s)
+	seedAccount(t, s, c.ID)
+
+	day := time.Date(2026, 3, 5, 12, 0, 0, 0, time.UTC)
+	transactions := []domain.Transaction{
+		{AccountID: "acc-1", ExternalID: "spend-1", AmountMinor: -1000, Currency: "EUR", BookingDate: day, Category: "Utilities", Status: domain.TransactionStatusBooked},
+		{AccountID: "acc-1", ExternalID: "spend-2", AmountMinor: -2500, Currency: "EUR", BookingDate: day.Add(24 * time.Hour), Category: "Utilities", Status: domain.TransactionStatusBooked},
+		{AccountID: "acc-1", ExternalID: "spend-3", AmountMinor: -500, Currency: "EUR", BookingDate: day, Category: "Dining", Status: domain.TransactionStatusBooked},
+		{AccountID: "acc-1", ExternalID: "spend-4", AmountMinor: 9000, Currency: "EUR", BookingDate: day, Category: "Payroll", Status: domain.TransactionStatusBooked},
+		{AccountID: "acc-1", ExternalID: "spend-5", AmountMinor: -700, Currency: "EUR", BookingDate: day.AddDate(0, 1, 0), Category: "Utilities", Status: domain.TransactionStatusBooked},
+	}
+	for i := range transactions {
+		if _, _, err := s.UpsertTransaction(ctx, &transactions[i]); err != nil {
+			t.Fatalf("UpsertTransaction: %v", err)
+		}
+	}
+
+	spending, err := s.SpendingByCategory(ctx, time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("SpendingByCategory: %v", err)
+	}
+	if len(spending) != 2 {
+		t.Fatalf("spending = %+v, want 2 rows", spending)
+	}
+	got := map[string]int64{}
+	for _, item := range spending {
+		got[item.Category] = item.Minor
+	}
+	if got["Utilities"] != 3500 || got["Dining"] != 500 {
+		t.Fatalf("spending = %+v", spending)
 	}
 }
 

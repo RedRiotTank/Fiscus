@@ -34,6 +34,7 @@ type Store interface {
 	ListConnections(ctx context.Context) ([]domain.Connection, error)
 	GetConnectionByID(ctx context.Context, id int64) (domain.Connection, error)
 	CountTransactions(ctx context.Context) (int, error)
+	SpendingByCategory(ctx context.Context, from, to time.Time) ([]storage.CategorySpending, error)
 	Ping(ctx context.Context) error
 	SchemaVersion(ctx context.Context) (int, error)
 }
