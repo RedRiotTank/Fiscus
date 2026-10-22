@@ -52,6 +52,11 @@ type ConsentEvaluator interface {
 	OnConsentCheck(ctx context.Context) ([]domain.Alert, error)
 }
 
+// AnalysisEvaluator is an optional extension for historical analysis rules.
+type AnalysisEvaluator interface {
+	OnAnalysis(ctx context.Context) ([]domain.Alert, error)
+}
+
 // Categorizer assigns a category to a normalized transaction. A nil
 // categorizer leaves transactions in the storage default category.
 type Categorizer interface {
@@ -241,6 +246,7 @@ func (w *Worker) SyncAll(ctx context.Context) error {
 		}
 	}
 	w.evaluateConsents(ctx)
+	w.evaluateAnalysis(ctx)
 	return errors.Join(errs...)
 }
 
@@ -252,6 +258,7 @@ func (w *Worker) SyncConnection(ctx context.Context, requisitionID string) error
 	}
 	err = w.syncConnection(ctx, connection)
 	w.evaluateConsents(ctx)
+	w.evaluateAnalysis(ctx)
 	return err
 }
 
@@ -262,6 +269,16 @@ func (w *Worker) evaluateConsents(ctx context.Context) {
 	}
 	if _, err := evaluator.OnConsentCheck(ctx); err != nil {
 		w.logger.Error("consent expiration rules failed", "error", err)
+	}
+}
+
+func (w *Worker) evaluateAnalysis(ctx context.Context) {
+	evaluator, ok := w.evaluator.(AnalysisEvaluator)
+	if !ok {
+		return
+	}
+	if _, err := evaluator.OnAnalysis(ctx); err != nil {
+		w.logger.Error("historical analysis rules failed", "error", err)
 	}
 }
 

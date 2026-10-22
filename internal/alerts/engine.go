@@ -30,27 +30,29 @@ type EngineObserver interface {
 
 // EngineConfig configures an Engine.
 type EngineConfig struct {
-	Store        AlertStore
-	Dispatcher   AlertDispatcher
-	Logger       *slog.Logger
-	Now          func() time.Time
-	TxRules      []TransactionRule
-	BalanceRules []BalanceRule
-	ConsentRules []ConsentRule
-	Observer     EngineObserver
+	Store         AlertStore
+	Dispatcher    AlertDispatcher
+	Logger        *slog.Logger
+	Now           func() time.Time
+	TxRules       []TransactionRule
+	BalanceRules  []BalanceRule
+	ConsentRules  []ConsentRule
+	AnalysisRules []AnalysisRule
+	Observer      EngineObserver
 }
 
 // Engine runs transaction and balance rules, persists de-duplicated alerts, and
 // dispatches them.
 type Engine struct {
-	store        AlertStore
-	dispatcher   AlertDispatcher
-	logger       *slog.Logger
-	now          func() time.Time
-	txRules      []TransactionRule
-	balanceRules []BalanceRule
-	consentRules []ConsentRule
-	observer     EngineObserver
+	store         AlertStore
+	dispatcher    AlertDispatcher
+	logger        *slog.Logger
+	now           func() time.Time
+	txRules       []TransactionRule
+	balanceRules  []BalanceRule
+	consentRules  []ConsentRule
+	analysisRules []AnalysisRule
+	observer      EngineObserver
 }
 
 // NewEngine validates the configuration and returns an Engine.
@@ -65,14 +67,15 @@ func NewEngine(cfg EngineConfig) (*Engine, error) {
 		cfg.Now = time.Now
 	}
 	return &Engine{
-		store:        cfg.Store,
-		dispatcher:   cfg.Dispatcher,
-		logger:       cfg.Logger,
-		now:          cfg.Now,
-		txRules:      cfg.TxRules,
-		balanceRules: cfg.BalanceRules,
-		consentRules: cfg.ConsentRules,
-		observer:     cfg.Observer,
+		store:         cfg.Store,
+		dispatcher:    cfg.Dispatcher,
+		logger:        cfg.Logger,
+		now:           cfg.Now,
+		txRules:       cfg.TxRules,
+		balanceRules:  cfg.BalanceRules,
+		consentRules:  cfg.ConsentRules,
+		analysisRules: cfg.AnalysisRules,
+		observer:      cfg.Observer,
 	}, nil
 }
 
@@ -139,6 +142,29 @@ func (e *Engine) OnConsentCheck(ctx context.Context) ([]domain.Alert, error) {
 		errs     []error
 	)
 	for _, rule := range e.consentRules {
+		alerts, err := rule.Evaluate(ctx)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("rule %s: %w", rule.Name(), err))
+			continue
+		}
+		for i := range alerts {
+			alert := alerts[i]
+			produced = append(produced, alert)
+			if err := e.persistAndDispatch(ctx, &produced[len(produced)-1]); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	return produced, errors.Join(errs...)
+}
+
+// OnAnalysis implements ingest.AnalysisEvaluator.
+func (e *Engine) OnAnalysis(ctx context.Context) ([]domain.Alert, error) {
+	var (
+		produced []domain.Alert
+		errs     []error
+	)
+	for _, rule := range e.analysisRules {
 		alerts, err := rule.Evaluate(ctx)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("rule %s: %w", rule.Name(), err))

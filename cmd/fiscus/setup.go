@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/RedRiotTank/Fiscus/internal/alerts"
+	"github.com/RedRiotTank/Fiscus/internal/analysis"
 	"github.com/RedRiotTank/Fiscus/internal/banking/enablebanking"
 	"github.com/RedRiotTank/Fiscus/internal/banking/gocardless"
 	"github.com/RedRiotTank/Fiscus/internal/categories"
@@ -139,6 +140,14 @@ func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, 
 	if err != nil {
 		return nil, err
 	}
+	analyzer, err := analysis.NewAnalyzer(store, nil)
+	if err != nil {
+		return nil, err
+	}
+	subscriptionRule, err := analysis.NewSubscriptionRule(analyzer)
+	if err != nil {
+		return nil, err
+	}
 	notifiers, err := buildNotifiers(cfg)
 	if err != nil {
 		return nil, err
@@ -156,13 +165,14 @@ func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, 
 		Observer:  deliveryObserver,
 	})
 	engine, err := alerts.NewEngine(alerts.EngineConfig{
-		Store:        store,
-		Dispatcher:   dispatcher,
-		Logger:       logger,
-		TxRules:      []alerts.TransactionRule{duplicateRule, anomalyRule},
-		BalanceRules: []alerts.BalanceRule{liquidityRule},
-		ConsentRules: []alerts.ConsentRule{consentRule},
-		Observer:     engineObserver,
+		Store:         store,
+		Dispatcher:    dispatcher,
+		Logger:        logger,
+		TxRules:       []alerts.TransactionRule{duplicateRule, anomalyRule},
+		BalanceRules:  []alerts.BalanceRule{liquidityRule},
+		ConsentRules:  []alerts.ConsentRule{consentRule},
+		AnalysisRules: []alerts.AnalysisRule{subscriptionRule},
+		Observer:      engineObserver,
 	})
 	if err != nil {
 		return nil, err

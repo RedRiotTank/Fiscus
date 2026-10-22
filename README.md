@@ -15,7 +15,10 @@ for money.
 - PSD2 account information ingestion through GoCardless or Enable Banking
   (consents, balances, booked and pending transactions)
 - Idempotent SQLite persistence with embedded, versioned migrations
-- Alert rules for duplicate charges, spending spikes, and low-balance liquidity
+- Alert rules for duplicate charges, spending spikes, low-balance liquidity,
+  consent expiry, and subscription price increases
+- Regex-based transaction categorization and a monthly category breakdown
+- Recurring subscription and bank-fee detection
 - Multi-channel notifications with retries and alert de-duplication
 - Embedded HTMX dashboard with Basic Auth protection
 - `/healthz`, `/readyz`, and Prometheus `/metrics` endpoints
@@ -307,6 +310,12 @@ not be public.
 4. **Consent expiration**: a linked PSD2 consent is within 14 or 3 days of
    expiring. The alert includes a renewal link and is deduplicated per
    connection, expiry, and threshold.
+5. **Subscription price increase**: a detected recurring charge is higher than
+   its previous charge. The alert reports the old and new amounts and is
+   deduplicated per merchant and charge.
+
+The **Subscriptions & Fees** dashboard view estimates the monthly and annualized
+cost of active subscriptions and lists detected bank commissions.
 
 Alerts are persisted before dispatch. A deterministic de-duplication key prevents
 the same condition from notifying twice. Telegram and Discord deliveries are
