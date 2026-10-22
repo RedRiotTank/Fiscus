@@ -75,6 +75,14 @@ func (c *Classifier) Classify(tx domain.Transaction) string {
 	return DefaultCategory
 }
 
+// RuleCount returns the number of compiled rules.
+func (c *Classifier) RuleCount() int {
+	if c == nil {
+		return 0
+	}
+	return len(c.rules)
+}
+
 // ValidateRules checks a rule set without constructing a classifier.
 func ValidateRules(rules []Rule) error {
 	_, err := New(rules)
