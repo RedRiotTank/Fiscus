@@ -282,6 +282,109 @@ func TestAccountLifecycle(t *testing.T) {
 	}
 }
 
+func TestRateLimitCooldownPersistence(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	ctx := context.Background()
+	connection := seedConnection(t, s)
+	account := seedAccount(t, s, connection.ID)
+
+	until := time.Date(2026, 3, 11, 0, 0, 0, 0, time.UTC)
+	if err := s.SetConnectionRateLimit(ctx, connection.ID, until, "ASPSP_RATE_LIMIT_EXCEEDED"); err != nil {
+		t.Fatalf("SetConnectionRateLimit: %v", err)
+	}
+	if err := s.SetAccountRateLimit(ctx, account.ID, until, "ASPSP_RATE_LIMIT_EXCEEDED"); err != nil {
+		t.Fatalf("SetAccountRateLimit: %v", err)
+	}
+
+	gotConnection, err := s.GetConnectionByID(ctx, connection.ID)
+	if err != nil {
+		t.Fatalf("GetConnectionByID: %v", err)
+	}
+	if gotConnection.RateLimitedUntil == nil || !gotConnection.RateLimitedUntil.Equal(until) {
+		t.Fatalf("connection cooldown = %v, want %v", gotConnection.RateLimitedUntil, until)
+	}
+	if gotConnection.LastRateLimitReason != "ASPSP_RATE_LIMIT_EXCEEDED" {
+		t.Fatalf("connection reason = %q", gotConnection.LastRateLimitReason)
+	}
+	gotAccount, err := s.GetAccount(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("GetAccount: %v", err)
+	}
+	if gotAccount.RateLimitedUntil == nil || !gotAccount.RateLimitedUntil.Equal(until) {
+		t.Fatalf("account cooldown = %v, want %v", gotAccount.RateLimitedUntil, until)
+	}
+	if gotAccount.LastRateLimitReason != "ASPSP_RATE_LIMIT_EXCEEDED" {
+		t.Fatalf("account reason = %q", gotAccount.LastRateLimitReason)
+	}
+
+	if err := s.SetConnectionRateLimit(ctx, 9999, until, "ASPSP_RATE_LIMIT_EXCEEDED"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing connection error = %v, want ErrNotFound", err)
+	}
+	if err := s.SetAccountRateLimit(ctx, "missing", until, "ASPSP_RATE_LIMIT_EXCEEDED"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing account error = %v, want ErrNotFound", err)
+	}
+
+	if err := s.ClearConnectionRateLimit(ctx, connection.ID); err != nil {
+		t.Fatalf("ClearConnectionRateLimit: %v", err)
+	}
+	if err := s.ClearAccountRateLimit(ctx, account.ID); err != nil {
+		t.Fatalf("ClearAccountRateLimit: %v", err)
+	}
+	gotConnection, err = s.GetConnectionByID(ctx, connection.ID)
+	if err != nil {
+		t.Fatalf("GetConnectionByID after clear: %v", err)
+	}
+	gotAccount, err = s.GetAccount(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("GetAccount after clear: %v", err)
+	}
+	if gotConnection.RateLimitedUntil != nil || gotConnection.LastRateLimitReason != "" {
+		t.Fatalf("connection cooldown was not cleared: %+v", gotConnection)
+	}
+	if gotAccount.RateLimitedUntil != nil || gotAccount.LastRateLimitReason != "" {
+		t.Fatalf("account cooldown was not cleared: %+v", gotAccount)
+	}
+}
+
+func TestMetadataUpsertsPreserveRateLimitCooldown(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	ctx := context.Background()
+	connection := seedConnection(t, s)
+	account := seedAccount(t, s, connection.ID)
+	until := time.Date(2026, 3, 11, 0, 0, 0, 0, time.UTC)
+	if err := s.SetConnectionRateLimit(ctx, connection.ID, until, "HTTP 429"); err != nil {
+		t.Fatalf("SetConnectionRateLimit: %v", err)
+	}
+	if err := s.SetAccountRateLimit(ctx, account.ID, until, "HTTP 429"); err != nil {
+		t.Fatalf("SetAccountRateLimit: %v", err)
+	}
+
+	connection.InstitutionName = "Renamed Bank"
+	if err := s.UpsertConnection(ctx, &connection); err != nil {
+		t.Fatalf("UpsertConnection: %v", err)
+	}
+	account.Name = "Renamed Account"
+	if err := s.UpsertAccount(ctx, &account); err != nil {
+		t.Fatalf("UpsertAccount: %v", err)
+	}
+	gotConnection, err := s.GetConnectionByID(ctx, connection.ID)
+	if err != nil {
+		t.Fatalf("GetConnectionByID: %v", err)
+	}
+	gotAccount, err := s.GetAccount(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("GetAccount: %v", err)
+	}
+	if gotConnection.RateLimitedUntil == nil || !gotConnection.RateLimitedUntil.Equal(until) {
+		t.Fatalf("connection cooldown was overwritten: %+v", gotConnection)
+	}
+	if gotAccount.RateLimitedUntil == nil || !gotAccount.RateLimitedUntil.Equal(until) {
+		t.Fatalf("account cooldown was overwritten: %+v", gotAccount)
+	}
+}
+
 func TestTransactionIdempotencyAndPromotion(t *testing.T) {
 	t.Parallel()
 	s := newTestStore(t)

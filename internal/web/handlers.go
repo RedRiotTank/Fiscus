@@ -270,6 +270,21 @@ func (s *Server) handleSyncAll(w http.ResponseWriter, r *http.Request) {
 		s.syncNotice(w, http.StatusServiceUnavailable, "error", "Banking is not configured.")
 		return
 	}
+	connections, err := s.store.ListConnections(r.Context())
+	if err != nil {
+		s.logger.Error("load connections for sync", "error", err)
+		s.syncNotice(w, http.StatusInternalServerError, "error", "Could not check bank cooldowns.")
+		return
+	}
+	accounts, err := s.store.ListAccounts(r.Context())
+	if err != nil {
+		s.logger.Error("load accounts for sync", "error", err)
+		accounts = nil
+	}
+	if blocked, until := connectionsCoolingDown(connections, accounts, s.now()); blocked {
+		s.syncNotice(w, http.StatusOK, "info", rateLimitMessage(until))
+		return
+	}
 	if s.trigger.Trigger("") {
 		s.syncNotice(w, http.StatusAccepted, "success", "Sync requested. Data refreshes shortly.")
 		return
@@ -296,11 +311,75 @@ func (s *Server) handleSyncConnection(w http.ResponseWriter, r *http.Request) {
 		s.syncNotice(w, http.StatusNotFound, "error", "Connection not found.")
 		return
 	}
+	accounts, err := s.store.ListAccounts(r.Context())
+	if err != nil {
+		s.logger.Error("load accounts for sync", "error", err)
+		accounts = nil
+	}
+	if blocked, until := connectionCoolingDown(connection, accounts, s.now()); blocked {
+		s.syncNotice(w, http.StatusOK, "info", rateLimitMessage(until))
+		return
+	}
 	if s.trigger.Trigger(connection.RequisitionID) {
 		s.syncNotice(w, http.StatusAccepted, "success", "Sync requested for "+connection.InstitutionName+".")
 		return
 	}
 	s.syncNotice(w, http.StatusAccepted, "info", "A sync is already queued or running.")
+}
+
+func rateLimitMessage(until time.Time) string {
+	when := "soon"
+	if !until.IsZero() {
+		when = until.UTC().Format("2006-01-02 15:04 UTC")
+	}
+	return "Bank rate limit reached (PSD2 max daily limit). Displaying cached data. Next sync available at " + when + "."
+}
+
+func connectionsCoolingDown(connections []domain.Connection, accounts []domain.Account, now time.Time) (bool, time.Time) {
+	if len(connections) == 0 {
+		return false, time.Time{}
+	}
+	var earliest time.Time
+	for _, connection := range connections {
+		blocked, until := connectionCoolingDown(connection, accounts, now)
+		if !blocked {
+			return false, time.Time{}
+		}
+		earliest = earlier(earliest, until)
+	}
+	return true, earliest
+}
+
+func connectionCoolingDown(connection domain.Connection, accounts []domain.Account, now time.Time) (bool, time.Time) {
+	if connection.CoolingDown(now) {
+		return true, *connection.RateLimitedUntil
+	}
+
+	var (
+		earliest time.Time
+		count    int
+	)
+	for _, account := range accounts {
+		if account.ConnectionID != connection.ID {
+			continue
+		}
+		count++
+		if !account.CoolingDown(now) {
+			return false, time.Time{}
+		}
+		earliest = earlier(earliest, *account.RateLimitedUntil)
+	}
+	if count == 0 {
+		return false, time.Time{}
+	}
+	return true, earliest
+}
+
+func earlier(current, candidate time.Time) time.Time {
+	if current.IsZero() || candidate.Before(current) {
+		return candidate
+	}
+	return current
 }
 
 func (s *Server) handleRecategorize(w http.ResponseWriter, r *http.Request) {

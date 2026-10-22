@@ -184,6 +184,14 @@ more than 390 days for a yearly subscription.
 Select one provider with `provider` in `config.yaml` or `FISCUS_PROVIDER`. The
 default is `gocardless` for backwards compatibility.
 
+Both providers default to a background sync every six hours, matching the PSD2
+limit of four unattended accesses per day. Account metadata such as IBAN,
+currency, and holder name is fetched once and cached in SQLite; routine syncs
+only request balances and transactions. If an ASPSP returns HTTP 429 or
+`ASPSP_RATE_LIMIT_EXCEEDED`, Fiscus records a cooldown until the next UTC
+midnight (or six hours, whichever comes first), keeps showing cached data, and
+resumes automatically when the cooldown expires.
+
 ### Enable Banking
 
 Enable Banking works with banks such as Banco Santander in Spain and does not

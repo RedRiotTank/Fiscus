@@ -95,10 +95,13 @@ type AlertView struct {
 	AccountName string
 }
 
-// ConnectionView augments a connection with its accounts.
+// ConnectionView augments a connection with its accounts and current cooldown
+// state.
 type ConnectionView struct {
 	domain.Connection
-	Accounts []domain.Account
+	Accounts      []domain.Account
+	RateLimited   bool
+	CooldownUntil time.Time
 }
 
 func summarizeAccounts(accounts []domain.Account) []CurrencySummary {
@@ -170,16 +173,20 @@ func accountMap(accounts []domain.Account) map[string]domain.Account {
 	return out
 }
 
-func connectionViews(connections []domain.Connection, accounts []domain.Account) []ConnectionView {
+func connectionViews(connections []domain.Connection, accounts []domain.Account, now time.Time) []ConnectionView {
 	byConnection := make(map[int64][]domain.Account)
 	for _, account := range accounts {
 		byConnection[account.ConnectionID] = append(byConnection[account.ConnectionID], account)
 	}
 	out := make([]ConnectionView, 0, len(connections))
 	for _, connection := range connections {
+		accounts := byConnection[connection.ID]
+		rateLimited, until := connectionCoolingDown(connection, accounts, now)
 		out = append(out, ConnectionView{
-			Connection: connection,
-			Accounts:   byConnection[connection.ID],
+			Connection:    connection,
+			Accounts:      accounts,
+			RateLimited:   rateLimited,
+			CooldownUntil: until,
 		})
 	}
 	return out
@@ -283,7 +290,7 @@ func (s *Server) loadConnections(ctx context.Context, data *PageData) error {
 	if err != nil {
 		return err
 	}
-	data.Connections = connectionViews(connections, accounts)
+	data.Connections = connectionViews(connections, accounts, s.now())
 	return nil
 }
 

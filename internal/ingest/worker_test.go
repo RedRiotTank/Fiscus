@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/banking/gocardless"
+	"github.com/RedRiotTank/Fiscus/internal/banking/ratelimit"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 )
@@ -23,10 +24,13 @@ type fakeBank struct {
 	requisitionCalls int
 	details          map[string]gocardless.AccountDetails
 	detailsErr       map[string]error
+	detailsCalls     int
 	balances         map[string][]gocardless.Balance
 	balancesErr      map[string]error
+	balancesCalls    int
 	transactions     map[string]gocardless.Transactions
 	txErr            map[string]error
+	txCalls          int
 	lastFrom         time.Time
 	lastTo           time.Time
 }
@@ -45,6 +49,7 @@ func (f *fakeBank) GetRequisition(_ context.Context, _ string) (*gocardless.Requ
 func (f *fakeBank) GetAccountDetails(_ context.Context, id string) (*gocardless.AccountDetails, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.detailsCalls++
 	if err := f.detailsErr[id]; err != nil {
 		return nil, err
 	}
@@ -58,6 +63,7 @@ func (f *fakeBank) GetAccountDetails(_ context.Context, id string) (*gocardless.
 func (f *fakeBank) GetBalances(_ context.Context, id string) ([]gocardless.Balance, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.balancesCalls++
 	if err := f.balancesErr[id]; err != nil {
 		return nil, err
 	}
@@ -67,6 +73,7 @@ func (f *fakeBank) GetBalances(_ context.Context, id string) ([]gocardless.Balan
 func (f *fakeBank) GetTransactions(_ context.Context, id string, from, to time.Time) (*gocardless.Transactions, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.txCalls++
 	if err := f.txErr[id]; err != nil {
 		return nil, err
 	}
@@ -74,6 +81,12 @@ func (f *fakeBank) GetTransactions(_ context.Context, id string, from, to time.T
 	f.lastTo = to
 	txs := f.transactions[id]
 	return &txs, nil
+}
+
+func (f *fakeBank) calls() (requisition, details, balances, transactions int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.requisitionCalls, f.detailsCalls, f.balancesCalls, f.txCalls
 }
 
 type fakeCategorizer struct{}
@@ -342,6 +355,165 @@ func TestWorkerSyncPersistsAndEvaluates(t *testing.T) {
 	}
 	if !gotTo.Equal(time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)) {
 		t.Fatalf("transactions to = %v", gotTo)
+	}
+}
+
+func TestWorkerCachesStaticAccountMetadata(t *testing.T) {
+	t.Parallel()
+	bank := standardBank()
+	w, _, _ := newIngestTest(t, bank, nil)
+	ctx := context.Background()
+
+	if err := w.SyncAll(ctx); err != nil {
+		t.Fatalf("first SyncAll: %v", err)
+	}
+	requisition, details, balances, transactions := bank.calls()
+	if requisition != 1 || details != 1 || balances != 1 || transactions != 1 {
+		t.Fatalf("first sync calls = %d/%d/%d/%d, want 1/1/1/1", requisition, details, balances, transactions)
+	}
+
+	if err := w.SyncAll(ctx); err != nil {
+		t.Fatalf("second SyncAll: %v", err)
+	}
+	requisition, details, balances, transactions = bank.calls()
+	if requisition != 2 || details != 1 || balances != 2 || transactions != 2 {
+		t.Fatalf("second sync calls = %d/%d/%d/%d, want 2/1/2/2 (details must be cached)",
+			requisition, details, balances, transactions)
+	}
+}
+
+func TestWorkerPersistsRateLimitAndSkipsSubsequentSync(t *testing.T) {
+	t.Parallel()
+	bank := standardBank()
+	bank.balancesErr["acc-1"] = &gocardless.APIError{
+		StatusCode: 429,
+		Method:     "GET",
+		Path:       "/accounts/acc-1/balances/",
+		Body:       `{"error":"ASPSP_RATE_LIMIT_EXCEEDED","message":"Maximum daily access exceeded"}`,
+	}
+	w, store, connection := newIngestTest(t, bank, nil)
+	ctx := context.Background()
+
+	err := w.SyncAll(ctx)
+	if !ratelimit.Is(err) {
+		t.Fatalf("SyncAll error = %v, want rate limit", err)
+	}
+	until := time.Date(2026, 3, 10, 18, 0, 0, 0, time.UTC)
+	gotConnection, err := store.GetConnectionByID(ctx, connection.ID)
+	if err != nil {
+		t.Fatalf("GetConnectionByID: %v", err)
+	}
+	if gotConnection.RateLimitedUntil == nil || !gotConnection.RateLimitedUntil.Equal(until) {
+		t.Fatalf("connection cooldown = %v, want %v", gotConnection.RateLimitedUntil, until)
+	}
+	if gotConnection.LastRateLimitReason != ratelimit.CodeASPSPDailyLimit {
+		t.Fatalf("connection reason = %q", gotConnection.LastRateLimitReason)
+	}
+	if gotConnection.LastError != "" {
+		t.Fatalf("rate limit must not be stored as LastError: %q", gotConnection.LastError)
+	}
+	gotAccount, err := store.GetAccount(ctx, "acc-1")
+	if err != nil {
+		t.Fatalf("GetAccount: %v", err)
+	}
+	if gotAccount.RateLimitedUntil == nil || !gotAccount.RateLimitedUntil.Equal(until) {
+		t.Fatalf("account cooldown = %v, want %v", gotAccount.RateLimitedUntil, until)
+	}
+
+	requisition, details, balances, transactions := bank.calls()
+	if requisition != 1 || details != 1 || balances != 1 || transactions != 0 {
+		t.Fatalf("first sync calls = %d/%d/%d/%d, want 1/1/1/0", requisition, details, balances, transactions)
+	}
+
+	err = w.SyncAll(ctx)
+	if !ratelimit.Is(err) {
+		t.Fatalf("second SyncAll error = %v, want rate limit", err)
+	}
+	requisition, details, balances, transactions = bank.calls()
+	if requisition != 1 || details != 1 || balances != 1 || transactions != 0 {
+		t.Fatalf("sync during cooldown made provider calls: %d/%d/%d/%d", requisition, details, balances, transactions)
+	}
+}
+
+func TestWorkerRateLimitOnDetailsDoesNotCreateAccount(t *testing.T) {
+	t.Parallel()
+	bank := standardBank()
+	bank.detailsErr["acc-1"] = &gocardless.APIError{
+		StatusCode: 429,
+		Method:     "GET",
+		Path:       "/accounts/acc-1/details/",
+		Body:       `{"error":"ASPSP_RATE_LIMIT_EXCEEDED"}`,
+	}
+	w, store, connection := newIngestTest(t, bank, nil)
+	ctx := context.Background()
+
+	err := w.SyncAll(ctx)
+	if !ratelimit.Is(err) {
+		t.Fatalf("SyncAll error = %v, want rate limit", err)
+	}
+	if _, err := store.GetAccount(ctx, "acc-1"); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("account should not exist after a rate-limited details call: %v", err)
+	}
+	gotConnection, err := store.GetConnectionByID(ctx, connection.ID)
+	if err != nil {
+		t.Fatalf("GetConnectionByID: %v", err)
+	}
+	if gotConnection.RateLimitedUntil == nil {
+		t.Fatal("connection cooldown was not persisted")
+	}
+	if gotConnection.LastError != "" {
+		t.Fatalf("LastError = %q, want empty", gotConnection.LastError)
+	}
+	requisition, details, balances, transactions := bank.calls()
+	if requisition != 1 || details != 1 || balances != 0 || transactions != 0 {
+		t.Fatalf("calls = %d/%d/%d/%d, want 1/1/0/0", requisition, details, balances, transactions)
+	}
+}
+
+func TestWorkerSkipsConnectionAlreadyCoolingDown(t *testing.T) {
+	t.Parallel()
+	bank := standardBank()
+	w, store, connection := newIngestTest(t, bank, nil)
+	ctx := context.Background()
+	until := time.Date(2026, 3, 10, 18, 0, 0, 0, time.UTC)
+	if err := store.SetConnectionRateLimit(ctx, connection.ID, until, ratelimit.CodeASPSPDailyLimit); err != nil {
+		t.Fatalf("SetConnectionRateLimit: %v", err)
+	}
+
+	err := w.SyncAll(ctx)
+	if !ratelimit.Is(err) {
+		t.Fatalf("SyncAll error = %v, want rate limit", err)
+	}
+	requisition, details, balances, transactions := bank.calls()
+	if requisition != 0 || details != 0 || balances != 0 || transactions != 0 {
+		t.Fatalf("cooling connection made provider calls: %d/%d/%d/%d", requisition, details, balances, transactions)
+	}
+}
+
+func TestWorkerSkipsWhenAllAccountsAreCoolingDown(t *testing.T) {
+	t.Parallel()
+	bank := standardBank()
+	w, store, _ := newIngestTest(t, bank, nil)
+	ctx := context.Background()
+	if err := w.SyncAll(ctx); err != nil {
+		t.Fatalf("initial SyncAll: %v", err)
+	}
+	requisition, details, balances, transactions := bank.calls()
+	if requisition != 1 || details != 1 || balances != 1 || transactions != 1 {
+		t.Fatalf("initial calls = %d/%d/%d/%d, want 1/1/1/1", requisition, details, balances, transactions)
+	}
+
+	until := time.Date(2026, 3, 10, 18, 0, 0, 0, time.UTC)
+	if err := store.SetAccountRateLimit(ctx, "acc-1", until, ratelimit.CodeASPSPDailyLimit); err != nil {
+		t.Fatalf("SetAccountRateLimit: %v", err)
+	}
+	err := w.SyncAll(ctx)
+	if !ratelimit.Is(err) {
+		t.Fatalf("SyncAll error = %v, want rate limit", err)
+	}
+	requisition, details, balances, transactions = bank.calls()
+	if requisition != 1 || details != 1 || balances != 1 || transactions != 1 {
+		t.Fatalf("account cooldown made provider calls: %d/%d/%d/%d", requisition, details, balances, transactions)
 	}
 }
 
@@ -654,5 +826,8 @@ func TestNewValidation(t *testing.T) {
 	w, _, _ := newIngestTest(t, standardBank(), nil)
 	if w.cfg.SyncInterval != DefaultConfig().SyncInterval {
 		t.Fatalf("sync interval = %v", w.cfg.SyncInterval)
+	}
+	if DefaultConfig().SyncInterval != 6*time.Hour {
+		t.Fatalf("default sync interval = %v, want 6h", DefaultConfig().SyncInterval)
 	}
 }

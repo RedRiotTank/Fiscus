@@ -98,6 +98,15 @@ var migrations = []migration{
 			`ALTER TABLE transactions ADD COLUMN category TEXT NOT NULL DEFAULT 'Uncategorized'`,
 		},
 	},
+	{
+		version: 5,
+		statements: []string{
+			`ALTER TABLE connections ADD COLUMN rate_limited_until TEXT`,
+			`ALTER TABLE connections ADD COLUMN last_rate_limit_reason TEXT`,
+			`ALTER TABLE accounts ADD COLUMN rate_limited_until TEXT`,
+			`ALTER TABLE accounts ADD COLUMN last_rate_limit_reason TEXT`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and

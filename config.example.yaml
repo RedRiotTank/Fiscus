@@ -42,7 +42,8 @@ gocardless:
   country: "ES"
   institution_id: ""
   institution_name: ""
-  sync_interval: "15m"
+  # PSD2 allows four unattended accesses per day; six hours is the safe default.
+  sync_interval: "6h"
   sync_timeout: "5m"
   initial_lookback_days: 90
   overlap_days: 3
@@ -69,7 +70,7 @@ enablebanking:
   psu_type: "personal"
   # Requested consent lifetime; Enable Banking may shorten it for a bank.
   consent_validity_days: 90
-  sync_interval: "15m"
+  sync_interval: "6h"
   sync_timeout: "5m"
   initial_lookback_days: 90
   overlap_days: 3

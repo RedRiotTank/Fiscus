@@ -5,24 +5,29 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 )
 
 const accountColumns = `id, connection_id, iban, name, owner_name, currency,
-	balance_minor, balance_type, balance_updated_at, created_at, updated_at`
+	balance_minor, balance_type, balance_updated_at, rate_limited_until,
+	last_rate_limit_reason, created_at, updated_at`
 
 func scanAccount(row rowScanner) (domain.Account, error) {
 	var (
-		a         domain.Account
-		balanceAt sql.NullString
-		createdAt string
-		updatedAt string
+		a             domain.Account
+		balanceAt     sql.NullString
+		rateLimited   sql.NullString
+		rateLimitNote sql.NullString
+		createdAt     string
+		updatedAt     string
 	)
 	if err := row.Scan(
 		&a.ID, &a.ConnectionID, &a.IBAN, &a.Name, &a.OwnerName, &a.Currency,
-		&a.BalanceMinor, &a.BalanceType, &balanceAt, &createdAt, &updatedAt,
+		&a.BalanceMinor, &a.BalanceType, &balanceAt, &rateLimited, &rateLimitNote,
+		&createdAt, &updatedAt,
 	); err != nil {
 		return domain.Account{}, err
 	}
@@ -30,6 +35,10 @@ func scanAccount(row rowScanner) (domain.Account, error) {
 	if a.BalanceUpdatedAt, err = decodeNullTime(balanceAt); err != nil {
 		return domain.Account{}, err
 	}
+	if a.RateLimitedUntil, err = decodeNullTime(rateLimited); err != nil {
+		return domain.Account{}, err
+	}
+	a.LastRateLimitReason = rateLimitNote.String
 	if a.CreatedAt, err = decodeTime(createdAt); err != nil {
 		return domain.Account{}, err
 	}
@@ -101,6 +110,47 @@ func (s *Store) UpdateAccountBalance(ctx context.Context, accountID string, bala
 	}
 	if n == 0 {
 		return ErrNotFound
+	}
+	return nil
+}
+
+// SetAccountRateLimit records a PSD2 cooldown for an account.
+func (s *Store) SetAccountRateLimit(ctx context.Context, accountID string, until time.Time, reason string) error {
+	if accountID == "" {
+		return errors.New("storage: account ID is required")
+	}
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE accounts
+		SET rate_limited_until = ?, last_rate_limit_reason = ?, updated_at = ?
+		WHERE id = ?`,
+		encodeTime(until), strings.TrimSpace(reason), encodeTime(nowUTC()), accountID,
+	)
+	if err != nil {
+		return fmt.Errorf("storage: set account rate limit: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("storage: set account rate limit: %w", err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ClearAccountRateLimit removes an account cooldown after a successful sync.
+func (s *Store) ClearAccountRateLimit(ctx context.Context, accountID string) error {
+	if accountID == "" {
+		return errors.New("storage: account ID is required")
+	}
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE accounts
+		SET rate_limited_until = NULL, last_rate_limit_reason = NULL, updated_at = ?
+		WHERE id = ? AND (rate_limited_until IS NOT NULL OR last_rate_limit_reason IS NOT NULL)`,
+		encodeTime(nowUTC()), accountID,
+	)
+	if err != nil {
+		return fmt.Errorf("storage: clear account rate limit: %w", err)
 	}
 	return nil
 }

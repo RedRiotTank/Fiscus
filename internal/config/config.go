@@ -172,7 +172,7 @@ func Default() *Config {
 		GoCardless: GoCardlessConfig{
 			BaseURL:             "https://bankaccountdata.gocardless.com/api/v2",
 			Country:             "ES",
-			SyncInterval:        Duration(15 * time.Minute),
+			SyncInterval:        Duration(6 * time.Hour),
 			SyncTimeout:         Duration(5 * time.Minute),
 			InitialLookbackDays: 90,
 			OverlapDays:         3,
@@ -182,7 +182,7 @@ func Default() *Config {
 			Country:             "ES",
 			PSUType:             "personal",
 			ConsentValidityDays: 90,
-			SyncInterval:        Duration(15 * time.Minute),
+			SyncInterval:        Duration(6 * time.Hour),
 			SyncTimeout:         Duration(5 * time.Minute),
 			InitialLookbackDays: 90,
 			OverlapDays:         3,
