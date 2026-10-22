@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/banking/gocardless"
+	"github.com/RedRiotTank/Fiscus/internal/categories"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/money"
 )
@@ -63,6 +64,12 @@ type Categorizer interface {
 	Classify(tx domain.Transaction) string
 }
 
+// UncategorizedNotifier sends an interactive notification when a booked
+// transaction has no matching category rule.
+type UncategorizedNotifier interface {
+	NotifyUncategorized(ctx context.Context, tx domain.Transaction) error
+}
+
 // Observer receives sync telemetry. Implementations must be safe for concurrent
 // use. A nil observer disables observation.
 type Observer interface {
@@ -96,13 +103,14 @@ func DefaultConfig() Config {
 
 // Worker synchronizes bank connections on a schedule or on demand.
 type Worker struct {
-	bank      Bank
-	store     Store
-	evaluator Evaluator
-	observer  Observer
-	logger    *slog.Logger
-	cfg       Config
-	trigger   chan string
+	bank          Bank
+	store         Store
+	evaluator     Evaluator
+	observer      Observer
+	uncategorized UncategorizedNotifier
+	logger        *slog.Logger
+	cfg           Config
+	trigger       chan string
 
 	mu sync.Mutex
 }
@@ -149,6 +157,13 @@ func (w *Worker) SetObserver(o Observer) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.observer = o
+}
+
+// SetUncategorizedNotifier installs an optional interactive notification hook.
+func (w *Worker) SetUncategorizedNotifier(notifier UncategorizedNotifier) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.uncategorized = notifier
 }
 
 func (w *Worker) observeSync(requisitionID string, d time.Duration, err error) {
@@ -260,6 +275,21 @@ func (w *Worker) SyncConnection(ctx context.Context, requisitionID string) error
 	w.evaluateConsents(ctx)
 	w.evaluateAnalysis(ctx)
 	return err
+}
+
+func (w *Worker) notifyUncategorized(ctx context.Context, tx domain.Transaction) {
+	w.mu.Lock()
+	notifier := w.uncategorized
+	w.mu.Unlock()
+	if notifier == nil {
+		return
+	}
+	notifyCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if err := notifier.NotifyUncategorized(notifyCtx, tx); err != nil {
+		w.logger.Warn("uncategorized transaction notification failed",
+			"account_id", tx.AccountID, "transaction_id", tx.ExternalID, "error", err)
+	}
 }
 
 func (w *Worker) evaluateConsents(ctx context.Context) {
@@ -523,6 +553,9 @@ func (w *Worker) syncTransactions(ctx context.Context, account domain.Account, c
 		}
 		if created {
 			inserted++
+		}
+		if tx.Status == domain.TransactionStatusBooked && strings.TrimSpace(tx.Category) == categories.DefaultCategory {
+			w.notifyUncategorized(ctx, tx)
 		}
 		if w.evaluator == nil || tx.Status != domain.TransactionStatusBooked {
 			continue

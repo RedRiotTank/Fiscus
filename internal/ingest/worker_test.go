@@ -85,6 +85,24 @@ func (fakeCategorizer) Classify(tx domain.Transaction) string {
 	return "Uncategorized"
 }
 
+type fakeNotifier struct {
+	mu sync.Mutex
+	tx []domain.Transaction
+}
+
+func (f *fakeNotifier) NotifyUncategorized(_ context.Context, tx domain.Transaction) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.tx = append(f.tx, tx)
+	return nil
+}
+
+func (f *fakeNotifier) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.tx)
+}
+
 type fakeEvaluator struct {
 	mu            sync.Mutex
 	tx            []domain.Transaction
@@ -343,6 +361,41 @@ func TestWorkerIdempotentAndPromotesPending(t *testing.T) {
 		if tx.ExternalID == "tx-3" && tx.Status != domain.TransactionStatusBooked {
 			t.Fatalf("tx-3 status = %q, want booked", tx.Status)
 		}
+	}
+}
+
+func TestWorkerNotifiesNewlyBookedUncategorizedTransactions(t *testing.T) {
+	t.Parallel()
+	bank := standardBank()
+	eval := &fakeEvaluator{}
+	w, _, _ := newIngestTest(t, bank, eval)
+	notifier := &fakeNotifier{}
+	w.SetUncategorizedNotifier(notifier)
+	ctx := context.Background()
+
+	if err := w.SyncAll(ctx); err != nil {
+		t.Fatalf("first SyncAll: %v", err)
+	}
+	if got := notifier.count(); got != 0 {
+		t.Fatalf("pending transaction notifications = %d, want 0", got)
+	}
+
+	bank.mu.Lock()
+	pending := bank.transactions["acc-1"].Pending[0]
+	pending.BookingDate = "2026-03-09"
+	bank.transactions["acc-1"] = gocardless.Transactions{
+		Booked:  append(bank.transactions["acc-1"].Booked, pending),
+		Pending: nil,
+	}
+	bank.mu.Unlock()
+	if err := w.SyncAll(ctx); err != nil {
+		t.Fatalf("second SyncAll: %v", err)
+	}
+	if got := notifier.count(); got != 1 {
+		t.Fatalf("booked transaction notifications = %d, want 1", got)
+	}
+	if notifier.tx[0].ExternalID != "tx-3" || notifier.tx[0].Category != "Uncategorized" {
+		t.Fatalf("notified transaction = %+v", notifier.tx[0])
 	}
 }
 

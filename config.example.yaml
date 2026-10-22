@@ -89,6 +89,9 @@ alerts:
     # Optional Telegram user ID. When set, bot commands require both the
     # configured chat and this user (useful for groups).
     user_id: ""
+    # Send inline-keyboard notifications for booked transactions that no rule
+    # could categorize. Disable this if you prefer a quieter chat.
+    notify_uncategorized: true
   discord:
     webhook_url: ""
   retry_attempts: 3
