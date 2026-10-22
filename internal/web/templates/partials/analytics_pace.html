@@ -1,0 +1,24 @@
+{{define "analytics_pace"}}
+<section class="analytics-block">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Spending velocity</p>
+      <h2>Month-to-date pace</h2>
+      <p class="subtitle">Your cumulative spend compared with the previous six months.</p>
+    </div>
+    <span class="velocity-pill" id="pace-velocity">Loading pace…</span>
+  </div>
+  <article class="panel chart-card">
+    <header class="chart-head">
+      <div>
+        <h3>Burn-up spending curve</h3>
+        <p class="panel-sub">Day 1 to 31 · solid line is this month</p>
+      </div>
+    </header>
+    <div class="chart-body chart-body-tall">
+      <canvas id="pace-chart" role="img" aria-label="Cumulative monthly spending pace"></canvas>
+      <p class="chart-empty" id="pace-chart-empty" hidden>No spending pace data yet.</p>
+    </div>
+  </article>
+</section>
+{{end}}

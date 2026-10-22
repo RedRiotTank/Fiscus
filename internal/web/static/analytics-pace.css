@@ -1,0 +1,30 @@
+.velocity-pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--muted);
+  padding: 6px 12px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.velocity-above {
+  border-color: rgba(251, 191, 36, 0.34);
+  background: var(--amber-dim);
+  color: var(--amber);
+}
+
+.velocity-below {
+  border-color: rgba(52, 211, 153, 0.34);
+  background: var(--green-dim);
+  color: var(--green);
+}
+
+.velocity-ok {
+  border-color: rgba(56, 189, 248, 0.34);
+  background: var(--blue-dim);
+  color: var(--accent);
+}
