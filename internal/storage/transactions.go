@@ -16,9 +16,25 @@ const transactionColumns = `id, account_id, external_id, amount_minor, currency,
 
 // TransactionFilter controls transaction listing.
 type TransactionFilter struct {
-	AccountID string
-	Limit     int
-	Offset    int
+	AccountID  string
+	AccountIDs []string
+	Limit      int
+	Offset     int
+}
+
+// accountIDsClause returns an "account_id IN (...)" predicate and its
+// arguments. An empty slice produces an empty predicate.
+func accountIDsClause(accountIDs []string) (string, []any) {
+	if len(accountIDs) == 0 {
+		return "", nil
+	}
+	placeholders := make([]string, len(accountIDs))
+	args := make([]any, len(accountIDs))
+	for i, id := range accountIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	return "account_id IN (" + strings.Join(placeholders, ",") + ")", args
 }
 
 func normalizeLimit(limit int) int {
@@ -193,6 +209,9 @@ func (s *Store) ListTransactions(ctx context.Context, filter TransactionFilter) 
 	if filter.AccountID != "" {
 		where = append(where, "account_id = ?")
 		args = append(args, filter.AccountID)
+	} else if clause, clauseArgs := accountIDsClause(filter.AccountIDs); clause != "" {
+		where = append(where, clause)
+		args = append(args, clauseArgs...)
 	}
 	query := `SELECT ` + transactionColumns + ` FROM transactions`
 	if len(where) > 0 {
@@ -329,6 +348,60 @@ func (s *Store) CountTransactions(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("storage: count transactions: %w", err)
 	}
 	return n, nil
+}
+
+// CountTransactionsFiltered returns the number of transactions restricted to
+// accountIDs. An empty slice counts every transaction.
+func (s *Store) CountTransactionsFiltered(ctx context.Context, accountIDs []string) (int, error) {
+	query := `SELECT COUNT(*) FROM transactions`
+	var args []any
+	if clause, clauseArgs := accountIDsClause(accountIDs); clause != "" {
+		query += " WHERE " + clause
+		args = append(args, clauseArgs...)
+	}
+	var n int
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("storage: count filtered transactions: %w", err)
+	}
+	return n, nil
+}
+
+// SpendingByCategoryForAccounts aggregates booked debits in [from, to) by
+// category and currency, restricted to accountIDs. An empty slice includes all
+// accounts.
+func (s *Store) SpendingByCategoryForAccounts(ctx context.Context, from, to time.Time, accountIDs []string) ([]CategorySpending, error) {
+	where := []string{"amount_minor < 0", "status = ?", "booking_date >= ?", "booking_date < ?"}
+	args := []any{domain.TransactionStatusBooked, encodeTime(from), encodeTime(to)}
+	if clause, clauseArgs := accountIDsClause(accountIDs); clause != "" {
+		where = append(where, clause)
+		args = append(args, clauseArgs...)
+	}
+	// #nosec G202 -- where contains only static, developer-defined predicates.
+	query := `
+		SELECT COALESCE(NULLIF(TRIM(category), ''), 'Uncategorized'), currency,
+			COALESCE(SUM(-amount_minor), 0)
+		FROM transactions
+		WHERE ` + strings.Join(where, " AND ") + `
+		GROUP BY 1, 2
+		ORDER BY 1 ASC, 2 ASC`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("storage: spending by category for accounts: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []CategorySpending
+	for rows.Next() {
+		var item CategorySpending
+		if err := rows.Scan(&item.Category, &item.Currency, &item.Minor); err != nil {
+			return nil, fmt.Errorf("storage: scan category spending: %w", err)
+		}
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("storage: iterate category spending: %w", err)
+	}
+	return out, nil
 }
 
 // FindDuplicateCandidates looks for booked transactions with the same

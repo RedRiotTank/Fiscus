@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -36,6 +37,12 @@ func openStore(ctx context.Context, cfg *config.Config) (*storage.Store, error) 
 	if err := store.Migrate(ctx); err != nil {
 		_ = store.Close()
 		return nil, err
+	}
+	for id, accountType := range cfg.AccountTypes() {
+		if err := store.SetAccountType(ctx, id, accountType); err != nil && !errors.Is(err, storage.ErrNotFound) {
+			_ = store.Close()
+			return nil, fmt.Errorf("apply account type for %s: %w", id, err)
+		}
 	}
 	return store, nil
 }
@@ -324,6 +331,7 @@ func buildWorker(cfg *config.Config, store *storage.Store, engine *alerts.Engine
 		OverlapDays:         overlapDays,
 		SyncOnStart:         true,
 		Categorizer:         classifier,
+		AccountTypes:        cfg.AccountTypes(),
 	})
 	if err != nil {
 		return nil, err
@@ -344,6 +352,7 @@ func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger,
 		Username:       cfg.Server.Username,
 		Password:       cfg.Server.Password,
 		PasswordHash:   cfg.Server.PasswordHash,
+		Profile:        cfg.WorkspaceProfile(),
 		Version:        version,
 		Logger:         logger,
 		MetricsHandler: metrics.Handler(),

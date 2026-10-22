@@ -678,3 +678,61 @@ func TestTimestampOrderingPrecision(t *testing.T) {
 		t.Fatalf("oldest = %v", list[2].BookingDate)
 	}
 }
+
+func TestAccountWorkspaceTypeLifecycle(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	ctx := context.Background()
+	conn := seedConnection(t, s)
+	account := seedAccount(t, s, conn.ID)
+	if account.Type != "" {
+		// The caller's struct is not mutated by UpsertAccount.
+		t.Fatalf("insert seed type = %q, want empty", account.Type)
+	}
+	stored, err := s.GetAccount(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("GetAccount: %v", err)
+	}
+	if stored.Type != domain.AccountTypePersonal {
+		t.Fatalf("default type = %q, want personal", stored.Type)
+	}
+	if err := s.SetAccountType(ctx, account.ID, domain.AccountTypeBusiness); err != nil {
+		t.Fatalf("SetAccountType: %v", err)
+	}
+	stored, err = s.GetAccount(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("GetAccount: %v", err)
+	}
+	if stored.Type != domain.AccountTypeBusiness {
+		t.Fatalf("type = %q, want business", stored.Type)
+	}
+	// Metadata-only upserts (Type empty) must not overwrite the mapping.
+	stored.Name = "Renamed"
+	if err := s.UpsertAccount(ctx, &stored); err != nil {
+		t.Fatalf("UpsertAccount: %v", err)
+	}
+	stored.Type = ""
+	if err := s.UpsertAccount(ctx, &stored); err != nil {
+		t.Fatalf("UpsertAccount without type: %v", err)
+	}
+	reloaded, err := s.GetAccount(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("GetAccount: %v", err)
+	}
+	if reloaded.Type != domain.AccountTypeBusiness {
+		t.Fatalf("type after metadata upsert = %q", reloaded.Type)
+	}
+	if err := s.SetAccountType(ctx, account.ID, "shared"); err == nil {
+		t.Fatal("expected invalid account type error")
+	}
+	if err := s.SetAccountType(ctx, "missing", domain.AccountTypePersonal); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing account error = %v", err)
+	}
+	version, err := s.SchemaVersion(ctx)
+	if err != nil {
+		t.Fatalf("SchemaVersion: %v", err)
+	}
+	if version < 6 {
+		t.Fatalf("schema version = %d, want >= 6", version)
+	}
+}

@@ -29,7 +29,7 @@ func (s *Server) handleAnalyticsProjections(w http.ResponseWriter, r *http.Reque
 	if yield > 2000 {
 		yield = 2000
 	}
-	accounts, err := s.store.ListAccounts(r.Context())
+	accounts, state, err := s.analyticsWorkspaceAccounts(r)
 	if err != nil {
 		s.analyticsStoreError(w, r, err)
 		return
@@ -42,6 +42,7 @@ func (s *Server) handleAnalyticsProjections(w http.ResponseWriter, r *http.Reque
 		s.analyticsStoreError(w, r, err)
 		return
 	}
+	transactions = filterAnalyticsTransactions(transactions, accounts, state)
 	s.writeJSON(w, http.StatusOK, analytics.ComputeProjections(transactions, accounts, now, currency, extra, yield))
 }
 

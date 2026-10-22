@@ -8,6 +8,16 @@
 # can switch back to "gocardless"; the built-in default remains gocardless.
 provider: "enablebanking"
 
+# Workspace profile: "personal", "business", or "hybrid". Personal and business
+# lock the dashboard to one workspace; hybrid adds a switcher for all views.
+profile: "hybrid"
+
+# Optional account-to-workspace mapping. IDs are the provider account IDs shown
+# under Connections. Unmapped accounts default to "personal".
+accounts:
+  # - id: "account-id-from-provider"
+  #   type: "business"
+
 server:
   # Listen address for the dashboard and health endpoints.
   address: ":8080"

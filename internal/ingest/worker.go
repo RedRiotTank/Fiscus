@@ -95,6 +95,7 @@ type Config struct {
 	SyncOnStart         bool
 	Now                 func() time.Time
 	Categorizer         Categorizer
+	AccountTypes        map[string]string
 }
 
 // DefaultConfig returns production-oriented defaults.
@@ -513,6 +514,16 @@ func (w *Worker) syncAccount(ctx context.Context, connection domain.Connection, 
 		return fmt.Errorf("load account metadata: %w", err)
 	}
 
+	if hint, ok := w.cfg.AccountTypes[accountID]; ok && hint != "" {
+		normalized := domain.NormalizeAccountType(hint)
+		if account.Type != normalized {
+			account.Type = normalized
+			if persistErr := w.store.UpsertAccount(ctx, &account); persistErr != nil {
+				return fmt.Errorf("persist account workspace type: %w", persistErr)
+			}
+		}
+	}
+
 	// Account details are static. Only fetch them when SQLite has no cached
 	// metadata, so routine syncs spend the PSD2 quota on balances and
 	// transactions instead of repeating /details.
@@ -531,6 +542,7 @@ func (w *Worker) syncAccount(ctx context.Context, connection domain.Connection, 
 			Name:         details.Name,
 			OwnerName:    details.OwnerName,
 			Currency:     strings.ToUpper(details.Currency),
+			Type:         account.Type,
 		}
 		if account.Currency == "" {
 			account.Currency = "EUR"

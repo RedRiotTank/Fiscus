@@ -188,6 +188,41 @@ code, .mono {
   color: #bae6fd;
 }
 
+.workspace-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  background: rgba(15, 23, 32, 0.7);
+  flex-shrink: 0;
+}
+
+.workspace-switcher a {
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.workspace-switcher a:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.workspace-switcher a.active {
+  color: #04121b;
+  background: linear-gradient(135deg, var(--accent), #22d3ee);
+}
+
+.workspace-lock {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .build {
   color: var(--muted);
   font-family: var(--mono);
@@ -545,6 +580,18 @@ td.description {
   border-color: rgba(56, 189, 248, 0.22);
   text-transform: none;
   letter-spacing: 0;
+}
+
+.badge.workspace.personal {
+  background: rgba(56, 189, 248, 0.1);
+  color: #7dd3fc;
+  border-color: rgba(56, 189, 248, 0.26);
+}
+
+.badge.workspace.business {
+  background: rgba(167, 139, 250, 0.12);
+  color: #c4b5fd;
+  border-color: rgba(167, 139, 250, 0.3);
 }
 
 .budget-list {

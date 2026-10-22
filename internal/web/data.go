@@ -36,6 +36,8 @@ type PageData struct {
 	Connections       []ConnectionView
 	TotalAccounts     int
 	TotalTransactions int
+	Workspace         WorkspaceState
+	Path              string
 	FilterAccount     string
 	Page              int
 	PrevPage          int
@@ -87,6 +89,7 @@ type RunwayView struct {
 type TransactionView struct {
 	domain.Transaction
 	AccountName string
+	AccountType string
 }
 
 // AlertView augments an alert with display metadata.
@@ -137,14 +140,16 @@ func transactionViews(transactions []domain.Transaction, accounts map[string]dom
 	out := make([]TransactionView, 0, len(transactions))
 	for _, tx := range transactions {
 		name := tx.AccountID
+		accountType := domain.AccountTypePersonal
 		if account, ok := accounts[tx.AccountID]; ok {
 			if account.Name != "" {
 				name = account.Name
 			} else if account.IBAN != "" {
 				name = account.IBAN
 			}
+			accountType = domain.NormalizeAccountType(account.Type)
 		}
-		out = append(out, TransactionView{Transaction: tx, AccountName: name})
+		out = append(out, TransactionView{Transaction: tx, AccountName: name, AccountType: accountType})
 	}
 	return out
 }
@@ -242,7 +247,7 @@ func runwayLabel(runway treasury.Runway) string {
 }
 
 func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
-	accounts, err := s.store.ListAccounts(ctx)
+	accounts, err := s.workspaceAccounts(ctx, data.Workspace.View)
 	if err != nil {
 		return err
 	}
@@ -252,9 +257,12 @@ func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 	now := s.now().UTC()
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 	data.SpendingMonth = monthStart.Format("January 2006")
-	spending, err := s.store.SpendingByCategory(ctx, monthStart, monthStart.AddDate(0, 1, 0))
-	if err != nil {
-		return err
+	var spending []storage.CategorySpending
+	if data.Workspace.View == domain.WorkspaceAll || len(accounts) > 0 {
+		spending, err = s.store.SpendingByCategoryForAccounts(ctx, monthStart, monthStart.AddDate(0, 1, 0), accountIDsArg(accounts, data.Workspace.View))
+		if err != nil {
+			return err
+		}
 	}
 	for _, item := range spending {
 		data.CategorySpending = append(data.CategorySpending, CategorySpendingView{
@@ -267,15 +275,19 @@ func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 	if err != nil {
 		return err
 	}
+	windowTransactions = filterTransactions(windowTransactions, allowedAccountIDs(accounts, data.Workspace.View), data.Workspace.View)
 	for _, runway := range treasury.ComputeRunways(accounts, windowTransactions, now, treasury.DefaultBurnWindowDays) {
 		data.Treasury = append(data.Treasury, RunwayView{
 			Runway:      runway,
 			RunwayLabel: runwayLabel(runway),
 		})
 	}
-	total, err := s.store.CountTransactions(ctx)
-	if err != nil {
-		return err
+	var total int
+	if data.Workspace.View == domain.WorkspaceAll || len(accounts) > 0 {
+		total, err = s.store.CountTransactionsFiltered(ctx, accountIDsArg(accounts, data.Workspace.View))
+		if err != nil {
+			return err
+		}
 	}
 	data.TotalTransactions = total
 	return nil
@@ -286,7 +298,7 @@ func (s *Server) loadConnections(ctx context.Context, data *PageData) error {
 	if err != nil {
 		return err
 	}
-	accounts, err := s.store.ListAccounts(ctx)
+	accounts, err := s.workspaceAccounts(ctx, data.Workspace.View)
 	if err != nil {
 		return err
 	}
@@ -299,23 +311,38 @@ func (s *Server) loadAlerts(ctx context.Context, data *PageData, limit int) erro
 	if err != nil {
 		return err
 	}
-	accounts, err := s.store.ListAccounts(ctx)
+	accounts, err := s.workspaceAccounts(ctx, data.Workspace.View)
 	if err != nil {
 		return err
+	}
+	allowed := allowedAccountIDs(accounts, data.Workspace.View)
+	if data.Workspace.View != domain.WorkspaceAll {
+		filtered := make([]domain.Alert, 0, len(alerts))
+		for _, alert := range alerts {
+			if alert.AccountID == "" {
+				continue
+			}
+			if _, ok := allowed[alert.AccountID]; ok {
+				filtered = append(filtered, alert)
+			}
+		}
+		alerts = filtered
 	}
 	data.Alerts = alertViews(alerts, accountMap(accounts))
 	return nil
 }
 
 // transactionFilter builds a storage filter while keeping pagination bounded.
-func transactionFilter(accountID string, page int) storage.TransactionFilter {
+// accountIDs restricts the workspace view; nil means all accounts.
+func transactionFilter(accountID string, accountIDs []string, page int) storage.TransactionFilter {
 	const pageSize = 50
 	if page < 0 {
 		page = 0
 	}
 	return storage.TransactionFilter{
-		AccountID: accountID,
-		Limit:     pageSize,
-		Offset:    page * pageSize,
+		AccountID:  accountID,
+		AccountIDs: accountIDs,
+		Limit:      pageSize,
+		Offset:     page * pageSize,
 	}
 }

@@ -10,9 +10,22 @@ import (
 
 // handleAnalytics renders the interactive analytics workspace. Charts load
 // their datasets from the JSON endpoints.
-func (s *Server) handleAnalytics(w http.ResponseWriter, _ *http.Request) {
-	data := s.baseData("Analytics", "analytics")
+func (s *Server) handleAnalytics(w http.ResponseWriter, r *http.Request) {
+	data := s.baseData(r, "Analytics", "analytics")
 	s.render(w, "analytics", data)
+}
+
+func (s *Server) analyticsWorkspaceAccounts(r *http.Request) ([]domain.Account, WorkspaceState, error) {
+	state := s.workspaceState(r)
+	accounts, err := s.workspaceAccounts(r.Context(), state.View)
+	if err != nil {
+		return nil, state, err
+	}
+	return accounts, state, nil
+}
+
+func filterAnalyticsTransactions(transactions []domain.Transaction, accounts []domain.Account, state WorkspaceState) []domain.Transaction {
+	return filterTransactions(transactions, allowedAccountIDs(accounts, state.View), state.View)
 }
 
 func (s *Server) handleAnalyticsSpending(w http.ResponseWriter, r *http.Request) {
@@ -21,7 +34,7 @@ func (s *Server) handleAnalyticsSpending(w http.ResponseWriter, r *http.Request)
 		s.analyticsBadRequest(w, "period must be month, quarter, or ytd")
 		return
 	}
-	accounts, err := s.store.ListAccounts(r.Context())
+	accounts, state, err := s.analyticsWorkspaceAccounts(r)
 	if err != nil {
 		s.analyticsStoreError(w, r, err)
 		return
@@ -33,6 +46,7 @@ func (s *Server) handleAnalyticsSpending(w http.ResponseWriter, r *http.Request)
 		s.analyticsStoreError(w, r, err)
 		return
 	}
+	transactions = filterAnalyticsTransactions(transactions, accounts, state)
 	s.writeJSON(w, http.StatusOK, analytics.ComputeSpending(transactions, accounts, now, currency, period))
 }
 

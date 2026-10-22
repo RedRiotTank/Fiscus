@@ -13,7 +13,7 @@
         <article class="stat">
           <span class="stat-label">{{.Currency}} monthly burn</span>
           <strong class="stat-value">{{money .MonthlyBurnMinor .Currency}}</strong>
-          <span class="stat-meta">Runway {{.RunwayLabel}} · {{money .LiquidMinor .Currency}} liquid</span>
+          <span class="stat-meta">{{if $.Workspace.Business}}Burn rate &amp; runway{{else}}Runway{{end}} {{.RunwayLabel}} · {{money .LiquidMinor .Currency}} liquid</span>
         </article>
       {{end}}
       <article class="stat subtle">
@@ -64,7 +64,7 @@
             <tr>
               <th scope="col">Account</th>
               <th scope="col">IBAN</th>
-              <th scope="col">Type</th>
+              <th scope="col">Workspace</th>
               <th scope="col" class="right">Balance</th>
               <th scope="col">Updated</th>
             </tr>
@@ -78,7 +78,8 @@
                 </td>
                 <td class="mono">{{if .IBAN}}{{.IBAN}}{{else}}<span class="muted">—</span>{{end}}</td>
                 <td>
-                  {{if .BalanceType}}<span class="badge muted">{{.BalanceType}}</span>{{else}}<span class="muted">—</span>{{end}}
+                  <span class="badge workspace {{if eq .Type "business"}}business{{else}}personal{{end}}">{{if eq .Type "business"}}Business{{else}}Personal{{end}}</span>
+                  {{if .BalanceType}}<span class="badge muted">{{.BalanceType}}</span>{{end}}
                 </td>
                 <td class="right amount {{if lt .BalanceMinor 0}}debit{{else}}credit{{end}}">{{money .BalanceMinor .Currency}}</td>
                 <td class="nowrap muted">{{if .BalanceUpdatedAt}}{{ago .BalanceUpdatedAt}}{{else}}never{{end}}</td>

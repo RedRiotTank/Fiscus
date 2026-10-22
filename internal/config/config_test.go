@@ -456,3 +456,55 @@ func TestDuration(t *testing.T) {
 		t.Fatalf("duration std = %v", got)
 	}
 }
+
+func TestWorkspaceProfileAndAccountTypes(t *testing.T) {
+	path := writeConfig(t, `
+profile: hybrid
+accounts:
+  - id: acc-business
+    type: business
+  - id: acc-personal
+    type: personal
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.WorkspaceProfile() != "hybrid" {
+		t.Fatalf("profile = %q", cfg.WorkspaceProfile())
+	}
+	types := cfg.AccountTypes()
+	if types["acc-business"] != "business" || types["acc-personal"] != "personal" || len(types) != 2 {
+		t.Fatalf("account types = %+v", types)
+	}
+}
+
+func TestInvalidWorkspaceConfigurationRejected(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+	}{
+		{name: "invalid profile", yaml: "profile: charity\n"},
+		{name: "missing account id", yaml: "accounts:\n  - type: business\n"},
+		{name: "invalid account type", yaml: "accounts:\n  - id: acc-1\n    type: shared\n"},
+		{name: "duplicate account", yaml: "accounts:\n  - id: acc-1\n    type: personal\n  - id: acc-1\n    type: business\n"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := Load(writeConfig(t, test.yaml)); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}
+
+func TestWorkspaceProfileEnvironmentOverride(t *testing.T) {
+	t.Setenv("FISCUS_PROFILE", "business")
+	cfg, err := Load(writeConfig(t, "profile: personal\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.WorkspaceProfile() != "business" {
+		t.Fatalf("profile = %q", cfg.WorkspaceProfile())
+	}
+}

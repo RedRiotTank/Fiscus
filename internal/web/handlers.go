@@ -8,23 +8,30 @@ import (
 	"strings"
 	"time"
 
+	"github.com/RedRiotTank/Fiscus/internal/analysis"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/treasury"
 )
 
 const syncRequestHeader = "X-Fiscus-Request"
 
-func (s *Server) baseData(title, active string) PageData {
+func (s *Server) baseData(r *http.Request, title, active string) PageData {
+	path := "/"
+	if r != nil && r.URL != nil && r.URL.Path != "" {
+		path = r.URL.Path
+	}
 	return PageData{
-		Title:   title,
-		Active:  active,
-		Version: s.version,
-		Now:     s.now().UTC(),
+		Title:     title,
+		Active:    active,
+		Version:   s.version,
+		Now:       s.now().UTC(),
+		Workspace: s.resolveWorkspace(r),
+		Path:      path,
 	}
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
-	data := s.baseData("Overview", "dashboard")
+	data := s.baseData(r, "Overview", "dashboard")
 	ctx := r.Context()
 	if err := s.loadOverview(ctx, &data); err != nil {
 		s.fail(w, r, err)
@@ -43,37 +50,53 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	transactions = filterTransactions(transactions, allowedAccountIDs(data.Accounts, data.Workspace.View), data.Workspace.View)
 	data.Transactions = transactionViews(transactions, accountMap(data.Accounts))
 	s.render(w, "dashboard", data)
 }
 
 func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
-	data := s.baseData("Transactions", "transactions")
+	data := s.baseData(r, "Transactions", "transactions")
 	data.FilterAccount = strings.TrimSpace(r.URL.Query().Get("account"))
 	data.Page = parsePage(r.URL.Query().Get("page"))
 
 	ctx := r.Context()
-	accounts, err := s.store.ListAccounts(ctx)
+	accounts, err := s.workspaceAccounts(ctx, data.Workspace.View)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
 	data.Accounts = accounts
 	data.TotalAccounts = len(accounts)
+	allowed := allowedAccountIDs(accounts, data.Workspace.View)
+	filterBlocked := false
+	if data.FilterAccount != "" {
+		if _, ok := allowed[data.FilterAccount]; !ok {
+			filterBlocked = true
+		}
+	}
 
-	transactions, err := s.store.ListTransactions(ctx, transactionFilter(data.FilterAccount, data.Page))
-	if err != nil {
-		s.fail(w, r, err)
-		return
+	accountIDs := accountIDsArg(accounts, data.Workspace.View)
+	restrictedEmpty := filterBlocked || (data.Workspace.View != domain.WorkspaceAll && len(accounts) == 0)
+	var transactions []domain.Transaction
+	if !restrictedEmpty {
+		transactions, err = s.store.ListTransactions(ctx, transactionFilter(data.FilterAccount, accountIDs, data.Page))
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
 	}
 	data.Transactions = transactionViews(transactions, accountMap(accounts))
-	data.HasNext = len(transactions) == transactionFilter("", 0).Limit
+	data.HasNext = len(transactions) == transactionFilter("", nil, 0).Limit
 	data.PrevPage = max(data.Page-1, 0)
 	data.NextPage = data.Page + 1
-	total, err := s.store.CountTransactions(ctx)
-	if err != nil {
-		s.fail(w, r, err)
-		return
+	var total int
+	if !restrictedEmpty {
+		total, err = s.store.CountTransactionsFiltered(ctx, accountIDs)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
 	}
 	data.TotalTransactions = total
 	s.render(w, "transactions", data)
@@ -109,6 +132,13 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	workspace := s.workspaceState(r)
+	workspaceAccounts, err := s.workspaceAccounts(r.Context(), workspace.View)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	transactions = filterTransactions(transactions, allowedAccountIDs(workspaceAccounts, workspace.View), workspace.View)
 	if query.Get("include_transfers") != "1" {
 		pairs := treasury.PairTransfers(transactions, 3)
 		transactions = treasury.ExcludeTransfers(transactions, pairs)
@@ -155,19 +185,36 @@ func parseExportDate(raw string, endOfDay bool) (time.Time, error) {
 }
 
 func (s *Server) handleSubscriptions(w http.ResponseWriter, r *http.Request) {
-	data := s.baseData("Subscriptions & Fees", "subscriptions")
+	data := s.baseData(r, "Subscriptions & Fees", "subscriptions")
 	ctx := r.Context()
 	snapshot, err := s.analyzer.Snapshot(ctx)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	accounts, err := s.store.ListAccounts(ctx)
+	accounts, err := s.workspaceAccounts(ctx, data.Workspace.View)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
 	data.Accounts = accounts
+	if data.Workspace.View != domain.WorkspaceAll {
+		allowed := allowedAccountIDs(accounts, data.Workspace.View)
+		subscriptions := make([]analysis.Subscription, 0, len(snapshot.Subscriptions))
+		for _, subscription := range snapshot.Subscriptions {
+			if _, ok := allowed[subscription.AccountID]; ok {
+				subscriptions = append(subscriptions, subscription)
+			}
+		}
+		fees := make([]analysis.Fee, 0, len(snapshot.Fees))
+		for _, fee := range snapshot.Fees {
+			if _, ok := allowed[fee.AccountID]; ok {
+				fees = append(fees, fee)
+			}
+		}
+		snapshot.Subscriptions = subscriptions
+		snapshot.Fees = fees
+	}
 	data.Subscriptions = subscriptionViews(snapshot.Subscriptions, accountMap(accounts))
 	data.Fees = feeViews(snapshot.Fees, accountMap(accounts))
 	data.MonthlyCosts = currencyAmountViews(snapshot.MonthlyCosts)
@@ -177,7 +224,7 @@ func (s *Server) handleSubscriptions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
-	data := s.baseData("Alerts", "alerts")
+	data := s.baseData(r, "Alerts", "alerts")
 	if err := s.loadAlerts(r.Context(), &data, 200); err != nil {
 		s.fail(w, r, err)
 		return
@@ -186,7 +233,7 @@ func (s *Server) handleAlerts(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleConnections(w http.ResponseWriter, r *http.Request) {
-	data := s.baseData("Connections", "connections")
+	data := s.baseData(r, "Connections", "connections")
 	switch r.URL.Query().Get("auth") {
 	case "success":
 		data.AuthStatus = "success"
@@ -232,7 +279,7 @@ func (s *Server) handleAuthorizationCallback(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Server) handleOverviewPartial(w http.ResponseWriter, r *http.Request) {
-	data := s.baseData("Overview", "dashboard")
+	data := s.baseData(r, "Overview", "dashboard")
 	if err := s.loadOverview(r.Context(), &data); err != nil {
 		s.logger.Error("load overview partial", "error", err)
 		http.Error(w, "Could not load overview", http.StatusInternalServerError)
@@ -242,7 +289,7 @@ func (s *Server) handleOverviewPartial(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAlertsPartial(w http.ResponseWriter, r *http.Request) {
-	data := s.baseData("Alerts", "dashboard")
+	data := s.baseData(r, "Alerts", "dashboard")
 	if err := s.loadAlerts(r.Context(), &data, 12); err != nil {
 		s.logger.Error("load alerts partial", "error", err)
 		http.Error(w, "Could not load alerts", http.StatusInternalServerError)
@@ -252,7 +299,7 @@ func (s *Server) handleAlertsPartial(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleConnectionsPartial(w http.ResponseWriter, r *http.Request) {
-	data := s.baseData("Connections", "connections")
+	data := s.baseData(r, "Connections", "connections")
 	if err := s.loadConnections(r.Context(), &data); err != nil {
 		s.logger.Error("load connections partial", "error", err)
 		http.Error(w, "Could not load connections", http.StatusInternalServerError)
