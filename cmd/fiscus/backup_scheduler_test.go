@@ -1,10 +1,13 @@
 package main
 
 import (
+	"archive/tar"
 	"bytes"
 	"compress/gzip"
 	"context"
+	"errors"
 	"io"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -40,22 +43,38 @@ func TestWriteAndSendBackup(t *testing.T) {
 	}
 	cfg := config.Default()
 	cfg.Backups.Directory = t.TempDir()
+	cfg.Attachments.Directory = t.TempDir()
+	if err := os.WriteFile(filepath.Join(cfg.Attachments.Directory, "receipt.pdf"), []byte("receipt"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
 	sender := &fakeDocumentSender{}
 	now := time.Date(2026, 10, 22, 9, 8, 7, 0, time.UTC)
 	if err := writeAndSendBackup(ctx, cfg, store, sender, now); err != nil {
 		t.Fatalf("writeAndSendBackup: %v", err)
 	}
-	if sender.calls != 1 || sender.filename != "fiscus-20261022-090807.sqlite.gz" {
+	if sender.calls != 1 || sender.filename != "fiscus-20261022-090807.tar.gz" {
 		t.Fatalf("sender = %+v", sender)
 	}
 	reader, err := gzip.NewReader(bytes.NewReader(sender.data))
 	if err != nil {
 		t.Fatalf("gzip.NewReader: %v", err)
 	}
-	if _, err := io.Copy(io.Discard, reader); err != nil {
-		t.Fatalf("decompress: %v", err)
+	tarReader := tar.NewReader(reader)
+	entries := make(map[string]bool)
+	for {
+		header, err := tarReader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("tar next: %v", err)
+		}
+		entries[header.Name] = true
 	}
 	if err := reader.Close(); err != nil {
 		t.Fatalf("close: %v", err)
+	}
+	if !entries["fiscus.db"] || !entries["attachments/receipt.pdf"] {
+		t.Fatalf("archive entries = %v", entries)
 	}
 }

@@ -431,7 +431,7 @@ func runSync(args []string, stdout, stderr io.Writer) error {
 func runBackup(args []string, stdout, stderr io.Writer) error {
 	fs := newFlagSet("backup", stderr)
 	configPath := fs.String("config", defaultConfigPath(), "path to YAML configuration")
-	out := fs.String("out", "", "output .sqlite.gz path (default: timestamped file in backups.directory)")
+	out := fs.String("out", "", "output .tar.gz path (default: timestamped file in backups.directory)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -454,12 +454,12 @@ func runBackup(args []string, stdout, stderr io.Writer) error {
 	if path == "" {
 		path = backup.DefaultPath(cfg.Backups.Directory, time.Now().UTC())
 	}
-	result, err := backup.CreateGzip(ctx, store, path)
+	result, err := backup.CreateArchive(ctx, store, cfg.Attachments.Directory, path)
 	if err != nil {
 		return fmt.Errorf("backup: %w", err)
 	}
-	_, _ = fmt.Fprintf(stdout, "Backup written to %s (%d bytes, %d pages).\n",
-		result.Path, result.CompressedBytes, result.Pages)
+	_, _ = fmt.Fprintf(stdout, "Backup written to %s (%d bytes, %d pages, %d attachment files).\n",
+		result.Path, result.CompressedBytes, result.Pages, result.AttachmentFiles)
 	return nil
 }
 

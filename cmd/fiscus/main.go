@@ -74,7 +74,7 @@ Usage:
   fiscus institutions   List available institutions for a country
   fiscus sync           Run one synchronization cycle and exit
   fiscus recategorize   Re-run category rules over historical transactions
-  fiscus backup         Write a gzipped online SQLite backup
+  fiscus backup         Write a .tar.gz backup with SQLite and attachments
   fiscus export         Export transactions as CSV, hledger, or Beancount
   fiscus version        Print build information
 
