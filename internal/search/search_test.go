@@ -86,6 +86,31 @@ func TestParseStructuredQuery(t *testing.T) {
 	}
 }
 
+func TestParseLocalizedAmountFilters(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		raw  string
+		want int64
+	}{
+		{raw: "amount:1234.50", want: 123450},
+		{raw: "amount:1,234.50", want: 123450},
+		{raw: "amount:1.234,50", want: 123450},
+		{raw: "amount:1,234", want: 123400},
+		{raw: "amount:1.234", want: 123400},
+		{raw: "amount:1,5", want: 150},
+	}
+	for _, test := range tests {
+		query, err := Parse(test.raw)
+		if err != nil {
+			t.Errorf("Parse(%q): %v", test.raw, err)
+			continue
+		}
+		if query.AmountMinor != test.want {
+			t.Errorf("Parse(%q) amount = %d, want %d", test.raw, query.AmountMinor, test.want)
+		}
+	}
+}
+
 func TestParseRejectsInvalidFilters(t *testing.T) {
 	t.Parallel()
 	for _, raw := range []string{"amount:>", "amount:abc", "status:done", "type:other", "has:maybe", "category:"} {
@@ -178,5 +203,35 @@ func TestSearchLimit(t *testing.T) {
 	}
 	if len(results) != 1 {
 		t.Fatalf("results = %d, want 1", len(results))
+	}
+}
+
+func TestSearchPageOffsets(t *testing.T) {
+	t.Parallel()
+	f := newSearchFixture(t)
+	ctx := context.Background()
+	seen := make(map[string]bool)
+	for offset := 0; offset < 3; offset++ {
+		results, err := f.service.SearchPage(ctx, "coffee", 1, offset)
+		if err != nil {
+			t.Fatalf("SearchPage offset %d: %v", offset, err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("offset %d returned %d results", offset, len(results))
+		}
+		if seen[results[0].ExternalID] {
+			t.Fatalf("offset %d repeated %s", offset, results[0].ExternalID)
+		}
+		seen[results[0].ExternalID] = true
+	}
+	if len(seen) != 3 {
+		t.Fatalf("seen = %v, want three distinct transactions", seen)
+	}
+	empty, err := f.service.SearchPage(ctx, "coffee", 1, 3)
+	if err != nil {
+		t.Fatalf("SearchPage past end: %v", err)
+	}
+	if len(empty) != 0 {
+		t.Fatalf("results past end = %+v", empty)
 	}
 }

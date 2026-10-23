@@ -21,6 +21,11 @@ type TransactionSearch struct {
 
 // SearchTransactions searches the FTS5 index and applies structured filters.
 func (s *Store) SearchTransactions(ctx context.Context, search TransactionSearch, limit int) ([]domain.Transaction, error) {
+	return s.SearchTransactionsPage(ctx, search, limit, 0)
+}
+
+// SearchTransactionsPage searches the FTS5 index and returns one page.
+func (s *Store) SearchTransactionsPage(ctx context.Context, search TransactionSearch, limit, offset int) ([]domain.Transaction, error) {
 	// #nosec G202 -- transactionColumns is a static developer-defined column list.
 	query := `SELECT ` + prefixColumns("t", transactionColumns) + `
 		FROM transactions t
@@ -71,8 +76,8 @@ func (s *Store) SearchTransactions(ctx context.Context, search TransactionSearch
 		// #nosec G202 -- where contains only static predicates; values are bound.
 		query += " WHERE " + strings.Join(where, " AND ")
 	}
-	query += " ORDER BY t.booking_date DESC, t.id DESC LIMIT ?"
-	args = append(args, normalizeLimit(limit))
+	query += " ORDER BY t.booking_date DESC, t.id DESC LIMIT ? OFFSET ?"
+	args = append(args, normalizeLimit(limit), max(offset, 0))
 
 	// #nosec G202 -- query is composed from static fragments and bound values.
 	rows, err := s.db.QueryContext(ctx, query, args...)

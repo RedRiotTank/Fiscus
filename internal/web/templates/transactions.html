@@ -14,6 +14,7 @@
         <option value="{{.ID}}" {{if eq .ID $.FilterAccount}}selected{{end}}>{{if .Name}}{{.Name}}{{else}}{{.ID}}{{end}}{{if .Currency}} · {{.Currency}}{{end}}</option>
       {{end}}
     </select>
+    <input type="hidden" name="limit" value="{{.Limit}}">
     <button class="button small" type="submit">Filter</button>
   </form>
 </div>
@@ -24,8 +25,9 @@
 <form class="search-bar" method="get" action="/transactions" role="search">
   <input type="search" name="q" value="{{.SearchQuery}}" placeholder="Search: coffee, amount:&gt;100, category:Utilities, status:booked, has:receipt, type:business" aria-label="Search transactions">
   {{if .FilterAccount}}<input type="hidden" name="account" value="{{.FilterAccount}}">{{end}}
+  <input type="hidden" name="limit" value="{{.Limit}}">
   <button class="button small" type="submit">Search</button>
-  {{if .SearchQuery}}<a class="link" href="/transactions{{if .FilterAccount}}?account={{.FilterAccount}}{{end}}">Clear</a>{{end}}
+  {{if .SearchQuery}}<a class="link" href="/transactions?limit={{.Limit}}{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}">Clear</a>{{end}}
 </form>
 <p class="search-hint">Prefix search across descriptions, counterparties, categories, notes, and workspace type.</p>
 
@@ -33,7 +35,7 @@
   <header class="panel-head">
     <div>
       <h2>Transaction history</h2>
-      <p class="panel-sub">Page {{.Page}} · 50 per page</p>
+      <p class="panel-sub">Page {{.Page}} · {{.Limit}} per page</p>
     </div>
     <div class="export-actions">
       <form hx-post="/recategorize" hx-target="#recategorize-status" hx-swap="innerHTML">
@@ -90,13 +92,13 @@
       </table>
     </div>
     <nav class="pagination" aria-label="Transaction pages">
-      {{if gt .Page 0}}
-        <a class="button ghost small" href="/transactions?account={{.FilterAccount}}&page={{.PrevPage}}">← Previous</a>
+      {{if gt .Page 1}}
+        <a class="button ghost small" href="/transactions?page={{.PrevPage}}&limit={{.Limit}}{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}{{if .SearchQuery}}&q={{urlquery .SearchQuery}}{{end}}">← Previous</a>
       {{else}}
         <span></span>
       {{end}}
       {{if .HasNext}}
-        <a class="button ghost small" href="/transactions?account={{.FilterAccount}}&page={{.NextPage}}">Next →</a>
+        <a class="button ghost small" href="/transactions?page={{.NextPage}}&limit={{.Limit}}{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}{{if .SearchQuery}}&q={{urlquery .SearchQuery}}{{end}}">Next →</a>
       {{end}}
     </nav>
   {{else}}

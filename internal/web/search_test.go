@@ -36,6 +36,30 @@ func TestTransactionSearchUI(t *testing.T) {
 	}
 }
 
+func TestTransactionSearchPagination(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	f.server.search = search.New(f.store)
+	first := f.request(t, http.MethodGet, "/transactions?q=coffee&page=1&limit=1", true, nil)
+	if first.Code != http.StatusOK {
+		t.Fatalf("first page status = %d", first.Code)
+	}
+	firstBody := first.Body.String()
+	if !strings.Contains(firstBody, "Page 1 · 1 per page") || !strings.Contains(firstBody, "page=2") {
+		t.Fatalf("first page pagination missing: %s", firstBody)
+	}
+	if !strings.Contains(firstBody, "Coffee Shop") || strings.Contains(firstBody, "Pending coffee") {
+		t.Fatalf("first page results = %s", firstBody)
+	}
+	second := f.request(t, http.MethodGet, "/transactions?q=coffee&page=2&limit=1", true, nil)
+	if second.Code != http.StatusOK {
+		t.Fatalf("second page status = %d", second.Code)
+	}
+	if body := second.Body.String(); !strings.Contains(body, "Pending coffee") || !strings.Contains(body, "page=1") {
+		t.Fatalf("second page = %s", body)
+	}
+}
+
 func TestSearchRespectsWorkspaceIsolation(t *testing.T) {
 	t.Parallel()
 	f := newWebFixture(t)
