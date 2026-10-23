@@ -52,6 +52,22 @@
     return response.json();
   }
 
+  async function postJSON(url, payload) {
+    const response = await fetch(url, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload || {})
+    });
+    if (!response.ok) {
+      throw new Error("Request failed with status " + response.status);
+    }
+    return response.json();
+  }
+
   function setEmpty(canvasId, emptyId, empty, message) {
     const canvas = document.getElementById(canvasId);
     const note = document.getElementById(emptyId);
@@ -93,6 +109,7 @@
     formatMoney: formatMoney,
     formatCompact: formatCompact,
     fetchJSON: fetchJSON,
+    postJSON: postJSON,
     setEmpty: setEmpty,
     activate: activate,
     chartBase: chartBase,

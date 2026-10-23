@@ -28,6 +28,7 @@
           <span>Annual investment yield <output id="projection-yield-value">3.0%</output></span>
           <input id="projection-yield" type="range" min="0" max="12" step="0.25" value="3">
         </label>
+        <button class="button small scenario-open" type="button" data-scenario-open>Simulate scenario</button>
       </div>
     </header>
     <div class="chart-body chart-body-tall">
@@ -36,4 +37,53 @@
     </div>
   </article>
 </section>
+
+<dialog class="scenario-drawer" id="scenario-dialog" aria-labelledby="scenario-title">
+  <form method="dialog" class="scenario-dismiss">
+    <button type="submit" aria-label="Close scenario simulator">×</button>
+  </form>
+  <header class="scenario-header">
+    <p class="eyebrow">What-if cash flow</p>
+    <h2 id="scenario-title">Scenario simulator</h2>
+    <p class="subtitle">Overlay a modified monthly cash flow against the baseline projection. Changes are applied from the current month forward.</p>
+  </header>
+  <div class="scenario-controls">
+    <label class="control-field" for="scenario-income">
+      <span>Monthly income change <output id="scenario-income-value">€0</output></span>
+      <input id="scenario-income" type="range" min="-3000" max="3000" step="50" value="0">
+    </label>
+    <label class="control-field" for="scenario-expense">
+      <span>Monthly expense change <output id="scenario-expense-value">€0</output></span>
+      <input id="scenario-expense" type="range" min="0" max="3000" step="50" value="0">
+    </label>
+    <label class="control-field" for="scenario-oneoff">
+      <span>One-off cash event <output id="scenario-oneoff-value">€0</output></span>
+      <input id="scenario-oneoff" type="range" min="-50000" max="50000" step="500" value="0">
+    </label>
+    <div class="scenario-inline">
+      <label class="control-field" for="scenario-oneoff-month">
+        <span>Event month</span>
+        <input id="scenario-oneoff-month" type="number" min="1" max="12" step="1" value="1">
+      </label>
+      <label class="control-field" for="scenario-horizon">
+        <span>Horizon</span>
+        <select id="scenario-horizon">
+          <option value="12">12 months</option>
+          <option value="24">24 months</option>
+          <option value="36">36 months</option>
+          <option value="60">60 months</option>
+        </select>
+      </label>
+    </div>
+  </div>
+  <div class="scenario-summary" id="scenario-summary">Loading scenario…</div>
+  <div class="chart-body chart-body-tall">
+    <canvas id="scenario-chart" role="img" aria-label="Baseline versus simulated cash flow projection"></canvas>
+    <p class="chart-empty" id="scenario-chart-empty" hidden>Could not load the scenario projection.</p>
+  </div>
+  <div class="scenario-actions">
+    <button class="button" type="button" data-scenario-run>Run simulation</button>
+    <button class="button ghost" type="button" data-scenario-reset>Reset</button>
+  </div>
+</dialog>
 {{end}}
