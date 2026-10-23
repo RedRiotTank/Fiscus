@@ -736,3 +736,34 @@ func TestAccountWorkspaceTypeLifecycle(t *testing.T) {
 		t.Fatalf("schema version = %d, want >= 6", version)
 	}
 }
+
+func TestReconciliationPersistence(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	ctx := context.Background()
+	conn := seedConnection(t, s)
+	account := seedAccount(t, s, conn.ID)
+	now := time.Date(2026, 3, 10, 10, 0, 0, 0, time.UTC)
+	rec := domain.Reconciliation{
+		AccountID: account.ID, Currency: "EUR", OpeningBalanceMinor: 5000,
+		AnchorAt: now.AddDate(0, 0, -30), LastCheckedAt: &now,
+		LastDeltaMinor: -250, Status: domain.ReconciliationStatusDiscrepancy,
+		DiscrepancyStart: &now, DiscrepancyEnd: &now, UpdatedAt: now,
+	}
+	if err := s.SaveReconciliation(ctx, &rec); err != nil {
+		t.Fatalf("SaveReconciliation: %v", err)
+	}
+	got, err := s.GetReconciliation(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("GetReconciliation: %v", err)
+	}
+	if got.LastDeltaMinor != -250 || got.Status != domain.ReconciliationStatusDiscrepancy || got.OpeningBalanceMinor != 5000 {
+		t.Fatalf("reconciliation = %+v", got)
+	}
+	if err := s.SaveReconciliation(ctx, &rec); err != nil {
+		t.Fatalf("second SaveReconciliation: %v", err)
+	}
+	if _, err := s.GetReconciliation(ctx, "missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing reconciliation error = %v", err)
+	}
+}

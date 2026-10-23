@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -16,35 +17,39 @@ import (
 
 // PageData is the common view model for all templates.
 type PageData struct {
-	Title             string
-	Active            string
-	Version           string
-	Now               time.Time
-	Summary           []CurrencySummary
-	CategorySpending  []CategorySpendingView
-	SpendingMonth     string
-	Budgets           []budgets.Status
-	Subscriptions     []SubscriptionView
-	Fees              []FeeView
-	MonthlyCosts      []CurrencyAmountView
-	AnnualCosts       []CurrencyAmountView
-	FeeTotals         []CurrencyAmountView
-	Treasury          []RunwayView
-	Accounts          []domain.Account
-	Transactions      []TransactionView
-	Alerts            []AlertView
-	Connections       []ConnectionView
-	TotalAccounts     int
-	TotalTransactions int
-	Workspace         WorkspaceState
-	Path              string
-	FilterAccount     string
-	Page              int
-	PrevPage          int
-	NextPage          int
-	HasNext           bool
-	ErrorMessage      string
-	AuthStatus        string
+	Title               string
+	Active              string
+	Version             string
+	Now                 time.Time
+	Summary             []CurrencySummary
+	CategorySpending    []CategorySpendingView
+	SpendingMonth       string
+	Budgets             []budgets.Status
+	Subscriptions       []SubscriptionView
+	Fees                []FeeView
+	MonthlyCosts        []CurrencyAmountView
+	AnnualCosts         []CurrencyAmountView
+	FeeTotals           []CurrencyAmountView
+	Treasury            []RunwayView
+	Accounts            []domain.Account
+	Transactions        []TransactionView
+	Alerts              []AlertView
+	Connections         []ConnectionView
+	Reconciliations     map[string]domain.Reconciliation
+	ReconciliationTotal int
+	ReconciledAccounts  int
+	DiscrepancyAccounts int
+	TotalAccounts       int
+	TotalTransactions   int
+	Workspace           WorkspaceState
+	Path                string
+	FilterAccount       string
+	Page                int
+	PrevPage            int
+	NextPage            int
+	HasNext             bool
+	ErrorMessage        string
+	AuthStatus          string
 }
 
 // CurrencySummary aggregates balances for one currency.
@@ -290,7 +295,7 @@ func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 		}
 	}
 	data.TotalTransactions = total
-	return nil
+	return s.loadReconciliations(ctx, data)
 }
 
 func (s *Server) loadConnections(ctx context.Context, data *PageData) error {
@@ -303,6 +308,36 @@ func (s *Server) loadConnections(ctx context.Context, data *PageData) error {
 		return err
 	}
 	data.Connections = connectionViews(connections, accounts, s.now())
+	return s.loadReconciliations(ctx, data)
+}
+
+func (s *Server) loadReconciliations(ctx context.Context, data *PageData) error {
+	accounts, err := s.workspaceAccounts(ctx, data.Workspace.View)
+	if err != nil {
+		return err
+	}
+	out := make(map[string]domain.Reconciliation, len(accounts))
+	for _, account := range accounts {
+		rec, err := s.store.GetReconciliation(ctx, account.ID)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				continue
+			}
+			return err
+		}
+		out[account.ID] = rec
+	}
+	data.Reconciliations = out
+	data.ReconciliationTotal = len(accounts)
+	data.ReconciledAccounts = 0
+	data.DiscrepancyAccounts = 0
+	for _, rec := range out {
+		if rec.Balanced() {
+			data.ReconciledAccounts++
+		} else {
+			data.DiscrepancyAccounts++
+		}
+	}
 	return nil
 }
 

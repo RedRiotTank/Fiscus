@@ -15,6 +15,7 @@ import (
 
 	"github.com/RedRiotTank/Fiscus/internal/config"
 	"github.com/RedRiotTank/Fiscus/internal/observability"
+	"github.com/RedRiotTank/Fiscus/internal/reconciliation"
 )
 
 var (
@@ -175,6 +176,11 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 		return err
 	}
 	if worker != nil {
+		reconciler, err := reconciliation.New(store, nil)
+		if err != nil {
+			return err
+		}
+		worker.SetReconciler(reconciler)
 		go worker.Run(appCtx)
 	} else {
 		logger.Warn("banking credentials are not configured; ingestion is disabled")

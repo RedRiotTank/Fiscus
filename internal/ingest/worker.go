@@ -66,6 +66,18 @@ type AnalysisEvaluator interface {
 	OnAnalysis(ctx context.Context) ([]domain.Alert, error)
 }
 
+// ReconciliationEvaluator is an optional extension for balance integrity
+// alerts. It is called only when the discrepancy state changes.
+type ReconciliationEvaluator interface {
+	OnReconciliation(ctx context.Context, transition domain.ReconciliationTransition) ([]domain.Alert, error)
+}
+
+// Reconciler mathematically checks an account's official balance against its
+// stored booked transaction history.
+type Reconciler interface {
+	Reconcile(ctx context.Context, account domain.Account) (domain.ReconciliationTransition, error)
+}
+
 // Categorizer assigns a category to a normalized transaction. A nil
 // categorizer leaves transactions in the storage default category.
 type Categorizer interface {
@@ -115,6 +127,7 @@ type Worker struct {
 	bank          Bank
 	store         Store
 	evaluator     Evaluator
+	reconciler    Reconciler
 	observer      Observer
 	uncategorized UncategorizedNotifier
 	events        events.Sink
@@ -174,6 +187,13 @@ func (w *Worker) SetUncategorizedNotifier(notifier UncategorizedNotifier) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.uncategorized = notifier
+}
+
+// SetReconciler installs the balance integrity watchdog.
+func (w *Worker) SetReconciler(reconciler Reconciler) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.reconciler = reconciler
 }
 
 // SetEventSink installs an optional outbound event sink for webhooks.
@@ -498,6 +518,7 @@ func (w *Worker) recordSyncResult(ctx context.Context, connection domain.Connect
 func (w *Worker) syncAccount(ctx context.Context, connection domain.Connection, accountID string) error {
 	var errs []error
 	now := w.cfg.Now()
+	balanceUpdated := false
 
 	account, err := w.store.GetAccount(ctx, accountID)
 	switch {
@@ -578,6 +599,7 @@ func (w *Worker) syncAccount(ctx context.Context, connection domain.Connection, 
 			} else {
 				account.BalanceMinor = minor
 				account.BalanceType = chosen.BalanceType
+				balanceUpdated = true
 				w.observeBalance(account)
 				errs = append(errs, w.evaluateBalance(ctx, accountID))
 			}
@@ -593,6 +615,9 @@ func (w *Worker) syncAccount(ctx context.Context, connection domain.Connection, 
 	}
 	if inserted > 0 {
 		w.observeTransactions(accountID, inserted)
+	}
+	if balanceUpdated {
+		errs = append(errs, w.evaluateReconciliation(ctx, account))
 	}
 	result := errors.Join(errs...)
 	if result == nil {
@@ -681,6 +706,30 @@ func (w *Worker) evaluateBalance(ctx context.Context, accountID string) error {
 	}
 	if _, err := w.evaluator.OnBalance(ctx, account); err != nil {
 		return fmt.Errorf("evaluate balance rules: %w", err)
+	}
+	return nil
+}
+
+func (w *Worker) evaluateReconciliation(ctx context.Context, account domain.Account) error {
+	w.mu.Lock()
+	reconciler := w.reconciler
+	w.mu.Unlock()
+	if reconciler == nil {
+		return nil
+	}
+	transition, err := reconciler.Reconcile(ctx, account)
+	if err != nil {
+		return fmt.Errorf("reconcile account: %w", err)
+	}
+	if !transition.Changed {
+		return nil
+	}
+	evaluator, ok := w.evaluator.(ReconciliationEvaluator)
+	if !ok {
+		return nil
+	}
+	if _, err := evaluator.OnReconciliation(ctx, transition); err != nil {
+		return fmt.Errorf("evaluate reconciliation rules: %w", err)
 	}
 	return nil
 }

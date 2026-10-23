@@ -152,6 +152,41 @@ func (t Transaction) IsDebit() bool {
 	return t.AmountMinor < 0
 }
 
+// Reconciliation statuses used by the balance integrity watchdog.
+const (
+	ReconciliationStatusReconciled  = "reconciled"
+	ReconciliationStatusDiscrepancy = "discrepancy"
+)
+
+// Reconciliation stores the mathematical anchor and latest watchdog state for
+// one account.
+type Reconciliation struct {
+	AccountID           string
+	Currency            string
+	OpeningBalanceMinor int64
+	AnchorAt            time.Time
+	LastCheckedAt       *time.Time
+	LastDeltaMinor      int64
+	Status              string
+	DiscrepancyStart    *time.Time
+	DiscrepancyEnd      *time.Time
+	UpdatedAt           time.Time
+}
+
+// Balanced reports whether the official balance matches stored transactions.
+func (r Reconciliation) Balanced() bool {
+	return r.Status == ReconciliationStatusReconciled
+}
+
+// ReconciliationTransition describes the outcome of one reconciliation pass.
+// Changed is true only when the discrepancy state or amount changed.
+type ReconciliationTransition struct {
+	Reconciliation     Reconciliation
+	Changed            bool
+	PreviousStatus     string
+	PreviousDeltaMinor int64
+}
+
 // Alert is a persisted notification produced by a rule.
 type Alert struct {
 	ID            int64

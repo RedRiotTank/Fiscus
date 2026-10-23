@@ -16,6 +16,13 @@
           <span class="stat-meta">{{if $.Workspace.Business}}Burn rate &amp; runway{{else}}Runway{{end}} {{.RunwayLabel}} · {{money .LiquidMinor .Currency}} liquid</span>
         </article>
       {{end}}
+      {{if or .Workspace.Business .Workspace.IsAll}}
+        <article class="stat">
+          <span class="stat-label">Reconciliation</span>
+          <strong class="stat-value">{{if .DiscrepancyAccounts}}{{.DiscrepancyAccounts}} flagged{{else}}Healthy{{end}}</strong>
+          <span class="stat-meta">{{.ReconciledAccounts}} of {{.ReconciliationTotal}} accounts reconciled</span>
+        </article>
+      {{end}}
       <article class="stat subtle">
         <span class="stat-label">Accounts</span>
         <strong class="stat-value">{{.TotalAccounts}}</strong>
@@ -66,6 +73,7 @@
               <th scope="col">IBAN</th>
               <th scope="col">Workspace</th>
               <th scope="col" class="right">Balance</th>
+              <th scope="col">Reconciliation</th>
               <th scope="col">Updated</th>
             </tr>
           </thead>
@@ -82,6 +90,8 @@
                   {{if .BalanceType}}<span class="badge muted">{{.BalanceType}}</span>{{end}}
                 </td>
                 <td class="right amount {{if lt .BalanceMinor 0}}debit{{else}}credit{{end}}">{{money .BalanceMinor .Currency}}</td>
+                {{$rec := index $.Reconciliations .ID}}
+                <td><span class="badge {{reconciliationClass $rec}}">{{reconciliationLabel $rec}}</span></td>
                 <td class="nowrap muted">{{if .BalanceUpdatedAt}}{{ago .BalanceUpdatedAt}}{{else}}never{{end}}</td>
               </tr>
             {{end}}

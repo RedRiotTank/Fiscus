@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/RedRiotTank/Fiscus/internal/domain"
 )
 
 func TestHybridWorkspaceFilteringAndCookie(t *testing.T) {
@@ -118,5 +120,28 @@ func TestWorkspaceBadgesOnTransactions(t *testing.T) {
 	body := resp.Body.String()
 	if !strings.Contains(body, "badge workspace business") || !strings.Contains(body, "badge workspace personal") {
 		t.Fatalf("transaction workspace badges missing: %s", body)
+	}
+}
+
+func TestReconciliationBadgeOnAccounts(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	ctx := context.Background()
+	now := f.server.now().UTC()
+	rec := domain.Reconciliation{
+		AccountID: "acc-1", Currency: "EUR", OpeningBalanceMinor: 0,
+		AnchorAt: now.AddDate(0, 0, -30), LastCheckedAt: &now,
+		Status: domain.ReconciliationStatusDiscrepancy, LastDeltaMinor: -1234,
+		DiscrepancyStart: &now, DiscrepancyEnd: &now, UpdatedAt: now,
+	}
+	if err := f.store.SaveReconciliation(ctx, &rec); err != nil {
+		t.Fatalf("SaveReconciliation: %v", err)
+	}
+	resp := f.request(t, http.MethodGet, "/", true, nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d", resp.Code)
+	}
+	if !strings.Contains(resp.Body.String(), "Discrepancy: -€12.34") {
+		t.Fatalf("reconciliation badge missing: %s", resp.Body.String())
 	}
 }

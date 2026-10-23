@@ -114,6 +114,24 @@ var migrations = []migration{
 			`CREATE INDEX IF NOT EXISTS idx_accounts_type ON accounts(type)`,
 		},
 	},
+	{
+		version: 7,
+		statements: []string{
+			`CREATE TABLE IF NOT EXISTS account_reconciliation (
+				account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+				currency TEXT NOT NULL DEFAULT 'EUR',
+				opening_balance_minor INTEGER NOT NULL,
+				anchor_at TEXT NOT NULL,
+				last_checked_at TEXT,
+				last_delta_minor INTEGER NOT NULL DEFAULT 0,
+				status TEXT NOT NULL DEFAULT 'reconciled',
+				discrepancy_start TEXT,
+				discrepancy_end TEXT,
+				updated_at TEXT NOT NULL
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_reconciliation_status ON account_reconciliation(status)`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and
