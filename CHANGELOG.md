@@ -3,6 +3,47 @@
 All notable changes to Fiscus are documented here. Versions use semantic
 versioning and annotated Git tags.
 
+## v1.1.0 - 2026-10-24
+
+Usability and workflow release focused on receipt recovery, transaction
+annotations, runtime workspace mapping, and search ergonomics.
+
+### Added
+
+- Receipt inbox re-pairing:
+  - Every successful bank sync retries exact amount/currency/±3-day matching
+    for all unpaired receipts.
+  - A **Re-pair inbox** HTMX action runs the same pass on demand.
+  - Ambiguous matches remain unpaired for manual linking.
+- Transaction notes:
+  - Inline notes editor on the Transactions page via
+    `PATCH /api/transactions/{id}/notes`.
+  - Telegram `/nota <transaction_id> <texto>` for mobile capture.
+  - Notes are immediately visible to FTS5 through the existing update trigger.
+- Dynamic workspace mapping:
+  - Personal/Business selector on the Connections page and
+    `POST /api/accounts/{id}/type`.
+  - Explicit UI/API mappings are persisted in SQLite and protected from later
+    config-driven overwrites or restarts.
+- Search and scenario refinements:
+  - 1-based `page` and `limit` pagination for FTS5 transaction search.
+  - Locale-tolerant amount filters for dot decimals, comma decimals, and grouped
+    thousands.
+  - Scenario simulator yield now follows the projection yield slider instead of
+    a fixed 3%.
+
+### Changed
+
+- The latest database schema version is 11.
+- README documents re-pairing, notes, runtime workspace overrides, search
+  pagination, and localized amount filters.
+
+### Verification
+
+- `go test -v -race ./...`
+- `golangci-lint run ./...`
+- `CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X 'main.version=v1.1.0'" ./cmd/fiscus`
+
 ## v1.0.1 - 2026-10-24
 
 Integrity and security patch for the v1.0.0 treasury platform.
