@@ -58,6 +58,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 	data := s.baseData(r, "Transactions", "transactions")
 	data.FilterAccount = strings.TrimSpace(r.URL.Query().Get("account"))
+	data.SearchQuery = strings.TrimSpace(r.URL.Query().Get("q"))
 	data.Page = parsePage(r.URL.Query().Get("page"))
 
 	ctx := r.Context()
@@ -78,24 +79,53 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 
 	accountIDs := accountIDsArg(accounts, data.Workspace.View)
 	restrictedEmpty := filterBlocked || (data.Workspace.View != domain.WorkspaceAll && len(accounts) == 0)
+	searchMode := data.SearchQuery != "" && s.search != nil
 	var transactions []domain.Transaction
 	if !restrictedEmpty {
-		transactions, err = s.store.ListTransactions(ctx, transactionFilter(data.FilterAccount, accountIDs, data.Page))
-		if err != nil {
-			s.fail(w, r, err)
-			return
+		if searchMode {
+			transactions, err = s.search.Search(ctx, data.SearchQuery, 50)
+			if err != nil {
+				data.ErrorMessage = err.Error()
+				transactions = nil
+			} else {
+				transactions = filterTransactions(transactions, allowed, data.Workspace.View)
+				if data.FilterAccount != "" {
+					filtered := transactions[:0]
+					for _, tx := range transactions {
+						if tx.AccountID == data.FilterAccount {
+							filtered = append(filtered, tx)
+						}
+					}
+					transactions = filtered
+				}
+			}
+		} else {
+			transactions, err = s.store.ListTransactions(ctx, transactionFilter(data.FilterAccount, accountIDs, data.Page))
+			if err != nil {
+				s.fail(w, r, err)
+				return
+			}
 		}
 	}
 	data.Transactions = transactionViews(transactions, accountMap(accounts))
-	data.HasNext = len(transactions) == transactionFilter("", nil, 0).Limit
+	if searchMode {
+		data.Page = 1
+		data.HasNext = false
+	} else {
+		data.HasNext = len(transactions) == transactionFilter("", nil, 0).Limit
+	}
 	data.PrevPage = max(data.Page-1, 0)
 	data.NextPage = data.Page + 1
 	var total int
 	if !restrictedEmpty {
-		total, err = s.store.CountTransactionsFiltered(ctx, accountIDs)
-		if err != nil {
-			s.fail(w, r, err)
-			return
+		if searchMode {
+			total = len(transactions)
+		} else {
+			total, err = s.store.CountTransactionsFiltered(ctx, accountIDs)
+			if err != nil {
+				s.fail(w, r, err)
+				return
+			}
 		}
 	}
 	data.TotalTransactions = total

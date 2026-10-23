@@ -58,6 +58,11 @@ type AttachmentIngestor interface {
 	SaveTelegram(ctx context.Context, filename, contentType, caption string, body io.Reader) (domain.Attachment, error)
 }
 
+// Searcher runs a transaction search.
+type Searcher interface {
+	Search(ctx context.Context, query string, limit int) ([]domain.Transaction, error)
+}
+
 // Config configures the interactive bot.
 type Config struct {
 	BotToken    string
@@ -69,6 +74,7 @@ type Config struct {
 	Store       Store
 	Syncer      Syncer
 	Attachments AttachmentIngestor
+	Search      Searcher
 	Categories  []string
 	Budgets     []budgets.Budget
 	Now         func() time.Time
@@ -85,6 +91,7 @@ type Bot struct {
 	store       Store
 	syncer      Syncer
 	attachments AttachmentIngestor
+	search      Searcher
 	categories  []string
 	budgets     []budgets.Budget
 	now         func() time.Time
@@ -153,6 +160,7 @@ func New(cfg Config) (*Bot, error) {
 		store:       cfg.Store,
 		syncer:      cfg.Syncer,
 		attachments: cfg.Attachments,
+		search:      cfg.Search,
 		categories:  normalizeCategories(cfg.Categories),
 		budgets:     cfg.Budgets,
 		now:         now,
@@ -449,6 +457,8 @@ func (b *Bot) command(ctx context.Context, command string, args []string) string
 		return b.sync(ctx)
 	case "/ultimos", "/últimos":
 		return b.recent(ctx, args)
+	case "/buscar":
+		return b.searchTransactions(ctx, args)
 	case "/runway":
 		return b.runway(ctx)
 	case "/presupuesto":
@@ -558,6 +568,43 @@ func (b *Bot) recent(ctx context.Context, args []string) string {
 	return truncate(out.String())
 }
 
+func (b *Bot) searchTransactions(ctx context.Context, args []string) string {
+	if b.search == nil {
+		return "La búsqueda no está habilitada."
+	}
+	query := strings.TrimSpace(strings.Join(args, " "))
+	if query == "" {
+		return "Uso: /buscar <texto> [amount:>100] [category:Utilities] [status:booked] [has:receipt] [type:business]"
+	}
+	transactions, err := b.search.Search(ctx, query, 10)
+	if err != nil {
+		return "Búsqueda no válida: " + b.sanitize(err.Error())
+	}
+	if len(transactions) == 0 {
+		return "Sin resultados para: " + truncateRunes(query, 120)
+	}
+	var out strings.Builder
+	fmt.Fprintf(&out, "Resultados (%d):\n", len(transactions))
+	for _, tx := range transactions {
+		name := strings.TrimSpace(tx.Counterparty)
+		if name == "" {
+			name = strings.TrimSpace(tx.Description)
+		}
+		if name == "" {
+			name = tx.AccountID
+		}
+		category := strings.TrimSpace(tx.Category)
+		if category == "" {
+			category = "Uncategorized"
+		}
+		fmt.Fprintf(&out, "%s  %s  %s %s  [%s]\n",
+			tx.BookingDate.Format("02 Jan"), truncateRunes(name, 42),
+			money.FormatGrouped(tx.AmountMinor, tx.Currency), strings.ToUpper(tx.Currency), category,
+		)
+	}
+	return truncate(out.String())
+}
+
 func (b *Bot) runway(ctx context.Context) string {
 	accounts, err := b.store.ListAccounts(ctx)
 	if err != nil {
@@ -628,6 +675,7 @@ func helpText() string {
 		"/saldo - Saldo consolidado y desglose por cuenta",
 		"/sync - Ejecutar una sincronización bancaria ahora",
 		"/ultimos [n] - Últimos movimientos confirmados (máximo 50)",
+		"/buscar <texto> [filtros] - Buscar movimientos (amount:>100, category:Utilities, has:receipt)",
 		"/runway - Liquidez, consumo mensual y autonomía",
 		"/presupuesto - Consumo del presupuesto del mes actual",
 		"/help - Mostrar esta ayuda",

@@ -22,6 +22,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/ingest"
 	"github.com/RedRiotTank/Fiscus/internal/monitoring"
 	"github.com/RedRiotTank/Fiscus/internal/observability"
+	"github.com/RedRiotTank/Fiscus/internal/search"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"github.com/RedRiotTank/Fiscus/internal/tax"
 	"github.com/RedRiotTank/Fiscus/internal/telegram"
@@ -132,7 +133,7 @@ func buildNotifiers(cfg *config.Config) ([]alerts.Notifier, error) {
 	return notifiers, nil
 }
 
-func buildTelegramBot(cfg *config.Config, store *storage.Store, worker *ingest.Worker, logger *slog.Logger, attachmentService *attachments.Service) (*telegram.Bot, error) {
+func buildTelegramBot(cfg *config.Config, store *storage.Store, worker *ingest.Worker, logger *slog.Logger, attachmentService *attachments.Service, searchService *search.Service) (*telegram.Bot, error) {
 	if !cfg.TelegramConfigured() {
 		return nil, nil
 	}
@@ -144,6 +145,10 @@ func buildTelegramBot(cfg *config.Config, store *storage.Store, worker *ingest.W
 	if attachmentService != nil {
 		ingestor = attachmentService
 	}
+	var searcher telegram.Searcher
+	if searchService != nil {
+		searcher = searchService
+	}
 	return telegram.New(telegram.Config{
 		BotToken:    cfg.Alerts.Telegram.BotToken,
 		ChatID:      cfg.Alerts.Telegram.ChatID,
@@ -152,6 +157,7 @@ func buildTelegramBot(cfg *config.Config, store *storage.Store, worker *ingest.W
 		Store:       store,
 		Syncer:      syncer,
 		Attachments: ingestor,
+		Search:      searcher,
 		Categories:  configuredCategories(cfg),
 		Budgets:     configuredBudgets(cfg),
 	})
@@ -359,7 +365,7 @@ func buildWorker(cfg *config.Config, store *storage.Store, engine *alerts.Engine
 	return worker, nil
 }
 
-func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger, logger *slog.Logger, metrics *observability.Metrics, authHandler web.AuthorizationCallback, attachmentService *attachments.Service, taxService *tax.Service) (*web.Server, error) {
+func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger, logger *slog.Logger, metrics *observability.Metrics, authHandler web.AuthorizationCallback, attachmentService *attachments.Service, taxService *tax.Service, searchService *search.Service) (*web.Server, error) {
 	classifier, err := buildCategoryClassifier(cfg)
 	if err != nil {
 		return nil, err
@@ -377,6 +383,7 @@ func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger,
 		Budgets:        configuredBudgets(cfg),
 		Attachments:    attachmentService,
 		Tax:            taxService,
+		Search:         searchService,
 	}, store, trigger)
 }
 

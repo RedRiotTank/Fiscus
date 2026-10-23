@@ -17,6 +17,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/config"
 	"github.com/RedRiotTank/Fiscus/internal/observability"
 	"github.com/RedRiotTank/Fiscus/internal/reconciliation"
+	"github.com/RedRiotTank/Fiscus/internal/search"
 	"github.com/RedRiotTank/Fiscus/internal/tax"
 )
 
@@ -176,6 +177,7 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 			return err
 		}
 	}
+	searchService := search.New(store)
 
 	metrics := observability.New(version)
 	sink, err := buildEventSink(cfg, logger)
@@ -207,7 +209,7 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 		logger.Warn("banking credentials are not configured; ingestion is disabled")
 	}
 
-	bot, err := buildTelegramBot(cfg, store, worker, logger, attachmentService)
+	bot, err := buildTelegramBot(cfg, store, worker, logger, attachmentService, searchService)
 	if err != nil {
 		return err
 	}
@@ -234,7 +236,7 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 	if worker != nil {
 		trigger = worker
 	}
-	server, err := newWebServer(cfg, store, trigger, logger, metrics, authHandler, attachmentService, taxService)
+	server, err := newWebServer(cfg, store, trigger, logger, metrics, authHandler, attachmentService, taxService, searchService)
 	if err != nil {
 		return err
 	}

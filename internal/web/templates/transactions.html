@@ -19,6 +19,15 @@
 </div>
 
 {{if .AttachmentNotice}}<p class="notice success" role="status">{{.AttachmentNotice}}</p>{{end}}
+{{if .ErrorMessage}}<p class="notice error" role="alert">{{.ErrorMessage}}</p>{{end}}
+
+<form class="search-bar" method="get" action="/transactions" role="search">
+  <input type="search" name="q" value="{{.SearchQuery}}" placeholder="Search: coffee, amount:&gt;100, category:Utilities, status:booked, has:receipt, type:business" aria-label="Search transactions">
+  {{if .FilterAccount}}<input type="hidden" name="account" value="{{.FilterAccount}}">{{end}}
+  <button class="button small" type="submit">Search</button>
+  {{if .SearchQuery}}<a class="link" href="/transactions{{if .FilterAccount}}?account={{.FilterAccount}}{{end}}">Clear</a>{{end}}
+</form>
+<p class="search-hint">Prefix search across descriptions, counterparties, categories, notes, and workspace type.</p>
 
 <section class="panel">
   <header class="panel-head">

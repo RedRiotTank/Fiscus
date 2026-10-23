@@ -50,6 +50,7 @@ type PageData struct {
 	Workspace           WorkspaceState
 	Path                string
 	FilterAccount       string
+	SearchQuery         string
 	Page                int
 	PrevPage            int
 	NextPage            int
