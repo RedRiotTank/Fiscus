@@ -36,6 +36,10 @@ type PageData struct {
 	Alerts              []AlertView
 	Connections         []ConnectionView
 	Reconciliations     map[string]domain.Reconciliation
+	UnpairedAttachments []domain.Attachment
+	AttachmentIDs       map[int64]int64
+	AttachmentsEnabled  bool
+	AttachmentNotice    string
 	ReconciliationTotal int
 	ReconciledAccounts  int
 	DiscrepancyAccounts int
@@ -295,6 +299,9 @@ func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 		}
 	}
 	data.TotalTransactions = total
+	if err := s.loadAttachmentData(ctx, data); err != nil {
+		return err
+	}
 	return s.loadReconciliations(ctx, data)
 }
 

@@ -41,6 +41,17 @@ database:
   # SQLite database file. Parent directories must exist.
   path: "data/fiscus.db"
 
+attachments:
+  # Receipt and invoice storage managed by Fiscus.
+  enabled: true
+  directory: "data/attachments"
+  # Per-file upload limit (10 MiB by default).
+  max_size_bytes: 10485760
+  # Business expenses at or above this amount require a receipt (minor units).
+  receipt_threshold_minor: 5000
+  # Days to wait before warning about a missing receipt.
+  grace_days: 5
+
 gocardless:
   base_url: "https://bankaccountdata.gocardless.com/api/v2"
   # API credentials from the GoCardless Bank Account Data portal.

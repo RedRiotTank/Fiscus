@@ -14,6 +14,11 @@ func applyEnv(cfg *Config) error {
 
 	stringEnv("FISCUS_PROVIDER", &cfg.Provider)
 	stringEnv("FISCUS_PROFILE", &cfg.Profile)
+	boolEnv("FISCUS_ATTACHMENTS_ENABLED", &cfg.Attachments.Enabled, &errs)
+	stringEnv("FISCUS_ATTACHMENTS_DIRECTORY", &cfg.Attachments.Directory)
+	int64Env("FISCUS_ATTACHMENTS_MAX_SIZE_BYTES", &cfg.Attachments.MaxSizeBytes, &errs)
+	int64Env("FISCUS_ATTACHMENTS_RECEIPT_THRESHOLD_MINOR", &cfg.Attachments.ReceiptThresholdMinor, &errs)
+	intEnv("FISCUS_ATTACHMENTS_GRACE_DAYS", &cfg.Attachments.GraceDays, &errs)
 	stringEnv("FISCUS_SERVER_ADDRESS", &cfg.Server.Address)
 	stringEnv("FISCUS_SERVER_USERNAME", &cfg.Server.Username)
 	stringEnv("FISCUS_SERVER_PASSWORD", &cfg.Server.Password)
@@ -104,6 +109,32 @@ func intEnv(name string, target *int, errs *[]error) {
 		return
 	}
 	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		*errs = append(*errs, fmt.Errorf("%s: invalid integer %q", name, value))
+		return
+	}
+	*target = parsed
+}
+
+func boolEnv(name string, target *bool, errs *[]error) {
+	value, ok := os.LookupEnv(name)
+	if !ok {
+		return
+	}
+	parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+	if err != nil {
+		*errs = append(*errs, fmt.Errorf("%s: invalid boolean %q", name, value))
+		return
+	}
+	*target = parsed
+}
+
+func int64Env(name string, target *int64, errs *[]error) {
+	value, ok := os.LookupEnv(name)
+	if !ok {
+		return
+	}
+	parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
 	if err != nil {
 		*errs = append(*errs, fmt.Errorf("%s: invalid integer %q", name, value))
 		return

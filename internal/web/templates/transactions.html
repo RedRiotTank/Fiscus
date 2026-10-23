@@ -5,6 +5,7 @@
     <h1>Transactions</h1>
     <p class="subtitle">{{.TotalTransactions}} transactions stored. Amounts are exact integer minor units.</p>
   </div>
+  {{if .AttachmentsEnabled}}<button class="button" type="button" data-receipt-open>Upload receipt</button>{{end}}
   <form class="filter" method="get" action="/transactions">
     <label for="account">Account</label>
     <select id="account" name="account">
@@ -16,6 +17,8 @@
     <button class="button small" type="submit">Filter</button>
   </form>
 </div>
+
+{{if .AttachmentNotice}}<p class="notice success" role="status">{{.AttachmentNotice}}</p>{{end}}
 
 <section class="panel">
   <header class="panel-head">
@@ -44,19 +47,30 @@
             <th scope="col">Category</th>
             <th scope="col">Description</th>
             <th scope="col">Workspace</th>
+            <th scope="col">Receipt</th>
             <th scope="col">Status</th>
             <th scope="col" class="right">Amount</th>
           </tr>
         </thead>
         <tbody>
           {{range .Transactions}}
-            <tr>
+            <tr id="tx-{{.ID}}">
               <td class="nowrap">{{date .BookingDate}}</td>
               <td>{{.AccountName}}</td>
               <td>{{if .Counterparty}}{{.Counterparty}}{{else}}<span class="muted">—</span>{{end}}</td>
               <td><span class="badge category">{{if .Category}}{{.Category}}{{else}}Uncategorized{{end}}</span></td>
               <td class="description">{{if .Description}}{{.Description}}{{else}}<span class="muted">—</span>{{end}}</td>
               <td><span class="badge workspace {{if eq .AccountType "business"}}business{{else}}personal{{end}}">{{if eq .AccountType "business"}}Business{{else}}Personal{{end}}</span></td>
+              {{$attachmentID := index $.AttachmentIDs .ID}}
+              <td>
+                {{if $attachmentID}}
+                  <a class="receipt-chip" href="/attachments/{{$attachmentID}}" target="_blank" rel="noopener">Attached</a>
+                {{else if $.AttachmentsEnabled}}
+                  <button class="receipt-chip" type="button" data-receipt-open data-transaction-id="{{.ID}}">Attach</button>
+                {{else}}
+                  <span class="muted">—</span>
+                {{end}}
+              </td>
               <td><span class="badge {{if eq .Status "booked"}}ok{{else}}pending{{end}}">{{.Status}}</span></td>
               <td class="right amount {{if lt .AmountMinor 0}}debit{{else}}credit{{end}}">{{money .AmountMinor .Currency}}</td>
             </tr>
@@ -81,5 +95,81 @@
     </div>
   {{end}}
 </section>
+{{if .AttachmentsEnabled}}
+  <section class="panel" id="receipt-inbox">
+    <header class="panel-head">
+      <div>
+        <h2>Receipt inbox</h2>
+        <p class="panel-sub">Unpaired documents waiting for a matching transaction</p>
+      </div>
+      <button class="button ghost small" type="button" data-receipt-open>Add receipt</button>
+    </header>
+    {{if .UnpairedAttachments}}
+      <ul class="receipt-list">
+        {{range .UnpairedAttachments}}
+          <li>
+            <div class="receipt-file">
+              <strong>{{.Filename}}</strong>
+              <span class="muted small">{{.Source}} · {{date .UploadedAt}}{{if .ExtractedDate}} · dated {{date .ExtractedDate}}{{end}}</span>
+            </div>
+            <div class="receipt-actions">
+              <a class="button ghost small" href="/attachments/{{.ID}}" target="_blank" rel="noopener">Open</a>
+              <form method="post" action="/attachments/{{.ID}}/pair">
+                <select name="transaction_id" required aria-label="Transaction for {{.Filename}}">
+                  <option value="">Link to…</option>
+                  {{range $.Transactions}}
+                    <option value="{{.ID}}">{{date .BookingDate}} · {{if .Counterparty}}{{.Counterparty}}{{else}}{{.Description}}{{end}} · {{money .AmountMinor .Currency}}</option>
+                  {{end}}
+                </select>
+                <button class="button small" type="submit">Link</button>
+              </form>
+            </div>
+          </li>
+        {{end}}
+      </ul>
+    {{else}}
+      <div class="empty"><p>The receipt inbox is empty. Drop a file to attach it to a transaction.</p></div>
+    {{end}}
+  </section>
+{{end}}
+
+<dialog id="receipt-dialog" class="receipt-dialog" aria-labelledby="receipt-dialog-title">
+  <form method="post" action="/attachments" enctype="multipart/form-data" id="receipt-form">
+    <header class="receipt-dialog-head">
+      <div>
+        <p class="eyebrow">Receipts</p>
+        <h2 id="receipt-dialog-title">Store a receipt</h2>
+      </div>
+      <button class="icon-button" type="button" data-receipt-close aria-label="Close">×</button>
+    </header>
+    <input type="hidden" name="transaction_id" id="receipt-transaction-id">
+    <p class="muted small" id="receipt-target">No transaction selected. Fiscus will auto-pair by date and amount.</p>
+    <label class="drop-zone" id="receipt-drop" for="receipt-file">
+      <input id="receipt-file" name="file" type="file" accept="image/*,application/pdf,.pdf,.png,.jpg,.jpeg,.webp,.heic,.csv,.txt" required>
+      <strong>Drop an invoice or receipt here</strong>
+      <span class="muted small">PDF, image, or text · stored privately in the Fiscus data directory</span>
+    </label>
+    <div class="receipt-fields">
+      <label>Date <input type="date" name="date"></label>
+      <label>Amount <input type="text" name="amount" inputmode="decimal" placeholder="12.34"></label>
+      <label>Currency
+        <select name="currency">
+          <option value="EUR">EUR</option>
+          <option value="USD">USD</option>
+          <option value="GBP">GBP</option>
+          <option value="CHF">CHF</option>
+          <option value="MXN">MXN</option>
+          <option value="ARS">ARS</option>
+        </select>
+      </label>
+    </div>
+    <label>Caption or vendor note <input type="text" name="caption" maxlength="300" placeholder="Optional text used for auto-pairing"></label>
+    <footer class="receipt-dialog-foot">
+      <button class="button ghost" type="button" data-receipt-close>Cancel</button>
+      <button class="button" type="submit">Store receipt</button>
+    </footer>
+  </form>
+</dialog>
+
 <div id="recategorize-status" class="toast" aria-live="polite"></div>
 {{end}}

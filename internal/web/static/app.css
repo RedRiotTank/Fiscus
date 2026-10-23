@@ -1082,3 +1082,175 @@ select {
     padding-right: 14px;
   }
 }
+
+.receipt-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px dashed var(--border-soft);
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.receipt-chip:hover {
+  border-color: var(--accent);
+  background: var(--blue-dim);
+}
+
+.receipt-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.receipt-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--panel-2);
+}
+
+.receipt-file {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.receipt-file strong {
+  overflow-wrap: anywhere;
+}
+
+.receipt-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.receipt-actions form {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.receipt-actions select {
+  max-width: 280px;
+}
+
+.receipt-dialog {
+  width: min(620px, calc(100vw - 32px));
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 0;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+}
+
+.receipt-dialog::backdrop {
+  background: rgba(3, 10, 16, 0.72);
+  backdrop-filter: blur(3px);
+}
+
+.receipt-dialog form {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  margin: 0;
+}
+
+.receipt-dialog-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.receipt-dialog-head h2 {
+  margin: 4px 0 0;
+}
+
+.icon-button {
+  border: 1px solid var(--border-soft);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  width: 32px;
+  height: 32px;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.drop-zone {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  padding: 28px 18px;
+  text-align: center;
+  border: 1.5px dashed var(--border);
+  border-radius: 14px;
+  background: rgba(56, 189, 248, 0.04);
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.drop-zone.dragging,
+.drop-zone:hover {
+  border-color: var(--accent);
+  background: var(--blue-dim);
+}
+
+.drop-zone input {
+  width: 100%;
+  max-width: 360px;
+  color: var(--muted);
+}
+
+.receipt-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+}
+
+.receipt-dialog label {
+  display: grid;
+  gap: 5px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.receipt-dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 14px;
+}
+
+@media (max-width: 700px) {
+  .receipt-list li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .receipt-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .receipt-fields {
+    grid-template-columns: 1fr;
+  }
+}

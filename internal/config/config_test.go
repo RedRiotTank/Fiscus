@@ -41,8 +41,69 @@ func TestDefaultConfig(t *testing.T) {
 		cfg.EnableBanking.SyncInterval.Std() != 6*time.Hour {
 		t.Fatalf("enablebanking defaults = %+v", cfg.EnableBanking)
 	}
+	if !cfg.Attachments.Enabled || cfg.Attachments.Directory != "data/attachments" ||
+		cfg.Attachments.MaxSizeBytes != 10<<20 || cfg.Attachments.ReceiptThresholdMinor != 5000 ||
+		cfg.Attachments.GraceDays != 5 {
+		t.Fatalf("attachments defaults = %+v", cfg.Attachments)
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("validate: %v", err)
+	}
+}
+
+func TestLoadAttachments(t *testing.T) {
+	path := writeConfig(t, `
+attachments:
+  enabled: true
+  directory: "var/receipts"
+  max_size_bytes: 2048
+  receipt_threshold_minor: 7000
+  grace_days: 4
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Attachments.Directory != "var/receipts" || cfg.Attachments.MaxSizeBytes != 2048 ||
+		cfg.Attachments.ReceiptThresholdMinor != 7000 || cfg.Attachments.GraceDays != 4 {
+		t.Fatalf("attachments = %+v", cfg.Attachments)
+	}
+}
+
+func TestInvalidAttachmentsRejected(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+	}{
+		{name: "missing directory", yaml: "attachments:\n  enabled: true\n  directory: \"\"\n"},
+		{name: "zero max size", yaml: "attachments:\n  enabled: true\n  max_size_bytes: 0\n"},
+		{name: "oversize max", yaml: "attachments:\n  enabled: true\n  max_size_bytes: 104857601\n"},
+		{name: "negative threshold", yaml: "attachments:\n  enabled: true\n  receipt_threshold_minor: -1\n"},
+		{name: "invalid grace", yaml: "attachments:\n  enabled: true\n  grace_days: 400\n"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := Load(writeConfig(t, test.yaml)); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}
+
+func TestAttachmentsEnvironmentOverride(t *testing.T) {
+	t.Setenv("FISCUS_ATTACHMENTS_ENABLED", "false")
+	t.Setenv("FISCUS_ATTACHMENTS_DIRECTORY", "env/receipts")
+	t.Setenv("FISCUS_ATTACHMENTS_MAX_SIZE_BYTES", "4096")
+	t.Setenv("FISCUS_ATTACHMENTS_RECEIPT_THRESHOLD_MINOR", "9000")
+	t.Setenv("FISCUS_ATTACHMENTS_GRACE_DAYS", "2")
+	cfg, err := Load(writeConfig(t, "profile: hybrid\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Attachments.Enabled || cfg.Attachments.Directory != "env/receipts" ||
+		cfg.Attachments.MaxSizeBytes != 4096 || cfg.Attachments.ReceiptThresholdMinor != 9000 ||
+		cfg.Attachments.GraceDays != 2 {
+		t.Fatalf("attachments env = %+v", cfg.Attachments)
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"syscall"
 
+	"github.com/RedRiotTank/Fiscus/internal/attachments"
 	"github.com/RedRiotTank/Fiscus/internal/config"
 	"github.com/RedRiotTank/Fiscus/internal/observability"
 	"github.com/RedRiotTank/Fiscus/internal/reconciliation"
@@ -156,6 +157,14 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 		}
 	}()
 
+	var attachmentService *attachments.Service
+	if cfg.Attachments.Enabled {
+		attachmentService, err = attachments.New(store, cfg.Attachments.Directory, cfg.Attachments.MaxSizeBytes, nil)
+		if err != nil {
+			return err
+		}
+	}
+
 	metrics := observability.New(version)
 	sink, err := buildEventSink(cfg, logger)
 	if err != nil {
@@ -186,7 +195,7 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 		logger.Warn("banking credentials are not configured; ingestion is disabled")
 	}
 
-	bot, err := buildTelegramBot(cfg, store, worker, logger)
+	bot, err := buildTelegramBot(cfg, store, worker, logger, attachmentService)
 	if err != nil {
 		return err
 	}
@@ -213,7 +222,7 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 	if worker != nil {
 		trigger = worker
 	}
-	server, err := newWebServer(cfg, store, trigger, logger, metrics, authHandler)
+	server, err := newWebServer(cfg, store, trigger, logger, metrics, authHandler, attachmentService)
 	if err != nil {
 		return err
 	}
