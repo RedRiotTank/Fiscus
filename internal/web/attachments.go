@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"mime"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +17,13 @@ import (
 )
 
 const maxUploadRequestBytes = 100 << 20
+
+var attachmentDownloadTypes = map[string]string{
+	"application/pdf": "application/pdf",
+	"image/jpeg":      "image/jpeg",
+	"image/png":       "image/png",
+	"image/webp":      "image/webp",
+}
 
 func (s *Server) loadAttachmentData(ctx context.Context, data *PageData) error {
 	data.AttachmentsEnabled = s.attachments != nil
@@ -56,6 +65,10 @@ func attachmentNotice(code string) string {
 }
 
 func (s *Server) handleAttachmentUpload(w http.ResponseWriter, r *http.Request) {
+	if !validSyncRequest(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
 	if s.attachments == nil {
 		http.Error(w, "Receipt storage is disabled", http.StatusServiceUnavailable)
 		return
@@ -127,10 +140,20 @@ func (s *Server) handleAttachmentUpload(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) redirectAttachment(w http.ResponseWriter, r *http.Request, code string) {
-	http.Redirect(w, r, "/transactions?attachment="+code, http.StatusSeeOther)
+	target := "/transactions?attachment=" + code
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Redirect", target)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 func (s *Server) handleAttachmentPair(w http.ResponseWriter, r *http.Request) {
+	if !validSyncRequest(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
 	if s.attachments == nil {
 		http.Error(w, "Receipt storage is disabled", http.StatusServiceUnavailable)
 		return
@@ -174,9 +197,43 @@ func (s *Server) handleAttachmentDownload(w http.ResponseWriter, r *http.Request
 		return
 	}
 	defer func() { _ = file.Close() }()
-	w.Header().Set("Content-Type", att.ContentType)
-	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", att.Filename))
-	http.ServeContent(w, r, att.Filename, att.UploadedAt, file)
+	filename := attachmentDownloadFilename(att.Filename)
+	w.Header().Set("Content-Type", attachmentDownloadContentType(att.ContentType, filename))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "private, no-store")
+	http.ServeContent(w, r, filename, att.UploadedAt, file)
+}
+
+func attachmentDownloadFilename(name string) string {
+	name = filepath.Base(strings.TrimSpace(name))
+	name = strings.Map(func(r rune) rune {
+		if r < 32 || r == 127 || r == '"' || r == '\\' {
+			return -1
+		}
+		return r
+	}, name)
+	name = strings.Trim(name, ". ")
+	if name == "" || name == "." || name == ".." {
+		return "attachment"
+	}
+	return name
+}
+
+func attachmentDownloadContentType(stored, filename string) string {
+	if mediaType, _, err := mime.ParseMediaType(stored); err == nil {
+		if allowed, ok := attachmentDownloadTypes[strings.ToLower(mediaType)]; ok {
+			return allowed
+		}
+	}
+	if detected := mime.TypeByExtension(strings.ToLower(filepath.Ext(filename))); detected != "" {
+		if mediaType, _, err := mime.ParseMediaType(detected); err == nil {
+			if allowed, ok := attachmentDownloadTypes[strings.ToLower(mediaType)]; ok {
+				return allowed
+			}
+		}
+	}
+	return "application/octet-stream"
 }
 
 type attachmentResponse struct {

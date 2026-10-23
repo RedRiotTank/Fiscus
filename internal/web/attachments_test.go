@@ -36,6 +36,7 @@ func uploadReceipt(t *testing.T, f *webFixture, filename, content string, fields
 	req := httptest.NewRequest(http.MethodPost, "/attachments", &body)
 	req.SetBasicAuth("admin", "secret")
 	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set(syncRequestHeader, "1")
 	rec := httptest.NewRecorder()
 	f.handler.ServeHTTP(rec, req)
 	return rec
@@ -125,6 +126,7 @@ func TestReceiptUploadUnpairedAndManualLink(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/attachments/"+strconv.FormatInt(unpaired[0].ID, 10)+"/pair", body)
 	req.SetBasicAuth("admin", "secret")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set(syncRequestHeader, "1")
 	rec := httptest.NewRecorder()
 	f.handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusSeeOther || !strings.Contains(rec.Header().Get("Location"), "attachment=linked") {
@@ -140,6 +142,78 @@ func TestReceiptUploadUnpairedAndManualLink(t *testing.T) {
 	apiResp := f.request(t, http.MethodGet, "/api/attachments/unpaired", true, nil)
 	if apiResp.Code != http.StatusOK || !strings.Contains(apiResp.Body.String(), "[]") {
 		t.Fatalf("unpaired API = %d %s", apiResp.Code, apiResp.Body.String())
+	}
+}
+
+func TestAttachmentMutationsRequireRequestHeader(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	service, err := attachments.New(f.store, t.TempDir(), 1<<20, f.server.now)
+	if err != nil {
+		t.Fatalf("attachments.New: %v", err)
+	}
+	f.server.attachments = service
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, _ := writer.CreateFormFile("file", "receipt.pdf")
+	_, _ = part.Write([]byte("receipt"))
+	_ = writer.Close()
+	req := httptest.NewRequest(http.MethodPost, "/attachments", &body)
+	req.SetBasicAuth("admin", "secret")
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	f.handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("unprotected upload = %d, want 403", rec.Code)
+	}
+
+	att, err := service.Save(context.Background(), attachments.SaveInput{
+		Reader: strings.NewReader("receipt"), Filename: "receipt.pdf", ContentType: "application/pdf",
+	})
+	if err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	pair := strings.NewReader("transaction_id=" + strconv.FormatInt(webTransactionID(t, f, "tx-1"), 10))
+	req = httptest.NewRequest(http.MethodPost, "/attachments/"+strconv.FormatInt(att.ID, 10)+"/pair", pair)
+	req.SetBasicAuth("admin", "secret")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec = httptest.NewRecorder()
+	f.handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("unprotected pair = %d, want 403", rec.Code)
+	}
+}
+
+func TestReceiptDownloadForcesSafeHeaders(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	service, err := attachments.New(f.store, t.TempDir(), 1<<20, f.server.now)
+	if err != nil {
+		t.Fatalf("attachments.New: %v", err)
+	}
+	f.server.attachments = service
+
+	att, err := service.Save(context.Background(), attachments.SaveInput{
+		Reader:      strings.NewReader("<html><script>alert(1)</script></html>"),
+		Filename:    `evil"name.html`,
+		ContentType: "text/html",
+	})
+	if err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	download := f.request(t, http.MethodGet, "/attachments/"+strconv.FormatInt(att.ID, 10), true, nil)
+	if download.Code != http.StatusOK {
+		t.Fatalf("download status = %d", download.Code)
+	}
+	if got := download.Header().Get("Content-Type"); got != "application/octet-stream" {
+		t.Fatalf("content type = %q, want application/octet-stream", got)
+	}
+	if got := download.Header().Get("Content-Disposition"); got != `attachment; filename="evilname.html"` {
+		t.Fatalf("content disposition = %q", got)
+	}
+	if got := download.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("nosniff = %q", got)
 	}
 }
 
