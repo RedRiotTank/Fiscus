@@ -38,6 +38,16 @@ func (f *fakeStore) ListBookedTransactionsForAccount(_ context.Context, _ string
 	return out, nil
 }
 
+func (f *fakeStore) ListPendingTransactionsForAccount(_ context.Context, _ string) ([]domain.Transaction, error) {
+	out := make([]domain.Transaction, 0, len(f.transactions))
+	for _, tx := range f.transactions {
+		if tx.Status == domain.TransactionStatusPending {
+			out = append(out, tx)
+		}
+	}
+	return out, nil
+}
+
 func TestReconcileDetectsDiscrepancyAndResolution(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -114,6 +124,119 @@ func TestReconcileDetectsDiscrepancyAndResolution(t *testing.T) {
 	}
 	if resolved.Reconciliation.DiscrepancyStart != nil || resolved.Reconciliation.DiscrepancyEnd != nil {
 		t.Fatal("resolution should clear discrepancy bracket")
+	}
+}
+
+func TestReconcileAvailableBalanceAddsBackPendingHolds(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	now := time.Date(2026, 3, 10, 10, 0, 0, 0, time.UTC)
+	store := &fakeStore{transactions: []domain.Transaction{
+		{AmountMinor: 1000, BookingDate: now.AddDate(0, 0, -2), Status: domain.TransactionStatusBooked},
+		{AmountMinor: -500, BookingDate: now.AddDate(0, 0, -1), Status: domain.TransactionStatusPending},
+		{AmountMinor: 200, BookingDate: now, Status: domain.TransactionStatusPending},
+	}}
+	reconciler, err := New(store, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	// Available balance is booked (2000) minus the 500 hold plus the 200
+	// pending credit, so the booked equivalent is 2000.
+	account := domain.Account{
+		ID: "acc-1", Currency: "EUR", BalanceMinor: 1700, BalanceType: "interimAvailable",
+	}
+	first, err := reconciler.Reconcile(ctx, account)
+	if err != nil {
+		t.Fatalf("initial Reconcile: %v", err)
+	}
+	if first.Reconciliation.OpeningBalanceMinor != 1000 || !first.Reconciliation.Balanced() {
+		t.Fatalf("initial reconciliation = %+v", first.Reconciliation)
+	}
+
+	now = now.Add(time.Hour)
+	second, err := reconciler.Reconcile(ctx, account)
+	if err != nil {
+		t.Fatalf("second Reconcile: %v", err)
+	}
+	if !second.Reconciliation.Balanced() || second.Reconciliation.LastDeltaMinor != 0 {
+		t.Fatalf("pending holds caused a false discrepancy: %+v", second.Reconciliation)
+	}
+}
+
+func TestReconcileBookedBalanceIgnoresPendingHolds(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	now := time.Date(2026, 3, 10, 10, 0, 0, 0, time.UTC)
+	store := &fakeStore{transactions: []domain.Transaction{
+		{AmountMinor: 1000, BookingDate: now.AddDate(0, 0, -2), Status: domain.TransactionStatusBooked},
+		{AmountMinor: -500, BookingDate: now.AddDate(0, 0, -1), Status: domain.TransactionStatusPending},
+	}}
+	reconciler, err := New(store, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	account := domain.Account{
+		ID: "acc-1", Currency: "EUR", BalanceMinor: 2000, BalanceType: "closingBooked",
+	}
+	first, err := reconciler.Reconcile(ctx, account)
+	if err != nil {
+		t.Fatalf("initial Reconcile: %v", err)
+	}
+	if first.Reconciliation.OpeningBalanceMinor != 1000 {
+		t.Fatalf("opening balance = %d, want 1000", first.Reconciliation.OpeningBalanceMinor)
+	}
+	now = now.Add(time.Hour)
+	second, err := reconciler.Reconcile(ctx, account)
+	if err != nil {
+		t.Fatalf("second Reconcile: %v", err)
+	}
+	if !second.Reconciliation.Balanced() {
+		t.Fatalf("booked balance should reconcile: %+v", second.Reconciliation)
+	}
+}
+
+func TestReconcileSuppressesDiscrepancyUntilBaselineEstablished(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	now := time.Date(2026, 3, 10, 10, 0, 0, 0, time.UTC)
+	store := &fakeStore{}
+	reconciler, err := New(store, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	account := domain.Account{
+		ID: "acc-1", Currency: "EUR", BalanceMinor: 1000, BalanceType: "closingBooked",
+	}
+	first, err := reconciler.Reconcile(ctx, account)
+	if err != nil {
+		t.Fatalf("initial Reconcile: %v", err)
+	}
+	if first.Reconciliation.BaselineEstablished {
+		t.Fatal("baseline should not be established without transaction history")
+	}
+
+	// Add history and create a real discrepancy. The first pass with history
+	// establishes the baseline and must not alert.
+	store.transactions = []domain.Transaction{{
+		AmountMinor: 1000, BookingDate: now.AddDate(0, 0, -1), Status: domain.TransactionStatusBooked,
+	}}
+	account.BalanceMinor = 1500
+	now = now.Add(time.Hour)
+	baseline, err := reconciler.Reconcile(ctx, account)
+	if err != nil {
+		t.Fatalf("baseline Reconcile: %v", err)
+	}
+	if !baseline.Reconciliation.BaselineEstablished || !baseline.Reconciliation.Balanced() {
+		t.Fatalf("baseline should be established and reconciled: %+v", baseline.Reconciliation)
+	}
+
+	now = now.Add(time.Hour)
+	discrepancy, err := reconciler.Reconcile(ctx, account)
+	if err != nil {
+		t.Fatalf("discrepancy Reconcile: %v", err)
+	}
+	if !discrepancy.Changed || discrepancy.Reconciliation.Status != domain.ReconciliationStatusDiscrepancy {
+		t.Fatalf("expected discrepancy after baseline: %+v", discrepancy)
 	}
 }
 

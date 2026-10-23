@@ -10,7 +10,8 @@ import (
 )
 
 const reconciliationColumns = `account_id, currency, opening_balance_minor, anchor_at,
-	last_checked_at, last_delta_minor, status, discrepancy_start, discrepancy_end, updated_at`
+	last_checked_at, last_delta_minor, status, discrepancy_start, discrepancy_end,
+	baseline_established, updated_at`
 
 func scanReconciliation(row rowScanner) (domain.Reconciliation, error) {
 	var (
@@ -19,14 +20,17 @@ func scanReconciliation(row rowScanner) (domain.Reconciliation, error) {
 		lastChecked sql.NullString
 		discStart   sql.NullString
 		discEnd     sql.NullString
+		baseline    int
 		updatedAt   string
 	)
 	if err := row.Scan(
 		&rec.AccountID, &rec.Currency, &rec.OpeningBalanceMinor, &anchor,
-		&lastChecked, &rec.LastDeltaMinor, &rec.Status, &discStart, &discEnd, &updatedAt,
+		&lastChecked, &rec.LastDeltaMinor, &rec.Status, &discStart, &discEnd,
+		&baseline, &updatedAt,
 	); err != nil {
 		return domain.Reconciliation{}, err
 	}
+	rec.BaselineEstablished = baseline != 0
 	var err error
 	if rec.AnchorAt, err = decodeTime(anchor); err != nil {
 		return domain.Reconciliation{}, err
@@ -74,11 +78,16 @@ func (s *Store) SaveReconciliation(ctx context.Context, rec *domain.Reconciliati
 	if rec.UpdatedAt.IsZero() {
 		rec.UpdatedAt = nowUTC()
 	}
+	baseline := 0
+	if rec.BaselineEstablished {
+		baseline = 1
+	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO account_reconciliation (
 			account_id, currency, opening_balance_minor, anchor_at, last_checked_at,
-			last_delta_minor, status, discrepancy_start, discrepancy_end, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			last_delta_minor, status, discrepancy_start, discrepancy_end,
+			baseline_established, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(account_id) DO UPDATE SET
 			currency = excluded.currency,
 			opening_balance_minor = excluded.opening_balance_minor,
@@ -88,16 +97,46 @@ func (s *Store) SaveReconciliation(ctx context.Context, rec *domain.Reconciliati
 			status = excluded.status,
 			discrepancy_start = excluded.discrepancy_start,
 			discrepancy_end = excluded.discrepancy_end,
+			baseline_established = excluded.baseline_established,
 			updated_at = excluded.updated_at`,
 		rec.AccountID, rec.Currency, rec.OpeningBalanceMinor, encodeTime(rec.AnchorAt),
 		encodeNullTime(rec.LastCheckedAt), rec.LastDeltaMinor, rec.Status,
 		encodeNullTime(rec.DiscrepancyStart), encodeNullTime(rec.DiscrepancyEnd),
-		encodeTime(rec.UpdatedAt),
+		baseline, encodeTime(rec.UpdatedAt),
 	)
 	if err != nil {
 		return fmt.Errorf("storage: save reconciliation: %w", err)
 	}
 	return nil
+}
+
+// ListPendingTransactionsForAccount returns pending transactions for an
+// account, oldest first. Pending holds explain why an available balance can
+// differ from a booked ledger.
+func (s *Store) ListPendingTransactionsForAccount(ctx context.Context, accountID string) ([]domain.Transaction, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+transactionColumns+` FROM transactions
+		WHERE account_id = ? AND status = ?
+		ORDER BY booking_date ASC, id ASC`,
+		accountID, domain.TransactionStatusPending,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("storage: list pending transactions for reconciliation: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.Transaction
+	for rows.Next() {
+		tx, err := scanTransaction(rows)
+		if err != nil {
+			return nil, fmt.Errorf("storage: scan pending reconciliation transaction: %w", err)
+		}
+		out = append(out, tx)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("storage: iterate pending reconciliation transactions: %w", err)
+	}
+	return out, nil
 }
 
 // ListBookedTransactionsForAccount returns booked transactions for an account,

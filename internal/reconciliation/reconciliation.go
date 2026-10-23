@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/domain"
@@ -18,6 +19,7 @@ type Store interface {
 	GetReconciliation(ctx context.Context, accountID string) (domain.Reconciliation, error)
 	SaveReconciliation(ctx context.Context, rec *domain.Reconciliation) error
 	ListBookedTransactionsForAccount(ctx context.Context, accountID string) ([]domain.Transaction, error)
+	ListPendingTransactionsForAccount(ctx context.Context, accountID string) ([]domain.Transaction, error)
 }
 
 // Reconciler reconstructs account balances and records discrepancy state.
@@ -47,11 +49,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, account domain.Account) (dom
 	if err != nil {
 		return domain.ReconciliationTransition{}, fmt.Errorf("reconciliation: load transactions: %w", err)
 	}
+	pending, err := r.store.ListPendingTransactionsForAccount(ctx, account.ID)
+	if err != nil {
+		return domain.ReconciliationTransition{}, fmt.Errorf("reconciliation: load pending transactions: %w", err)
+	}
 
 	previous, err := r.store.GetReconciliation(ctx, account.ID)
 	switch {
 	case errors.Is(err, storage.ErrNotFound):
-		rec := initialReconciliation(account, transactions, now)
+		rec := initialReconciliation(account, transactions, pending, now)
 		if saveErr := r.store.SaveReconciliation(ctx, &rec); saveErr != nil {
 			return domain.ReconciliationTransition{}, saveErr
 		}
@@ -61,10 +67,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, account domain.Account) (dom
 	}
 
 	expected := previous.OpeningBalanceMinor + sumAfter(transactions, previous.AnchorAt)
-	delta := account.BalanceMinor - expected
+	observed := observedBookedBalance(account, pending)
+	delta := observed - expected
 	rec := previous
 	rec.Currency = currencyOrFallback(account.Currency)
-	rec.LastDeltaMinor = delta
 	rec.LastCheckedAt = timePtr(now)
 	rec.UpdatedAt = now
 	transition := domain.ReconciliationTransition{
@@ -72,12 +78,25 @@ func (r *Reconciler) Reconcile(ctx context.Context, account domain.Account) (dom
 		PreviousDeltaMinor: previous.LastDeltaMinor,
 	}
 
-	if delta == 0 {
+	switch {
+	case !previous.BaselineEstablished:
+		// The initial setup baseline is not allowed to raise an alert. The
+		// first pass with booked history promotes the record; the next pass
+		// can compare against a stable baseline.
+		rec.BaselineEstablished = len(transactions) > 0
+		rec.LastDeltaMinor = 0
 		rec.Status = domain.ReconciliationStatusReconciled
 		rec.DiscrepancyStart = nil
 		rec.DiscrepancyEnd = nil
 		transition.Changed = previous.Status != domain.ReconciliationStatusReconciled
-	} else {
+	case delta == 0:
+		rec.LastDeltaMinor = 0
+		rec.Status = domain.ReconciliationStatusReconciled
+		rec.DiscrepancyStart = nil
+		rec.DiscrepancyEnd = nil
+		transition.Changed = previous.Status != domain.ReconciliationStatusReconciled
+	default:
+		rec.LastDeltaMinor = delta
 		rec.Status = domain.ReconciliationStatusDiscrepancy
 		if previous.Status != domain.ReconciliationStatusDiscrepancy || previous.LastDeltaMinor != delta {
 			start := now
@@ -100,21 +119,60 @@ func (r *Reconciler) Reconcile(ctx context.Context, account domain.Account) (dom
 	return transition, nil
 }
 
-func initialReconciliation(account domain.Account, transactions []domain.Transaction, now time.Time) domain.Reconciliation {
+func initialReconciliation(account domain.Account, transactions, pending []domain.Transaction, now time.Time) domain.Reconciliation {
 	anchor := now
 	if len(transactions) > 0 {
 		first := transactions[0].BookingDate.UTC()
 		anchor = time.Date(first.Year(), first.Month(), first.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, -1)
 	}
 	sum := sumAfter(transactions, anchor)
+	observed := observedBookedBalance(account, pending)
 	return domain.Reconciliation{
 		AccountID:           account.ID,
 		Currency:            currencyOrFallback(account.Currency),
-		OpeningBalanceMinor: account.BalanceMinor - sum,
+		OpeningBalanceMinor: observed - sum,
 		AnchorAt:            anchor,
 		LastCheckedAt:       timePtr(now),
 		Status:              domain.ReconciliationStatusReconciled,
+		BaselineEstablished: len(transactions) > 0,
 		UpdatedAt:           now,
+	}
+}
+
+// observedBookedBalance converts the provider balance into a booked-basis
+// figure. Booked balances are used directly. When the ASPSP only exposes an
+// available balance, pending debits (holds) and credits are added back so the
+// comparison is against the same basis as the stored booked ledger.
+func observedBookedBalance(account domain.Account, pending []domain.Transaction) int64 {
+	if !isAvailableBalanceType(account.BalanceType) {
+		return account.BalanceMinor
+	}
+	return account.BalanceMinor + pendingHoldMinor(pending)
+}
+
+// pendingHoldMinor returns pending debits minus pending credits as positive
+// magnitudes. A pending debit reduces an available balance but is not yet in
+// the booked ledger, so it must be added back to obtain a booked equivalent.
+func pendingHoldMinor(pending []domain.Transaction) int64 {
+	var debits, credits int64
+	for _, tx := range pending {
+		switch {
+		case tx.AmountMinor < 0:
+			debits += -tx.AmountMinor
+		case tx.AmountMinor > 0:
+			credits += tx.AmountMinor
+		}
+	}
+	return debits - credits
+}
+
+func isAvailableBalanceType(balanceType string) bool {
+	switch strings.ToLower(strings.TrimSpace(balanceType)) {
+	case "interimavailable", "closingavailable", "expected", "forwardavailable",
+		"openingavailable", "authorised", "available":
+		return true
+	default:
+		return false
 	}
 }
 

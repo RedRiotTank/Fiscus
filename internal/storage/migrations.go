@@ -191,6 +191,15 @@ var migrations = []migration{
 			END`,
 		},
 	},
+	{
+		version: 10,
+		statements: []string{
+			// Existing reconciliation rows have already completed their setup
+			// baseline. New rows start at 0 and are promoted after the first
+			// pass with booked history.
+			`ALTER TABLE account_reconciliation ADD COLUMN baseline_established INTEGER NOT NULL DEFAULT 1`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and
