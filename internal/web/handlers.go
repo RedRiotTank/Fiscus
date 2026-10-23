@@ -15,7 +15,11 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/treasury"
 )
 
-const syncRequestHeader = "X-Fiscus-Request"
+const (
+	syncRequestHeader       = "X-Fiscus-Request"
+	defaultTransactionLimit = 50
+	maxTransactionLimit     = 200
+)
 
 func (s *Server) baseData(r *http.Request, title, active string) PageData {
 	path := "/"
@@ -62,6 +66,7 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 	data.FilterAccount = strings.TrimSpace(r.URL.Query().Get("account"))
 	data.SearchQuery = strings.TrimSpace(r.URL.Query().Get("q"))
 	data.Page = parsePage(r.URL.Query().Get("page"))
+	data.Limit = parseLimit(r.URL.Query().Get("limit"))
 
 	ctx := r.Context()
 	accounts, err := s.workspaceAccounts(ctx, data.Workspace.View)
@@ -85,7 +90,7 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 	var transactions []domain.Transaction
 	if !restrictedEmpty {
 		if searchMode {
-			transactions, err = s.search.Search(ctx, data.SearchQuery, 50)
+			transactions, err = s.search.SearchPage(ctx, data.SearchQuery, data.Limit, (data.Page-1)*data.Limit)
 			if err != nil {
 				data.ErrorMessage = err.Error()
 				transactions = nil
@@ -102,7 +107,7 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		} else {
-			transactions, err = s.store.ListTransactions(ctx, transactionFilter(data.FilterAccount, accountIDs, data.Page))
+			transactions, err = s.store.ListTransactions(ctx, transactionFilter(data.FilterAccount, accountIDs, data.Page, data.Limit))
 			if err != nil {
 				s.fail(w, r, err)
 				return
@@ -110,13 +115,8 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.Transactions = transactionViews(transactions, accountMap(accounts))
-	if searchMode {
-		data.Page = 1
-		data.HasNext = false
-	} else {
-		data.HasNext = len(transactions) == transactionFilter("", nil, 0).Limit
-	}
-	data.PrevPage = max(data.Page-1, 0)
+	data.HasNext = len(transactions) == data.Limit
+	data.PrevPage = max(data.Page-1, 1)
 	data.NextPage = data.Page + 1
 	var total int
 	if !restrictedEmpty {
@@ -555,11 +555,22 @@ func (s *Server) syncNotice(w http.ResponseWriter, status int, class, message st
 
 func parsePage(raw string) int {
 	page, err := strconv.Atoi(raw)
-	if err != nil || page < 0 {
-		return 0
+	if err != nil || page < 1 {
+		return 1
 	}
 	if page > 10000 {
 		return 10000
 	}
 	return page
+}
+
+func parseLimit(raw string) int {
+	limit, err := strconv.Atoi(raw)
+	if err != nil || limit <= 0 {
+		return defaultTransactionLimit
+	}
+	if limit > maxTransactionLimit {
+		return maxTransactionLimit
+	}
+	return limit
 }

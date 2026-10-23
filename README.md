@@ -257,6 +257,11 @@ Transaction notes can be edited inline on the Transactions page or with the
 Telegram `/nota <transaction_id> <texto>` command. Updates are written through
 the normal transaction update trigger, so FTS5 search reflects them immediately.
 
+Search results are paginated with `page` (1-based) and `limit` (default 50,
+maximum 200), for example `/transactions?q=coffee&page=2&limit=25`. Amount
+filters accept dot or comma decimals and grouped thousands:
+`amount:1234.50`, `amount:1,234.50`, and `amount:1.234,50` are equivalent.
+
 ### Scenario simulator
 
 The Analytics workspace includes a **Simulate scenario** drawer. Adjust monthly
@@ -272,7 +277,9 @@ curl -u admin:secret -X POST http://localhost:8080/api/analytics/scenarios/simul
 
 The response contains shared labels, baseline and simulated balance arrays,
 ending balances, the net change, and the effective scenario monthly cash flow.
-Horizons are 1–180 months; the UI exposes 12/24/36/60 months.
+Horizons are 1–180 months; the UI exposes 12/24/36/60 months. The scenario
+drawer uses the same annual investment yield as the projection slider, so
+changing that slider updates both projections and simulated scenarios.
 
 ## Budgets and expected inflows
 

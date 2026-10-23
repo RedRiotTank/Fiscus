@@ -52,6 +52,7 @@ type PageData struct {
 	FilterAccount       string
 	SearchQuery         string
 	Page                int
+	Limit               int
 	PrevPage            int
 	NextPage            int
 	HasNext             bool
@@ -393,15 +394,17 @@ func (s *Server) loadAlerts(ctx context.Context, data *PageData, limit int) erro
 
 // transactionFilter builds a storage filter while keeping pagination bounded.
 // accountIDs restricts the workspace view; nil means all accounts.
-func transactionFilter(accountID string, accountIDs []string, page int) storage.TransactionFilter {
-	const pageSize = 50
-	if page < 0 {
-		page = 0
+func transactionFilter(accountID string, accountIDs []string, page, limit int) storage.TransactionFilter {
+	if page < 1 {
+		page = 1
+	}
+	if limit <= 0 {
+		limit = defaultTransactionLimit
 	}
 	return storage.TransactionFilter{
 		AccountID:  accountID,
 		AccountIDs: accountIDs,
-		Limit:      pageSize,
-		Offset:     page * pageSize,
+		Limit:      limit,
+		Offset:     (page - 1) * limit,
 	}
 }

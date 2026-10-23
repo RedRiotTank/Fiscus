@@ -18,6 +18,7 @@
     const oneOffInput = document.getElementById("scenario-oneoff");
     const oneOffMonthInput = document.getElementById("scenario-oneoff-month");
     const horizonInput = document.getElementById("scenario-horizon");
+    const yieldInput = document.getElementById("projection-yield");
     const runButton = document.querySelector("[data-scenario-run]");
     const resetButton = document.querySelector("[data-scenario-reset]");
     const summary = document.getElementById("scenario-summary");
@@ -139,7 +140,7 @@
           expense_delta_minor: toMinor(expenseInput ? expenseInput.value : 0),
           one_off_minor: toMinor(oneOffInput ? oneOffInput.value : 0),
           one_off_month: Number(oneOffMonthInput ? oneOffMonthInput.value : 1),
-          annual_yield_bp: 300
+          annual_yield_bp: Math.round(Number(yieldInput ? yieldInput.value : 3) * 100)
         });
         currency = payload.currency || currency;
         minorScale = payload.minor_scale == null ? 2 : payload.minor_scale;
@@ -181,6 +182,10 @@
         scheduleLoad();
       });
     });
+    if (yieldInput) {
+      yieldInput.addEventListener("input", scheduleLoad);
+      yieldInput.addEventListener("change", scheduleLoad);
+    }
     if (runButton) {
       runButton.addEventListener("click", load);
     }

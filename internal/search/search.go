@@ -16,7 +16,7 @@ import (
 
 // Store is the query surface required by the search service.
 type Store interface {
-	SearchTransactions(ctx context.Context, search storage.TransactionSearch, limit int) ([]domain.Transaction, error)
+	SearchTransactionsPage(ctx context.Context, search storage.TransactionSearch, limit, offset int) ([]domain.Transaction, error)
 }
 
 // Service executes parsed transaction searches.
@@ -31,6 +31,11 @@ func New(store Store) *Service {
 
 // Search parses raw and returns up to limit matching transactions.
 func (s *Service) Search(ctx context.Context, raw string, limit int) ([]domain.Transaction, error) {
+	return s.SearchPage(ctx, raw, limit, 0)
+}
+
+// SearchPage parses raw and returns one page of matching transactions.
+func (s *Service) SearchPage(ctx context.Context, raw string, limit, offset int) ([]domain.Transaction, error) {
 	query, err := Parse(raw)
 	if err != nil {
 		return nil, err
@@ -38,7 +43,10 @@ func (s *Service) Search(ctx context.Context, raw string, limit int) ([]domain.T
 	if limit <= 0 {
 		limit = 20
 	}
-	return s.store.SearchTransactions(ctx, query, limit)
+	if offset < 0 {
+		offset = 0
+	}
+	return s.store.SearchTransactionsPage(ctx, query, limit, offset)
 }
 
 // Parse converts free text, amount filters, category filters, status, receipt
@@ -112,14 +120,69 @@ func parseAmountFilter(value string) (string, int64, error) {
 	if value == "" {
 		return "", 0, errors.New("search: amount filter is empty")
 	}
-	if strings.Contains(value, ",") && !strings.Contains(value, ".") {
-		value = strings.ReplaceAll(value, ",", ".")
+	normalized, err := normalizeAmount(value)
+	if err != nil {
+		return "", 0, fmt.Errorf("search: invalid amount %q", value)
 	}
-	minor, err := money.Parse(value, "EUR")
+	minor, err := money.Parse(normalized, "EUR")
 	if err != nil || minor < 0 {
 		return "", 0, fmt.Errorf("search: invalid amount %q", value)
 	}
 	return op, minor, nil
+}
+
+// normalizeAmount accepts dot and comma decimal separators plus grouped
+// thousands. The last separator is treated as decimal when it is followed by
+// one or two digits; otherwise all separators are treated as grouping.
+func normalizeAmount(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", errors.New("empty amount")
+	}
+	sign := ""
+	switch value[0] {
+	case '+':
+		value = value[1:]
+	case '-':
+		sign = "-"
+		value = value[1:]
+	}
+	if value == "" {
+		return "", errors.New("empty amount")
+	}
+	lastComma := strings.LastIndex(value, ",")
+	lastDot := strings.LastIndex(value, ".")
+	lastSeparator := max(lastComma, lastDot)
+	if lastSeparator >= 0 {
+		fraction := value[lastSeparator+1:]
+		if len(fraction) == 1 || len(fraction) == 2 {
+			integer := strings.NewReplacer(",", "", ".", "").Replace(value[:lastSeparator])
+			if integer == "" {
+				integer = "0"
+			}
+			if !digitsOnly(integer) || !digitsOnly(fraction) {
+				return "", errors.New("invalid amount")
+			}
+			return sign + integer + "." + fraction, nil
+		}
+	}
+	integer := strings.NewReplacer(",", "", ".", "").Replace(value)
+	if !digitsOnly(integer) {
+		return "", errors.New("invalid amount")
+	}
+	return sign + integer, nil
+}
+
+func digitsOnly(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func ftsMatch(tokens []string) string {
