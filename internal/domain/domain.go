@@ -152,6 +152,28 @@ func (t Transaction) IsDebit() bool {
 	return t.AmountMinor < 0
 }
 
+// Attachment is a receipt or invoice stored by Fiscus and optionally paired
+// with a transaction.
+type Attachment struct {
+	ID                   int64
+	TransactionID        *int64
+	Filename             string
+	FilePath             string
+	ContentType          string
+	SizeBytes            int64
+	SHA256               string
+	UploadedAt           time.Time
+	Source               string
+	ExtractedDate        *time.Time
+	ExtractedAmountMinor *int64
+	ExtractedCurrency    string
+}
+
+// Paired reports whether the attachment is linked to a transaction.
+func (a Attachment) Paired() bool {
+	return a.TransactionID != nil
+}
+
 // Reconciliation statuses used by the balance integrity watchdog.
 const (
 	ReconciliationStatusReconciled  = "reconciled"

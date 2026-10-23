@@ -98,6 +98,24 @@ type fakeAPI struct {
 	documents []sentDocument
 	firstPoll chan struct{}
 	polls     int
+	fileData  []byte
+}
+
+type fakeIngestor struct {
+	filename    string
+	contentType string
+	caption     string
+	data        []byte
+	result      domain.Attachment
+	err         error
+}
+
+func (f *fakeIngestor) SaveTelegram(_ context.Context, filename, contentType, caption string, body io.Reader) (domain.Attachment, error) {
+	f.filename = filename
+	f.contentType = contentType
+	f.caption = caption
+	f.data, _ = io.ReadAll(body)
+	return f.result, f.err
 }
 
 func newFakeAPI(t *testing.T) (*fakeAPI, *httptest.Server) {
@@ -127,6 +145,13 @@ func newFakeAPI(t *testing.T) (*fakeAPI, *httptest.Server) {
 			}
 			api.answered = append(api.answered, answer)
 			writeJSON(t, w, map[string]any{"ok": true, "result": true})
+		case strings.HasSuffix(r.URL.Path, "/getFile"):
+			writeJSON(t, w, map[string]any{"ok": true, "result": map[string]any{
+				"file_id": "file-1", "file_path": "receipts/invoice.pdf", "file_size": len(api.fileData),
+			}})
+		case strings.Contains(r.URL.Path, "/file/bot"):
+			w.Header().Set("Content-Type", "application/pdf")
+			_, _ = w.Write(api.fileData)
 		case strings.HasSuffix(r.URL.Path, "/sendDocument"):
 			if err := r.ParseMultipartForm(1 << 20); err != nil {
 				t.Errorf("parse sendDocument: %v", err)
@@ -216,6 +241,62 @@ func TestUnauthorizedUpdatesAreIgnored(t *testing.T) {
 	defer api.mu.Unlock()
 	if len(api.sent) != 0 {
 		t.Fatalf("sent = %+v, want none", api.sent)
+	}
+}
+
+func TestDocumentAttachmentIngestion(t *testing.T) {
+	t.Parallel()
+	api, server := newFakeAPI(t)
+	api.fileData = []byte("pdf-bytes")
+	txID := int64(17)
+	ingestor := &fakeIngestor{result: domain.Attachment{ID: 3, TransactionID: &txID, Filename: "invoice.pdf"}}
+	bot := newTestBot(t, api, server, &fakeStore{}, nil)
+	bot.attachments = ingestor
+	update := update{
+		UpdateID: 9,
+		Message: &message{
+			MessageID: 11, Caption: "Total 12.34 EUR 2026-03-05", Chat: chat{ID: 42}, From: &user{ID: 7},
+			Document: &document{FileID: "file-1", FileName: "invoice.pdf", MimeType: "application/pdf"},
+		},
+	}
+	bot.handleUpdate(context.Background(), update)
+	if ingestor.filename != "invoice.pdf" || ingestor.contentType != "application/pdf" ||
+		ingestor.caption != "Total 12.34 EUR 2026-03-05" || string(ingestor.data) != "pdf-bytes" {
+		t.Fatalf("ingestor = %+v data=%q", ingestor, ingestor.data)
+	}
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if len(api.sent) != 1 || !strings.Contains(api.sent[0].Text, "vinculado") {
+		t.Fatalf("sent = %+v", api.sent)
+	}
+}
+
+func TestPhotoAttachmentIngestion(t *testing.T) {
+	t.Parallel()
+	api, server := newFakeAPI(t)
+	api.fileData = []byte("jpg-bytes")
+	ingestor := &fakeIngestor{result: domain.Attachment{ID: 4}}
+	bot := newTestBot(t, api, server, &fakeStore{}, nil)
+	bot.attachments = ingestor
+	update := update{
+		UpdateID: 10,
+		Message: &message{
+			MessageID: 12, Chat: chat{ID: 42}, From: &user{ID: 7},
+			Photo: []photoSize{
+				{FileID: "small", Width: 10, Height: 10},
+				{FileID: "large", Width: 400, Height: 300},
+			},
+		},
+	}
+	bot.handleUpdate(context.Background(), update)
+	if ingestor.filename != "telegram-photo-12.jpg" || ingestor.contentType != "image/jpeg" ||
+		string(ingestor.data) != "jpg-bytes" {
+		t.Fatalf("ingestor = %+v data=%q", ingestor, ingestor.data)
+	}
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if len(api.sent) != 1 || !strings.Contains(api.sent[0].Text, "bandeja") {
+		t.Fatalf("sent = %+v", api.sent)
 	}
 }
 

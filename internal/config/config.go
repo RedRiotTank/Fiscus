@@ -27,6 +27,7 @@ type Config struct {
 	Rules           []CategoryRule         `yaml:"rules"`
 	Budgets         []BudgetConfig         `yaml:"budgets"`
 	ExpectedInflows []ExpectedInflowConfig `yaml:"expected_inflows"`
+	Attachments     AttachmentsConfig      `yaml:"attachments"`
 	Backups         BackupsConfig          `yaml:"backups"`
 	Webhooks        []WebhookConfig        `yaml:"webhooks"`
 }
@@ -63,6 +64,16 @@ type ExpectedInflowConfig struct {
 	Currency     string `yaml:"currency"`
 	ExpectedDays []int  `yaml:"expected_days"`
 	GraceDays    int    `yaml:"grace_days"`
+}
+
+// AttachmentsConfig controls secure receipt and invoice storage. Monetary
+// thresholds are integer minor units.
+type AttachmentsConfig struct {
+	Enabled               bool   `yaml:"enabled"`
+	Directory             string `yaml:"directory"`
+	MaxSizeBytes          int64  `yaml:"max_size_bytes"`
+	ReceiptThresholdMinor int64  `yaml:"receipt_threshold_minor"`
+	GraceDays             int    `yaml:"grace_days"`
 }
 
 // BackupsConfig controls optional scheduled backups and Telegram delivery.
@@ -209,6 +220,13 @@ func Default() *Config {
 			Telegram: TelegramConfig{
 				NotifyUncategorized: true,
 			},
+		},
+		Attachments: AttachmentsConfig{
+			Enabled:               true,
+			Directory:             "data/attachments",
+			MaxSizeBytes:          10 << 20,
+			ReceiptThresholdMinor: 5000,
+			GraceDays:             5,
 		},
 		Backups: BackupsConfig{
 			Directory: "backups",
@@ -401,6 +419,20 @@ func (c *Config) Validate() error {
 	}
 	if c.Backups.Telegram && !c.Backups.Enabled {
 		errs = append(errs, errors.New("backups.telegram requires backups.enabled"))
+	}
+	if c.Attachments.Enabled {
+		if strings.TrimSpace(c.Attachments.Directory) == "" {
+			errs = append(errs, errors.New("attachments.directory is required when attachments are enabled"))
+		}
+		if c.Attachments.MaxSizeBytes <= 0 || c.Attachments.MaxSizeBytes > 100<<20 {
+			errs = append(errs, errors.New("attachments.max_size_bytes must be between 1 and 104857600"))
+		}
+		if c.Attachments.ReceiptThresholdMinor < 0 {
+			errs = append(errs, errors.New("attachments.receipt_threshold_minor cannot be negative"))
+		}
+		if c.Attachments.GraceDays < 0 || c.Attachments.GraceDays > 365 {
+			errs = append(errs, errors.New("attachments.grace_days must be between 0 and 365"))
+		}
 	}
 	for i, hook := range c.Webhooks {
 		if !validHTTPURL(hook.URL) {

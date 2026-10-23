@@ -132,6 +132,27 @@ var migrations = []migration{
 			`CREATE INDEX IF NOT EXISTS idx_reconciliation_status ON account_reconciliation(status)`,
 		},
 	},
+	{
+		version: 8,
+		statements: []string{
+			`CREATE TABLE IF NOT EXISTS transaction_attachments (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				transaction_id INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
+				filename TEXT NOT NULL,
+				file_path TEXT NOT NULL UNIQUE,
+				content_type TEXT NOT NULL DEFAULT '',
+				size_bytes INTEGER NOT NULL DEFAULT 0,
+				sha256 TEXT NOT NULL DEFAULT '',
+				uploaded_at TEXT NOT NULL,
+				source TEXT NOT NULL DEFAULT 'web',
+				extracted_date TEXT,
+				extracted_amount_minor INTEGER,
+				extracted_currency TEXT NOT NULL DEFAULT ''
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_attachments_transaction ON transaction_attachments(transaction_id)`,
+			`CREATE INDEX IF NOT EXISTS idx_attachments_uploaded ON transaction_attachments(uploaded_at)`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and

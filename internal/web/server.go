@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/analysis"
+	"github.com/RedRiotTank/Fiscus/internal/attachments"
 	"github.com/RedRiotTank/Fiscus/internal/budgets"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/money"
@@ -36,6 +37,7 @@ type Store interface {
 	ListConnections(ctx context.Context) ([]domain.Connection, error)
 	GetConnectionByID(ctx context.Context, id int64) (domain.Connection, error)
 	GetReconciliation(ctx context.Context, accountID string) (domain.Reconciliation, error)
+	AttachmentIDsForTransactions(ctx context.Context, transactionIDs []int64) (map[int64]int64, error)
 	CountTransactions(ctx context.Context) (int, error)
 	CountTransactionsFiltered(ctx context.Context, accountIDs []string) (int, error)
 	SpendingByCategory(ctx context.Context, from, to time.Time) ([]storage.CategorySpending, error)
@@ -76,6 +78,7 @@ type Config struct {
 	AuthHandler    AuthorizationCallback
 	Classifier     Classifier
 	Budgets        []budgets.Budget
+	Attachments    *attachments.Service
 }
 
 // Server renders dashboard pages and exposes health endpoints.
@@ -95,6 +98,7 @@ type Server struct {
 	authHandler    AuthorizationCallback
 	classifier     Classifier
 	budgets        []budgets.Budget
+	attachments    *attachments.Service
 
 	pages    map[string]*template.Template
 	partials *template.Template
@@ -139,6 +143,7 @@ func New(cfg Config, store Store, trigger SyncTrigger) (*Server, error) {
 		authHandler:    cfg.AuthHandler,
 		classifier:     cfg.Classifier,
 		budgets:        cfg.Budgets,
+		attachments:    cfg.Attachments,
 	}
 	if err := s.parseTemplates(); err != nil {
 		return nil, err
@@ -194,6 +199,10 @@ func (s *Server) routes() http.Handler {
 	app.HandleFunc("GET /{$}", s.handleDashboard)
 	app.HandleFunc("GET /transactions", s.handleTransactions)
 	app.HandleFunc("GET /transactions/export", s.handleExport)
+	app.HandleFunc("POST /attachments", s.handleAttachmentUpload)
+	app.HandleFunc("POST /attachments/{id}/pair", s.handleAttachmentPair)
+	app.HandleFunc("GET /attachments/{id}", s.handleAttachmentDownload)
+	app.HandleFunc("GET /api/attachments/unpaired", s.handleUnpairedAttachments)
 	app.HandleFunc("GET /subscriptions", s.handleSubscriptions)
 	app.HandleFunc("GET /alerts", s.handleAlerts)
 	app.HandleFunc("GET /connections", s.handleConnections)

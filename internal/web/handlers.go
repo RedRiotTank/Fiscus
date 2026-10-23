@@ -99,6 +99,11 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.TotalTransactions = total
+	data.AttachmentNotice = attachmentNotice(r.URL.Query().Get("attachment"))
+	if err := s.loadAttachmentData(ctx, &data); err != nil {
+		s.fail(w, r, err)
+		return
+	}
 	s.render(w, "transactions", data)
 }
 

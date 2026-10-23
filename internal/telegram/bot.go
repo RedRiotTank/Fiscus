@@ -53,37 +53,44 @@ type Syncer interface {
 	SyncAll(ctx context.Context) error
 }
 
+// AttachmentIngestor stores receipts received through Telegram.
+type AttachmentIngestor interface {
+	SaveTelegram(ctx context.Context, filename, contentType, caption string, body io.Reader) (domain.Attachment, error)
+}
+
 // Config configures the interactive bot.
 type Config struct {
-	BotToken   string
-	ChatID     string
-	UserID     string
-	BaseURL    string
-	HTTPClient *http.Client
-	Logger     *slog.Logger
-	Store      Store
-	Syncer     Syncer
-	Categories []string
-	Budgets    []budgets.Budget
-	Now        func() time.Time
+	BotToken    string
+	ChatID      string
+	UserID      string
+	BaseURL     string
+	HTTPClient  *http.Client
+	Logger      *slog.Logger
+	Store       Store
+	Syncer      Syncer
+	Attachments AttachmentIngestor
+	Categories  []string
+	Budgets     []budgets.Budget
+	Now         func() time.Time
 }
 
 // Bot polls Telegram for commands and replies to authorized users.
 type Bot struct {
-	token      string
-	chatID     string
-	userID     string
-	apiBase    string
-	httpClient *http.Client
-	logger     *slog.Logger
-	store      Store
-	syncer     Syncer
-	categories []string
-	budgets    []budgets.Budget
-	now        func() time.Time
-	poll       time.Duration
-	retryDelay time.Duration
-	offset     int64
+	token       string
+	chatID      string
+	userID      string
+	apiBase     string
+	httpClient  *http.Client
+	logger      *slog.Logger
+	store       Store
+	syncer      Syncer
+	attachments AttachmentIngestor
+	categories  []string
+	budgets     []budgets.Budget
+	now         func() time.Time
+	poll        time.Duration
+	retryDelay  time.Duration
+	offset      int64
 }
 
 // New validates configuration and constructs a Bot.
@@ -137,19 +144,20 @@ func New(cfg Config) (*Bot, error) {
 		now = time.Now
 	}
 	return &Bot{
-		token:      token,
-		chatID:     chatID,
-		userID:     userID,
-		apiBase:    strings.TrimRight(base, "/") + "/bot" + token,
-		httpClient: httpClient,
-		logger:     logger,
-		store:      cfg.Store,
-		syncer:     cfg.Syncer,
-		categories: normalizeCategories(cfg.Categories),
-		budgets:    cfg.Budgets,
-		now:        now,
-		poll:       defaultPollTimeout,
-		retryDelay: defaultRetryDelay,
+		token:       token,
+		chatID:      chatID,
+		userID:      userID,
+		apiBase:     strings.TrimRight(base, "/") + "/bot" + token,
+		httpClient:  httpClient,
+		logger:      logger,
+		store:       cfg.Store,
+		syncer:      cfg.Syncer,
+		attachments: cfg.Attachments,
+		categories:  normalizeCategories(cfg.Categories),
+		budgets:     cfg.Budgets,
+		now:         now,
+		poll:        defaultPollTimeout,
+		retryDelay:  defaultRetryDelay,
 	}, nil
 }
 
@@ -167,10 +175,33 @@ type callbackQuery struct {
 }
 
 type message struct {
-	MessageID int64  `json:"message_id"`
-	Text      string `json:"text"`
-	Chat      chat   `json:"chat"`
-	From      *user  `json:"from"`
+	MessageID int64       `json:"message_id"`
+	Text      string      `json:"text"`
+	Caption   string      `json:"caption"`
+	Chat      chat        `json:"chat"`
+	From      *user       `json:"from"`
+	Document  *document   `json:"document"`
+	Photo     []photoSize `json:"photo"`
+}
+
+type document struct {
+	FileID   string `json:"file_id"`
+	FileName string `json:"file_name"`
+	MimeType string `json:"mime_type"`
+	FileSize int64  `json:"file_size"`
+}
+
+type photoSize struct {
+	FileID   string `json:"file_id"`
+	Width    int    `json:"width"`
+	Height   int    `json:"height"`
+	FileSize int64  `json:"file_size"`
+}
+
+type fileInfo struct {
+	FileID   string `json:"file_id"`
+	FilePath string `json:"file_path"`
+	FileSize int64  `json:"file_size"`
 }
 
 type chat struct {
@@ -282,6 +313,10 @@ func (b *Bot) handleUpdate(ctx context.Context, item update) {
 	}
 	if !b.authorized(msg.Chat.ID, msg.From) {
 		b.logger.Warn("telegram command rejected", "chat_id", msg.Chat.ID)
+		return
+	}
+	if msg.Document != nil || len(msg.Photo) > 0 {
+		b.handleAttachment(ctx, msg)
 		return
 	}
 	text := strings.TrimSpace(msg.Text)
@@ -597,6 +632,112 @@ func helpText() string {
 		"/presupuesto - Consumo del presupuesto del mes actual",
 		"/help - Mostrar esta ayuda",
 	}, "\n")
+}
+
+func (b *Bot) handleAttachment(ctx context.Context, msg *message) {
+	if b.attachments == nil {
+		b.reply(ctx, msg.Chat.ID, "El almacenamiento de recibos no está habilitado.")
+		return
+	}
+	fileID, filename, contentType := attachmentDetails(msg)
+	if fileID == "" {
+		b.reply(ctx, msg.Chat.ID, "No se pudo leer el archivo adjunto.")
+		return
+	}
+	info, err := b.getFile(ctx, fileID)
+	if err != nil {
+		b.logger.Error("telegram getFile failed", "error", b.sanitize(err.Error()))
+		b.reply(ctx, msg.Chat.ID, "No se pudo descargar el archivo desde Telegram.")
+		return
+	}
+	if strings.TrimSpace(info.FilePath) == "" {
+		b.reply(ctx, msg.Chat.ID, "Telegram no devolvió una ruta válida para el archivo.")
+		return
+	}
+	endpoint := strings.Replace(b.apiBase, "/bot", "/file/bot", 1) + "/" +
+		strings.TrimPrefix(strings.ReplaceAll(info.FilePath, "..", ""), "/")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		b.reply(ctx, msg.Chat.ID, "No se pudo preparar la descarga del archivo.")
+		return
+	}
+	resp, err := b.httpClient.Do(req)
+	if err != nil {
+		b.logger.Error("telegram file download failed", "error", b.sanitize(err.Error()))
+		b.reply(ctx, msg.Chat.ID, "No se pudo descargar el archivo desde Telegram.")
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b.reply(ctx, msg.Chat.ID, "Telegram rechazó la descarga del archivo.")
+		return
+	}
+	att, err := b.attachments.SaveTelegram(ctx, filename, contentType, msg.Caption, resp.Body)
+	if err != nil {
+		b.logger.Error("telegram attachment save failed", "error", b.sanitize(err.Error()))
+		b.reply(ctx, msg.Chat.ID, "No se pudo guardar el recibo: "+b.sanitize(err.Error()))
+		return
+	}
+	if att.Paired() {
+		b.reply(ctx, msg.Chat.ID, fmt.Sprintf("Recibo guardado y vinculado al movimiento #%d.", *att.TransactionID))
+		return
+	}
+	b.reply(ctx, msg.Chat.ID, "Recibo guardado en la bandeja de no vinculados. Podrás enlazarlo desde la web.")
+}
+
+func attachmentDetails(msg *message) (fileID, filename, contentType string) {
+	if msg.Document != nil {
+		filename = strings.TrimSpace(msg.Document.FileName)
+		if filename == "" {
+			filename = fmt.Sprintf("telegram-document-%d", msg.MessageID)
+		}
+		return msg.Document.FileID, filename, strings.TrimSpace(msg.Document.MimeType)
+	}
+	if len(msg.Photo) == 0 {
+		return "", "", ""
+	}
+	largest := msg.Photo[0]
+	for _, photo := range msg.Photo[1:] {
+		if photo.Width*photo.Height > largest.Width*largest.Height {
+			largest = photo
+		}
+	}
+	return largest.FileID, fmt.Sprintf("telegram-photo-%d.jpg", msg.MessageID), "image/jpeg"
+}
+
+func (b *Bot) getFile(ctx context.Context, fileID string) (fileInfo, error) {
+	endpoint := b.apiBase + "/getFile?file_id=" + url.QueryEscape(fileID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return fileInfo{}, errors.New("telegram: build getFile request")
+	}
+	resp, err := b.httpClient.Do(req)
+	if err != nil {
+		return fileInfo{}, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return fileInfo{}, errors.New("telegram: read getFile response")
+	}
+	var decoded apiResponse
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		return fileInfo{}, errors.New("telegram: invalid getFile response")
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 || !decoded.OK {
+		return fileInfo{}, fmt.Errorf("telegram: getFile failed: %s", http.StatusText(resp.StatusCode))
+	}
+	var info fileInfo
+	if err := json.Unmarshal(decoded.Result, &info); err != nil {
+		return fileInfo{}, errors.New("telegram: invalid file payload")
+	}
+	return info, nil
+}
+
+func (b *Bot) reply(ctx context.Context, chatID int64, text string) {
+	if err := b.sendMessage(ctx, chatID, text); err != nil {
+		b.logger.Error("telegram reply failed", "error", b.sanitize(err.Error()))
+	}
 }
 
 func (b *Bot) sendMessage(ctx context.Context, chatID int64, text string) error {

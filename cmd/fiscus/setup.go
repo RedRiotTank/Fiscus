@@ -11,6 +11,7 @@ import (
 
 	"github.com/RedRiotTank/Fiscus/internal/alerts"
 	"github.com/RedRiotTank/Fiscus/internal/analysis"
+	"github.com/RedRiotTank/Fiscus/internal/attachments"
 	"github.com/RedRiotTank/Fiscus/internal/banking/enablebanking"
 	"github.com/RedRiotTank/Fiscus/internal/banking/gocardless"
 	"github.com/RedRiotTank/Fiscus/internal/budgets"
@@ -130,7 +131,7 @@ func buildNotifiers(cfg *config.Config) ([]alerts.Notifier, error) {
 	return notifiers, nil
 }
 
-func buildTelegramBot(cfg *config.Config, store *storage.Store, worker *ingest.Worker, logger *slog.Logger) (*telegram.Bot, error) {
+func buildTelegramBot(cfg *config.Config, store *storage.Store, worker *ingest.Worker, logger *slog.Logger, attachmentService *attachments.Service) (*telegram.Bot, error) {
 	if !cfg.TelegramConfigured() {
 		return nil, nil
 	}
@@ -138,15 +139,20 @@ func buildTelegramBot(cfg *config.Config, store *storage.Store, worker *ingest.W
 	if worker != nil {
 		syncer = worker
 	}
+	var ingestor telegram.AttachmentIngestor
+	if attachmentService != nil {
+		ingestor = attachmentService
+	}
 	return telegram.New(telegram.Config{
-		BotToken:   cfg.Alerts.Telegram.BotToken,
-		ChatID:     cfg.Alerts.Telegram.ChatID,
-		UserID:     cfg.Alerts.Telegram.UserID,
-		Logger:     logger,
-		Store:      store,
-		Syncer:     syncer,
-		Categories: configuredCategories(cfg),
-		Budgets:    configuredBudgets(cfg),
+		BotToken:    cfg.Alerts.Telegram.BotToken,
+		ChatID:      cfg.Alerts.Telegram.ChatID,
+		UserID:      cfg.Alerts.Telegram.UserID,
+		Logger:      logger,
+		Store:       store,
+		Syncer:      syncer,
+		Attachments: ingestor,
+		Categories:  configuredCategories(cfg),
+		Budgets:     configuredBudgets(cfg),
 	})
 }
 
@@ -208,6 +214,11 @@ func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, 
 		Logger:    logger,
 		Observer:  deliveryObserver,
 	})
+	analysisRules := []alerts.AnalysisRule{subscriptionRule, budgetRule, ghostRule, inflowRule}
+	if cfg.Attachments.Enabled && cfg.WorkspaceProfile() != domain.WorkspacePersonal {
+		analysisRules = append(analysisRules,
+			attachments.NewMissingReceiptRule(store, cfg.Attachments.ReceiptThresholdMinor, cfg.Attachments.GraceDays, nil))
+	}
 	engine, err := alerts.NewEngine(alerts.EngineConfig{
 		Store:               store,
 		Dispatcher:          dispatcher,
@@ -215,7 +226,7 @@ func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, 
 		TxRules:             []alerts.TransactionRule{duplicateRule, anomalyRule},
 		BalanceRules:        []alerts.BalanceRule{liquidityRule},
 		ConsentRules:        []alerts.ConsentRule{consentRule},
-		AnalysisRules:       []alerts.AnalysisRule{subscriptionRule, budgetRule, ghostRule, inflowRule},
+		AnalysisRules:       analysisRules,
 		ReconciliationRules: []alerts.ReconciliationRule{alerts.NewIntegrityRule()},
 		Observer:            engineObserver,
 		Events:              sink,
@@ -344,7 +355,7 @@ func buildWorker(cfg *config.Config, store *storage.Store, engine *alerts.Engine
 	return worker, nil
 }
 
-func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger, logger *slog.Logger, metrics *observability.Metrics, authHandler web.AuthorizationCallback) (*web.Server, error) {
+func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger, logger *slog.Logger, metrics *observability.Metrics, authHandler web.AuthorizationCallback, attachmentService *attachments.Service) (*web.Server, error) {
 	classifier, err := buildCategoryClassifier(cfg)
 	if err != nil {
 		return nil, err
@@ -360,6 +371,7 @@ func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger,
 		AuthHandler:    authHandler,
 		Classifier:     classifier,
 		Budgets:        configuredBudgets(cfg),
+		Attachments:    attachmentService,
 	}, store, trigger)
 }
 

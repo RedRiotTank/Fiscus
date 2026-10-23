@@ -22,6 +22,13 @@
           <strong class="stat-value">{{if .DiscrepancyAccounts}}{{.DiscrepancyAccounts}} flagged{{else}}Healthy{{end}}</strong>
           <span class="stat-meta">{{.ReconciledAccounts}} of {{.ReconciliationTotal}} accounts reconciled</span>
         </article>
+        {{if .AttachmentsEnabled}}
+          <article class="stat">
+            <span class="stat-label">Receipt inbox</span>
+            <strong class="stat-value">{{len .UnpairedAttachments}}</strong>
+            <span class="stat-meta">unpaired documents · <a class="link" href="/transactions#receipt-inbox">review</a></span>
+          </article>
+        {{end}}
       {{end}}
       <article class="stat subtle">
         <span class="stat-label">Accounts</span>
