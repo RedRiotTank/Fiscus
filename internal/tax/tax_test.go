@@ -73,6 +73,159 @@ func newTaxFixture(t *testing.T) *taxFixture {
 	return &taxFixture{store: store, service: service, now: now}
 }
 
+func newEmptyTaxStore(t *testing.T) (*storage.Store, domain.Account) {
+	t.Helper()
+	ctx := context.Background()
+	store, err := storage.Open(ctx, filepath.Join(t.TempDir(), "tax-empty.db"))
+	if err != nil {
+		t.Fatalf("storage.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	connection := domain.Connection{RequisitionID: "req-tax-empty", InstitutionName: "Bank", Status: "LN"}
+	if err := store.UpsertConnection(ctx, &connection); err != nil {
+		t.Fatalf("UpsertConnection: %v", err)
+	}
+	account := domain.Account{
+		ID: "biz", ConnectionID: connection.ID, Name: "Business", Currency: "EUR",
+		Type: domain.AccountTypeBusiness, BalanceMinor: 1_000_000,
+	}
+	if err := store.UpsertAccount(ctx, &account); err != nil {
+		t.Fatalf("UpsertAccount: %v", err)
+	}
+	return store, account
+}
+
+func insertTaxTransaction(t *testing.T, store *storage.Store, externalID string, minute int64, category string, date time.Time) {
+	t.Helper()
+	tx := domain.Transaction{
+		AccountID: "biz", ExternalID: externalID, AmountMinor: minute, Currency: "EUR",
+		BookingDate: date, Category: category, Status: domain.TransactionStatusBooked,
+	}
+	if _, _, err := store.UpsertTransaction(context.Background(), &tx); err != nil {
+		t.Fatalf("UpsertTransaction %s: %v", externalID, err)
+	}
+}
+
+func TestGranularCategoryRatesAndDeductibility(t *testing.T) {
+	t.Parallel()
+	store, _ := newEmptyTaxStore(t)
+	day := time.Date(2026, 2, 10, 10, 0, 0, 0, time.UTC)
+	insertTaxTransaction(t, store, "sales", 121_000, "Sales", day)
+	insertTaxTransaction(t, store, "software", -12_100, "Software", day)
+	insertTaxTransaction(t, store, "groceries", -10_000, "Groceries", day)
+	insertTaxTransaction(t, store, "exempt", -5_000, "Exempt Services", day)
+	service, err := New(store, Config{
+		VATRateDefault: 0.21, IncomeTaxRetention: 0.15,
+		QuarterStartMonths: []int{1, 4, 7, 10},
+		Categories: []CategoryConfig{
+			{Name: "Software", VATRate: 0.21, DeductiblePercent: 1},
+			{Name: "Groceries", VATRate: 0.04, DeductiblePercent: 0},
+			{Name: "Exempt Services", VATRate: 0, DeductiblePercent: 1},
+		},
+	}, func() time.Time { return day })
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	shields, err := service.ShieldsForQuarter(context.Background(), 2026, 1)
+	if err != nil {
+		t.Fatalf("ShieldsForQuarter: %v", err)
+	}
+	if len(shields) != 1 {
+		t.Fatalf("shields = %+v", shields)
+	}
+	shield := shields[0]
+	if shield.VATCollectedMinor != 21_000 || shield.VATPaidMinor != 2_100 {
+		t.Fatalf("VAT = %+v", shield.Estimate)
+	}
+	if shield.DeductibleExpenseGrossMinor != 17_100 || shield.DeductibleExpenseBaseMinor != 15_000 {
+		t.Fatalf("deductible expenses = %+v", shield.Estimate)
+	}
+	if shield.VATDueMinor != 18_900 || shield.IncomeTaxMinor != 12_750 || shield.EstimatedTaxDueMinor != 31_650 {
+		t.Fatalf("tax due = %+v", shield.Estimate)
+	}
+	if len(shield.Lines) != 4 {
+		t.Fatalf("lines = %+v", shield.Lines)
+	}
+	var groceries CategoryLine
+	for _, line := range shield.Lines {
+		if line.Category == "Groceries" {
+			groceries = line
+		}
+	}
+	if groceries.DeductibleExpenseGrossMinor != 0 || groceries.VATPaidMinor != 0 {
+		t.Fatalf("non-deductible groceries = %+v", groceries)
+	}
+}
+
+func TestVATCarryForwardAcrossQuarters(t *testing.T) {
+	t.Parallel()
+	store, _ := newEmptyTaxStore(t)
+	q1 := time.Date(2026, 2, 10, 10, 0, 0, 0, time.UTC)
+	q2 := time.Date(2026, 5, 10, 10, 0, 0, 0, time.UTC)
+	insertTaxTransaction(t, store, "q1-expense", -121_000, "Software", q1)
+	insertTaxTransaction(t, store, "q2-income", 121_000, "Sales", q2)
+	service, err := New(store, Config{
+		VATRateDefault: 0.21, IncomeTaxRetention: 0.15,
+		QuarterStartMonths: []int{1, 4, 7, 10},
+	}, func() time.Time { return q2 })
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	q1Shields, err := service.ShieldsForQuarter(context.Background(), 2026, 1)
+	if err != nil {
+		t.Fatalf("ShieldsForQuarter Q1: %v", err)
+	}
+	if q1Shields[0].VATDueMinor != 0 || q1Shields[0].VATCreditMinor != 21_000 {
+		t.Fatalf("Q1 VAT = %+v", q1Shields[0].Estimate)
+	}
+	q2Shields, err := service.ShieldsForQuarter(context.Background(), 2026, 2)
+	if err != nil {
+		t.Fatalf("ShieldsForQuarter Q2: %v", err)
+	}
+	if q2Shields[0].VATCarryForwardMinor != 21_000 || q2Shields[0].VATDueMinor != 0 ||
+		q2Shields[0].VATCreditMinor != 0 {
+		t.Fatalf("Q2 VAT = %+v", q2Shields[0].Estimate)
+	}
+	if q2Shields[0].IncomeTaxMinor != 15_000 || q2Shields[0].EstimatedTaxDueMinor != 15_000 {
+		t.Fatalf("Q2 income tax = %+v", q2Shields[0].Estimate)
+	}
+}
+
+func TestSummaryCSVIncludesCategoryRatesAndTotals(t *testing.T) {
+	t.Parallel()
+	store, _ := newEmptyTaxStore(t)
+	day := time.Date(2026, 2, 10, 10, 0, 0, 0, time.UTC)
+	insertTaxTransaction(t, store, "sales", 121_000, "Sales", day)
+	insertTaxTransaction(t, store, "groceries", -10_000, "Groceries", day)
+	service, err := New(store, Config{
+		VATRateDefault: 0.21, IncomeTaxRetention: 0.15,
+		QuarterStartMonths: []int{1, 4, 7, 10},
+		Categories: []CategoryConfig{
+			{Name: "Groceries", VATRate: 0.04, DeductiblePercent: 0},
+		},
+	}, func() time.Time { return day })
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	shields, err := service.ShieldsForQuarter(context.Background(), 2026, 1)
+	if err != nil {
+		t.Fatalf("ShieldsForQuarter: %v", err)
+	}
+	data, err := SummaryCSV(shields)
+	if err != nil {
+		t.Fatalf("SummaryCSV: %v", err)
+	}
+	text := string(data)
+	for _, want := range []string{"quarter_start", "vat_rate", "TOTAL", "1210.00", "0.0400", "estimated_tax_due"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("summary missing %q: %s", want, text)
+		}
+	}
+}
+
 func TestQuarterForBoundaries(t *testing.T) {
 	t.Parallel()
 	f := newTaxFixture(t)
@@ -175,6 +328,10 @@ func TestNewRejectsInvalidConfig(t *testing.T) {
 		{name: "retention", cfg: Config{VATRateDefault: 0.21, IncomeTaxRetention: -0.1, QuarterStartMonths: []int{1, 4, 7, 10}}},
 		{name: "months count", cfg: Config{VATRateDefault: 0.21, IncomeTaxRetention: 0.15, QuarterStartMonths: []int{1, 4}}},
 		{name: "duplicate month", cfg: Config{VATRateDefault: 0.21, IncomeTaxRetention: 0.15, QuarterStartMonths: []int{1, 1, 7, 10}}},
+		{name: "category name", cfg: Config{VATRateDefault: 0.21, IncomeTaxRetention: 0.15, QuarterStartMonths: []int{1, 4, 7, 10}, Categories: []CategoryConfig{{Name: " ", VATRate: 0.21}}}},
+		{name: "category VAT", cfg: Config{VATRateDefault: 0.21, IncomeTaxRetention: 0.15, QuarterStartMonths: []int{1, 4, 7, 10}, Categories: []CategoryConfig{{Name: "Software", VATRate: 1}}}},
+		{name: "category deductible", cfg: Config{VATRateDefault: 0.21, IncomeTaxRetention: 0.15, QuarterStartMonths: []int{1, 4, 7, 10}, Categories: []CategoryConfig{{Name: "Software", DeductiblePercent: 1.1}}}},
+		{name: "duplicate category", cfg: Config{VATRateDefault: 0.21, IncomeTaxRetention: 0.15, QuarterStartMonths: []int{1, 4, 7, 10}, Categories: []CategoryConfig{{Name: "Software", VATRate: 0.21}, {Name: "software", VATRate: 0.1}}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

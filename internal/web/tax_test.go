@@ -45,6 +45,38 @@ func TestTaxShieldCardForBusinessWorkspace(t *testing.T) {
 	}
 }
 
+func TestTaxSummaryWebExport(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	if err := f.store.SetAccountType(context.Background(), "acc-1", domain.AccountTypeBusiness); err != nil {
+		t.Fatalf("SetAccountType: %v", err)
+	}
+	service, err := tax.New(f.store, tax.Config{
+		VATRateDefault: 0.21, IncomeTaxRetention: 0.15,
+		QuarterStartMonths: []int{1, 4, 7, 10},
+	}, f.server.now)
+	if err != nil {
+		t.Fatalf("tax.New: %v", err)
+	}
+	f.server.tax = service
+	resp := f.request(t, http.MethodGet, "/transactions/export?format=tax-summary&year=2026&quarter=Q1", true, nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("tax export status = %d %s", resp.Code, resp.Body.String())
+	}
+	if got := resp.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/csv") {
+		t.Fatalf("content type = %q", got)
+	}
+	if got := resp.Header().Get("Content-Disposition"); !strings.Contains(got, "fiscus-tax-summary-2026-Q1.csv") {
+		t.Fatalf("content disposition = %q", got)
+	}
+	body := resp.Body.String()
+	for _, want := range []string{"quarter_start", "TOTAL", "Dining", "estimated_tax_due"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("tax summary missing %q: %s", want, body)
+		}
+	}
+}
+
 func TestTaxShieldEmptyForPersonalAccounts(t *testing.T) {
 	t.Parallel()
 	f := newWebFixture(t)

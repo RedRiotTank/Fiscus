@@ -58,6 +58,18 @@ tax:
   vat_rate_default: 0.21
   income_tax_retention: 0.15
   quarter_start_months: [1, 4, 7, 10]
+  # Optional category-level overrides. deductible_percent controls how much of
+  # an expense reduces income tax and deductible VAT; 0 means non-deductible.
+  categories:
+    - name: "Software"
+      vat_rate: 0.21
+      deductible_percent: 1.00
+    - name: "Groceries"
+      vat_rate: 0.04
+      deductible_percent: 0.00
+    - name: "Exempt Services"
+      vat_rate: 0.00
+      deductible_percent: 1.00
 
 gocardless:
   base_url: "https://bankaccountdata.gocardless.com/api/v2"

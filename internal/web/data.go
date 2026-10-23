@@ -127,6 +127,7 @@ type TaxShieldView struct {
 	TaxReserveMinor        int64
 	TrueLiquidCapitalMinor int64
 	VATDueMinor            int64
+	VATCreditMinor         int64
 	IncomeTaxMinor         int64
 	QuarterEnd             time.Time
 }

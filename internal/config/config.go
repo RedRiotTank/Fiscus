@@ -77,14 +77,23 @@ type AttachmentsConfig struct {
 	GraceDays             int    `yaml:"grace_days"`
 }
 
+// TaxCategoryConfig assigns a VAT rate and income-tax deductibility to a
+// transaction category. Rates and percentages are decimal fractions.
+type TaxCategoryConfig struct {
+	Name              string  `yaml:"name"`
+	VATRate           float64 `yaml:"vat_rate"`
+	DeductiblePercent float64 `yaml:"deductible_percent"`
+}
+
 // TaxConfig controls the quarterly VAT and income-tax liquidity shield. Rates
 // are decimal fractions (0.21 = 21%) and QuarterStartMonths must contain the
 // four month numbers that begin each fiscal quarter.
 type TaxConfig struct {
-	Enabled            bool    `yaml:"enabled"`
-	VATRateDefault     float64 `yaml:"vat_rate_default"`
-	IncomeTaxRetention float64 `yaml:"income_tax_retention"`
-	QuarterStartMonths []int   `yaml:"quarter_start_months"`
+	Enabled            bool                `yaml:"enabled"`
+	VATRateDefault     float64             `yaml:"vat_rate_default"`
+	IncomeTaxRetention float64             `yaml:"income_tax_retention"`
+	QuarterStartMonths []int               `yaml:"quarter_start_months"`
+	Categories         []TaxCategoryConfig `yaml:"categories"`
 }
 
 // BackupsConfig controls optional scheduled backups and Telegram delivery.
@@ -472,6 +481,25 @@ func (c *Config) Validate() error {
 				}
 				seen[month] = struct{}{}
 			}
+		}
+		categories := make(map[string]struct{}, len(c.Tax.Categories))
+		for i, category := range c.Tax.Categories {
+			name := strings.TrimSpace(category.Name)
+			if name == "" {
+				errs = append(errs, fmt.Errorf("tax.categories[%d].name is required", i))
+				continue
+			}
+			if category.VATRate < 0 || category.VATRate >= 1 {
+				errs = append(errs, fmt.Errorf("tax.categories[%d].vat_rate must be between 0 and 1", i))
+			}
+			if category.DeductiblePercent < 0 || category.DeductiblePercent > 1 {
+				errs = append(errs, fmt.Errorf("tax.categories[%d].deductible_percent must be between 0 and 1", i))
+			}
+			key := strings.ToLower(name)
+			if _, exists := categories[key]; exists {
+				errs = append(errs, fmt.Errorf("tax.categories contains duplicate name %q", name))
+			}
+			categories[key] = struct{}{}
 		}
 	}
 	for i, hook := range c.Webhooks {

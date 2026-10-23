@@ -118,13 +118,22 @@ tax:
   vat_rate_default: 0.10
   income_tax_retention: 0.20
   quarter_start_months: [2, 5, 8, 11]
+  categories:
+    - name: "Software"
+      vat_rate: 0.21
+      deductible_percent: 1.00
+    - name: "Groceries"
+      vat_rate: 0.04
+      deductible_percent: 0.00
 `)
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 	if !cfg.Tax.Enabled || cfg.Tax.VATRateDefault != 0.10 || cfg.Tax.IncomeTaxRetention != 0.20 ||
-		len(cfg.Tax.QuarterStartMonths) != 4 || cfg.Tax.QuarterStartMonths[3] != 11 {
+		len(cfg.Tax.QuarterStartMonths) != 4 || cfg.Tax.QuarterStartMonths[3] != 11 ||
+		len(cfg.Tax.Categories) != 2 || cfg.Tax.Categories[1].Name != "Groceries" ||
+		cfg.Tax.Categories[1].VATRate != 0.04 || cfg.Tax.Categories[1].DeductiblePercent != 0 {
 		t.Fatalf("tax = %+v", cfg.Tax)
 	}
 }
@@ -139,6 +148,10 @@ func TestInvalidTaxRejected(t *testing.T) {
 		{name: "months", yaml: "tax:\n  enabled: true\n  quarter_start_months: [1, 4]\n"},
 		{name: "month range", yaml: "tax:\n  enabled: true\n  quarter_start_months: [0, 4, 7, 10]\n"},
 		{name: "duplicate", yaml: "tax:\n  enabled: true\n  quarter_start_months: [1, 1, 7, 10]\n"},
+		{name: "category name", yaml: "tax:\n  enabled: true\n  categories:\n    - name: \"\"\n      vat_rate: 0.21\n"},
+		{name: "category VAT", yaml: "tax:\n  enabled: true\n  categories:\n    - name: Software\n      vat_rate: 1.2\n"},
+		{name: "category deductible", yaml: "tax:\n  enabled: true\n  categories:\n    - name: Software\n      deductible_percent: -1\n"},
+		{name: "duplicate category", yaml: "tax:\n  enabled: true\n  categories:\n    - name: Software\n      vat_rate: 0.21\n    - name: software\n      vat_rate: 0.10\n"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
