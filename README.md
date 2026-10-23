@@ -1,5 +1,7 @@
 # Fiscus
 
+[![Quick Demo in 10 Seconds](https://img.shields.io/badge/demo-10%20seconds-2ea44f?style=for-the-badge)](#quick-demo-in-10-seconds)
+
 Fiscus is a self-hosted treasury intelligence platform for personal and
 small-business bank accounts. It ingests read-only account data through a PSD2
 account information provider (GoCardless Bank Account Data or Enable Banking),
@@ -10,6 +12,29 @@ Discord. A compact web dashboard is embedded in the same binary.
 Fiscus is written in pure Go and requires no CGO. All monetary values are stored
 as integer minor units (for example, cents); binary floating point is never used
 for money.
+
+## Quick Demo in 10 Seconds
+
+```bash
+git clone https://github.com/RedRiotTank/Fiscus.git
+cd Fiscus
+go run ./cmd/fiscus demo
+# Open http://localhost:8080
+```
+
+`fiscus demo` creates an isolated temporary SQLite database, runs all migrations,
+seeds six months of coherent personal and business activity, and starts the
+dashboard without any bank connection or configuration. External polling,
+Telegram, Discord, webhooks, and scheduled backups are disabled in demo mode.
+
+The seeded dataset includes personal and business accounts, subscriptions with a
+price increase and a dormant Adobe subscription, payroll and client invoices,
+groceries, utilities, restaurants, internal transfers, uncategorized merchants,
+paired and unpaired receipts, budgets, tax shields, reconciliation history, and
+alert history. Use `fiscus demo --dry-run` to seed and inspect without starting
+the server, or `fiscus demo --dir ./demo-data` to keep the demo database and
+attachments on disk. `fiscus serve --demo` starts the same environment using the
+normal serve entrypoint.
 
 ## Features
 
@@ -52,6 +77,7 @@ for money.
   HMAC-SHA256 signing
 - Embedded HTMX dashboard with Basic Auth protection
 - `/healthz`, `/readyz`, and Prometheus `/metrics` endpoints
+- One-command interactive demo with isolated, realistic seeded data
 - Single static binary; non-root container image and Compose deployment
 
 ## Quick start
@@ -93,14 +119,16 @@ combined SHA-256 checksums.
 | `fiscus institutions` | List banks or institutions for a country |
 | `fiscus sync` | Run one synchronization cycle and exit |
 | `fiscus recategorize` | Preview or apply category rules to historical transactions |
-| `fiscus backup` | Write a gzipped online SQLite backup |
-| `fiscus export` | Export transactions as CSV, hledger, or Beancount |
+| `fiscus backup` | Write a `.tar.gz` backup with SQLite and attachments |
+| `fiscus export` | Export transactions or a tax summary |
+| `fiscus demo` | Start a seeded, no-bank demo dashboard |
 | `fiscus version` | Print build information |
 
-Every command accepts `-config <path>` (default `config.yaml`, or
+Most commands accept `-config <path>` (default `config.yaml`, or
 `FISCUS_CONFIG`). `connect` accepts `-institution`, `-name`, and `-reference`;
 Enable Banking additionally accepts `-country` and `-psu`. `institutions`
-accepts `-country` and, for Enable Banking, `-psu`.
+accepts `-country` and, for Enable Banking, `-psu`. `demo` accepts `-address`,
+`-dir`, and `-dry-run`.
 
 ### Accounting exports
 

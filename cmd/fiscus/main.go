@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 
 	"github.com/RedRiotTank/Fiscus/internal/attachments"
@@ -53,6 +54,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runBackup(args[1:], stdout, stderr)
 	case "export":
 		return runExport(args[1:], stdout, stderr)
+	case "demo":
+		return runDemo(args[1:], stdout, stderr)
 	case "version", "-version", "--version":
 		_, _ = fmt.Fprintf(stdout, "fiscus %s (commit %s, built %s, %s)\n", version, commit, date, runtime.Version())
 		return nil
@@ -76,6 +79,7 @@ Usage:
   fiscus recategorize   Re-run category rules over historical transactions
   fiscus backup         Write a .tar.gz backup with SQLite and attachments
   fiscus export         Export transactions or a tax summary
+  fiscus demo           Run a seeded, no-bank demo dashboard
   fiscus version        Print build information
 
 Run "fiscus <command> -h" for command flags.
@@ -128,15 +132,24 @@ func newLogger(cfg *config.Config, stderr io.Writer) *slog.Logger {
 	return slog.New(handler)
 }
 
-func runServe(args []string, _ io.Writer, stderr io.Writer) error {
+func runServe(args []string, stdout, stderr io.Writer) error {
 	fs := newFlagSet("serve", stderr)
 	configPath := fs.String("config", defaultConfigPath(), "path to YAML configuration")
+	demoMode := fs.Bool("demo", false, "run the seeded demo dashboard with no external integrations")
+	demoAddress := fs.String("address", "", "demo listen address override")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	cfg, err := loadConfig(*configPath)
 	if err != nil {
 		return err
+	}
+	if *demoMode {
+		address := strings.TrimSpace(*demoAddress)
+		if address == "" {
+			address = cfg.Server.Address
+		}
+		return runDemoMode(demoOptions{Address: address, Stdout: stdout, Stderr: stderr})
 	}
 	logger := newLogger(cfg, stderr)
 
