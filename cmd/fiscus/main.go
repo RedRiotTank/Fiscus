@@ -204,6 +204,9 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 			return err
 		}
 		worker.SetReconciler(reconciler)
+		if attachmentService != nil {
+			worker.SetReceiptRepairer(attachmentService)
+		}
 		go worker.Run(appCtx)
 	} else {
 		logger.Warn("banking credentials are not configured; ingestion is disabled")

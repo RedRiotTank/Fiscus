@@ -206,10 +206,14 @@ attachments:
   grace_days: 5
 ```
 
-The receipt inbox lists unpaired files. Business-account debits strictly above
-`receipt_threshold_minor` produce one missing-receipt alert after `grace_days`.
-Downloads are authenticated; file paths and digests are not exposed by the JSON
-API.
+The receipt inbox lists unpaired files. After every successful bank sync,
+Fiscus retries exact amount/currency/±3-day pairing for the whole inbox, so a
+receipt uploaded before its transaction was ingested can be linked
+automatically later. The **Re-pair inbox** button runs the same pass on demand.
+Business-account debits strictly above `receipt_threshold_minor` produce one
+missing-receipt alert after `grace_days`. Downloads are authenticated and forced
+to an attachment disposition with a PDF/JPEG/PNG/WEBP content type; file paths
+and digests are not exposed by the JSON API.
 
 ### Tax shield
 

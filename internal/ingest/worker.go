@@ -78,6 +78,12 @@ type Reconciler interface {
 	Reconcile(ctx context.Context, account domain.Account) (domain.ReconciliationTransition, error)
 }
 
+// ReceiptRepairer retries pairing unpaired receipts after new transactions
+// have been ingested.
+type ReceiptRepairer interface {
+	RepairUnpaired(ctx context.Context) (int, error)
+}
+
 // Categorizer assigns a category to a normalized transaction. A nil
 // categorizer leaves transactions in the storage default category.
 type Categorizer interface {
@@ -128,6 +134,7 @@ type Worker struct {
 	store         Store
 	evaluator     Evaluator
 	reconciler    Reconciler
+	receipts      ReceiptRepairer
 	observer      Observer
 	uncategorized UncategorizedNotifier
 	events        events.Sink
@@ -194,6 +201,13 @@ func (w *Worker) SetReconciler(reconciler Reconciler) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.reconciler = reconciler
+}
+
+// SetReceiptRepairer installs the post-sync receipt re-pairing service.
+func (w *Worker) SetReceiptRepairer(repairer ReceiptRepairer) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.receipts = repairer
 }
 
 // SetEventSink installs an optional outbound event sink for webhooks.
@@ -306,6 +320,9 @@ func (w *Worker) SyncAll(ctx context.Context) error {
 	w.evaluateConsents(ctx)
 	w.evaluateAnalysis(ctx)
 	syncErr := errors.Join(errs...)
+	if syncErr == nil {
+		w.repairReceipts(ctx)
+	}
 	w.emitSyncCompleted(ctx, "all", "", len(connections), syncErr)
 	return syncErr
 }
@@ -319,6 +336,9 @@ func (w *Worker) SyncConnection(ctx context.Context, requisitionID string) error
 	err = w.syncConnection(ctx, connection)
 	w.evaluateConsents(ctx)
 	w.evaluateAnalysis(ctx)
+	if err == nil {
+		w.repairReceipts(ctx)
+	}
 	w.emitSyncCompleted(ctx, "connection", requisitionID, 1, err)
 	return err
 }
@@ -387,6 +407,23 @@ func (w *Worker) evaluateAnalysis(ctx context.Context) {
 	}
 	if _, err := evaluator.OnAnalysis(ctx); err != nil {
 		w.logger.Error("historical analysis rules failed", "error", err)
+	}
+}
+
+func (w *Worker) repairReceipts(ctx context.Context) {
+	w.mu.Lock()
+	repairer := w.receipts
+	w.mu.Unlock()
+	if repairer == nil {
+		return
+	}
+	repaired, err := repairer.RepairUnpaired(ctx)
+	if err != nil {
+		w.logger.Warn("receipt re-pairing failed", "repaired", repaired, "error", err)
+		return
+	}
+	if repaired > 0 {
+		w.logger.Info("receipts re-paired after sync", "count", repaired)
 	}
 }
 

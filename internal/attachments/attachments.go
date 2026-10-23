@@ -249,6 +249,32 @@ func (s *Service) ListUnpaired(ctx context.Context) ([]domain.Attachment, error)
 	return s.store.ListUnpairedAttachments(ctx)
 }
 
+// RepairUnpaired retries automatic pairing for every receipt in the inbox.
+// It is safe to call after each successful bank sync: attachments with no
+// exact match or with ambiguous matches remain unpaired.
+func (s *Service) RepairUnpaired(ctx context.Context) (int, error) {
+	unpaired, err := s.store.ListUnpairedAttachments(ctx)
+	if err != nil {
+		return 0, err
+	}
+	repaired := 0
+	var errs []error
+	for i := range unpaired {
+		att := &unpaired[i]
+		if att.Paired() {
+			continue
+		}
+		if err := s.autoPair(ctx, att); err != nil {
+			errs = append(errs, fmt.Errorf("attachments: repair %d: %w", att.ID, err))
+			continue
+		}
+		if att.Paired() {
+			repaired++
+		}
+	}
+	return repaired, errors.Join(errs...)
+}
+
 // ListForTransaction returns attachments linked to a transaction.
 func (s *Service) ListForTransaction(ctx context.Context, transactionID int64) ([]domain.Attachment, error) {
 	return s.store.ListAttachmentsForTransaction(ctx, transactionID)

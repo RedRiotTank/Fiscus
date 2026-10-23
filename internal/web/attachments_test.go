@@ -9,8 +9,10 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/attachments"
+	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 )
 
@@ -214,6 +216,53 @@ func TestReceiptDownloadForcesSafeHeaders(t *testing.T) {
 	}
 	if got := download.Header().Get("X-Content-Type-Options"); got != "nosniff" {
 		t.Fatalf("nosniff = %q", got)
+	}
+}
+
+func TestReceiptRepairButtonRePairsInbox(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	service, err := attachments.New(f.store, t.TempDir(), 1<<20, f.server.now)
+	if err != nil {
+		t.Fatalf("attachments.New: %v", err)
+	}
+	f.server.attachments = service
+
+	resp := uploadReceipt(t, f, "2026-03-06 total 99.00.pdf", "late receipt", nil)
+	if resp.Code != http.StatusSeeOther || !strings.Contains(resp.Header().Get("Location"), "attachment=unpaired") {
+		t.Fatalf("upload = %d %q", resp.Code, resp.Header().Get("Location"))
+	}
+	late := domain.Transaction{
+		AccountID: "acc-1", ExternalID: "tx-late", AmountMinor: -9900, Currency: "EUR",
+		BookingDate:  time.Date(2026, 3, 6, 9, 0, 0, 0, time.UTC),
+		Counterparty: "Late Vendor", Status: domain.TransactionStatusBooked,
+	}
+	if _, _, err := f.store.UpsertTransaction(context.Background(), &late); err != nil {
+		t.Fatalf("UpsertTransaction: %v", err)
+	}
+
+	unprotected := httptest.NewRequest(http.MethodPost, "/attachments/repair", nil)
+	unprotected.SetBasicAuth("admin", "secret")
+	rec := httptest.NewRecorder()
+	f.handler.ServeHTTP(rec, unprotected)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("unprotected repair = %d, want 403", rec.Code)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/attachments/repair", nil)
+	req.SetBasicAuth("admin", "secret")
+	req.Header.Set(syncRequestHeader, "1")
+	rec = httptest.NewRecorder()
+	f.handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther || !strings.Contains(rec.Header().Get("Location"), "attachment=repaired") {
+		t.Fatalf("repair = %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+	unpaired, err := service.ListUnpaired(context.Background())
+	if err != nil {
+		t.Fatalf("ListUnpaired: %v", err)
+	}
+	if len(unpaired) != 0 {
+		t.Fatalf("unpaired after repair = %+v", unpaired)
 	}
 }
 
