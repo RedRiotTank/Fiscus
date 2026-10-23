@@ -619,11 +619,13 @@ cleanly as part of the daemon's SIGTERM/SIGINT shutdown.
 ## Backups
 
 `fiscus backup` uses SQLite's online backup API, so it is safe to run while the
-daemon is serving traffic. Output is always gzipped:
+daemon is serving traffic. Each run writes a single `.tar.gz` archive containing
+the live database snapshot as `fiscus.db` and the receipt directory recursively
+under `attachments/`:
 
 ```sh
-fiscus backup --out=/var/backups/fiscus-$(date +%F).sqlite.gz
-fiscus backup   # default: backups/fiscus-YYYYMMDD-HHMMSS.sqlite.gz
+fiscus backup --out=/var/backups/fiscus-$(date +%F).tar.gz
+fiscus backup   # default: backups/fiscus-YYYYMMDD-HHMMSS.tar.gz
 ```
 
 Optional weekly backup delivery to the configured Telegram chat requires both
@@ -637,11 +639,12 @@ backups:
   interval: 168h
 ```
 
-Each run writes a local `.sqlite.gz` file and uploads the same document through
+Each run writes a local `.tar.gz` archive and uploads the same document through
 the Telegram bot. The backup directory should be on persistent storage and
 protected with restrictive filesystem permissions. To restore, stop the daemon,
-decompress the archive, and place the resulting SQLite file at
-`database.path` (or point the configuration at it).
+extract the archive, place `fiscus.db` at `database.path` (or point the
+configuration at it), and restore the extracted `attachments/` directory to
+`attachments.directory`.
 
 ## Webhooks
 

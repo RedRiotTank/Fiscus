@@ -48,7 +48,7 @@ func writeAndSendBackup(ctx context.Context, cfg *config.Config, store *storage.
 		return fmt.Errorf("backup: document sender is required")
 	}
 	path := backup.DefaultPath(cfg.Backups.Directory, now)
-	result, err := backup.CreateGzip(ctx, store, path)
+	result, err := backup.CreateArchive(ctx, store, cfg.Attachments.Directory, path)
 	if err != nil {
 		return err
 	}

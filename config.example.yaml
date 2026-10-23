@@ -160,8 +160,9 @@ rules:
   - category: "Payroll"
     pattern: "(?i)NOMINA|SALARY"
 
-# Optional weekly gzipped SQLite backups delivered to the Telegram chat above.
-# Manual snapshots are always available with: fiscus backup --out=/path/file.sqlite.gz
+# Optional weekly .tar.gz backups (SQLite snapshot + receipt files) delivered to
+# the Telegram chat above. Manual snapshots are always available with:
+# fiscus backup --out=/path/file.tar.gz
 backups:
   enabled: false
   telegram: false
