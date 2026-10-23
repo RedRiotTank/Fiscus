@@ -3,6 +3,46 @@
 All notable changes to Fiscus are documented here. Versions use semantic
 versioning and annotated Git tags.
 
+## v1.2.1 - 2026-10-24
+
+Interactive demo and zero-configuration evaluation release.
+
+### Added
+
+- `fiscus demo` command and `fiscus serve --demo` mode.
+  - Creates an isolated temporary SQLite database and runs all migrations.
+  - Seeds six months of coherent personal and business data across five
+    accounts and three institutions.
+  - Starts the dashboard without a bank connection, Telegram, Discord,
+    webhooks, or scheduled backups.
+  - Prints the demo URL and database path, and shuts down cleanly on
+    SIGINT/SIGTERM.
+- Demo controls:
+  - `--dry-run` seeds and exits without starting the server.
+  - `--dir` keeps the demo database and attachments on disk.
+  - `--address` overrides the listen address.
+- Realistic seed coverage:
+  - Personal checking, emergency savings, business treasury, and Wise USD/GBP
+    accounts.
+  - Payroll, client invoices, monthly subscriptions, a Spotify price increase,
+    dormant Adobe subscription, groceries, utilities, restaurants, software,
+    rent, bank fees, internal transfers, pending card holds, and recurring
+    Uncategorized merchants.
+  - Paired AWS, MacBook, and JetBrains receipts plus an unpaired hotel receipt.
+  - Restaurants and groceries budgets at approximately 85% and 60% utilization.
+  - Business tax shield with granular category rates and realistic runway.
+  - Seeded alerts for price increases, fees, budget warnings, reconciliation,
+    historical discrepancies, and missing receipts.
+- README "Quick Demo in 10 Seconds" badge and instructions.
+
+### Verification
+
+- `go test -v -race ./...`
+- `golangci-lint run ./...`
+- `CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X 'main.version=v1.2.1'" ./cmd/fiscus`
+- Manual demo smoke test across dashboard, transactions, alerts, analytics,
+  projections, and unpaired attachment APIs.
+
 ## v1.2.0 - 2026-10-24
 
 Advanced tax intelligence and cross-platform distribution release.
