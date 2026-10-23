@@ -3,6 +3,68 @@
 All notable changes to Fiscus are documented here. Versions use semantic
 versioning and annotated Git tags.
 
+## v1.0.0 - 2026-10-23
+
+Fiscus v1.0.0 is the unified personal and business treasury intelligence
+platform release. It adds six audit-oriented modules while keeping a single pure
+Go, CGO-free static binary.
+
+### Added
+
+- Workspace profiles:
+  - `personal`, `business`, and `hybrid` profiles.
+  - Locked single-workspace views or an All / Personal / Business switcher.
+  - Per-account workspace mapping with `personal` as the unmapped default.
+  - Search, analytics, exports, alerts, and dashboards respect the active view.
+- Balance integrity watchdog:
+  - Opening-balance anchors established on the first successful check.
+  - Mathematical reconciliation of observed balance versus ledger movement.
+  - Discrepancy alerts that only fire when account state or delta changes.
+  - Overview reconciliation counts and account-level discrepancy details.
+- Receipt and invoice pairing:
+  - Authenticated uploads from the Transactions page and Telegram documents or
+    photos.
+  - File-integrity storage with SHA-256 metadata and safe download handling.
+  - Exact absolute-amount, currency, and ±3-day auto-pairing; ambiguous matches
+    remain unpaired for manual linking.
+  - Receipt inbox and one missing-receipt alert per business debit after the
+    configured grace period.
+- Tax liquidity shield:
+  - Quarterly VAT and income-tax estimation from booked business transactions.
+  - Per-currency reserves, no cross-currency aggregation.
+  - True liquid operating capital (`balance - tax reserve`) on the dashboard.
+  - Quarter-end reserve alerts de-duplicated per quarter and currency.
+- FTS5 transaction search:
+  - Migration to SQLite FTS5 with triggers synced on transaction and account-type
+    changes; notes added to transactions.
+  - Prefix search across description, counterparty, category, notes, and
+    workspace type.
+  - Structured `amount:`, `category:`, `status:`, `has:`, and `type:` filters.
+  - Search UI on the Transactions page and Telegram `/buscar`.
+- Cash-flow scenario simulator:
+  - `POST /api/analytics/scenarios/simulate` with monthly income/expense deltas,
+    one-off events, configurable event month, yield, and 1–180 month horizons.
+  - Analytics drawer with baseline-versus-simulated chart overlay and ending
+    balance/net-change summary.
+  - Shared integer minor-unit math with the existing projection engine.
+
+### Changed
+
+- Version metadata is now `v1.0.0`.
+- The dashboard navigation, overview cards, analytics workspace, Transactions
+  page, and Telegram help include the new modules.
+- README covers workspace profiles, reconciliation, receipts, tax estimation,
+  search syntax, the scenario API, and the expanded alert rules.
+- Configuration examples and environment variables document the `attachments`
+  and `tax` sections. Strict YAML validation covers both.
+- New migrations are append-only; the latest schema version is 9.
+
+### Verification
+
+- `go test -v -race ./...`
+- `golangci-lint run ./...`
+- `CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X 'main.version=v1.0.0'" ./cmd/fiscus`
+
 ## v0.3.0 - 2026-10-22
 
 ### Added

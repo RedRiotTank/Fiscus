@@ -1,10 +1,11 @@
 # Fiscus
 
-Fiscus is a self-hosted treasury monitoring daemon for personal and small-business
-bank accounts. It ingests read-only account data through a PSD2 account
-information provider (GoCardless Bank Account Data or Enable Banking), stores
-transactions in SQLite, evaluates a set of cash-flow rules, and delivers alerts
-to Telegram and Discord. A compact web dashboard is embedded in the same binary.
+Fiscus is a self-hosted treasury intelligence platform for personal and
+small-business bank accounts. It ingests read-only account data through a PSD2
+account information provider (GoCardless Bank Account Data or Enable Banking),
+stores transactions in SQLite, reconciles balances, estimates tax reserves,
+pairs receipts, evaluates cash-flow rules, and delivers alerts to Telegram and
+Discord. A compact web dashboard is embedded in the same binary.
 
 Fiscus is written in pure Go and requires no CGO. All monetary values are stored
 as integer minor units (for example, cents); binary floating point is never used
@@ -25,6 +26,18 @@ for money.
 - Recurring subscription and bank-fee detection with Inactive / Potential Ghost
   marking when a charge goes quiet
 - Operational burn rate, runway, and internal-transfer-aware accounting exports
+- Personal, business, and hybrid workspace profiles with locked views or an
+  explicit All / Personal / Business dashboard switcher
+- Mathematical balance reconciliation against an opening-balance anchor, with
+  discrepancy alerts that only fire when state or delta changes
+- Receipt and invoice attachment storage with amount/currency/date auto-pairing,
+  manual linking, a receipt inbox, and Telegram document ingestion
+- Quarterly VAT and IRPF estimation for business transactions, a tax-reserve
+  alert, and a true liquid operating-capital shield per currency
+- SQLite FTS5 search across descriptions, counterparties, categories, notes, and
+  workspace type, with structured filters and Telegram `/buscar`
+- What-if cash-flow scenario simulator with monthly income/expense changes,
+  one-off events, and base-vs-simulated projection overlays
 - Interactive analytics workspace with category donut, income/expense trend,
   monthly cash-flow waterfall, cumulative spending pace, activity matrix,
   wealth projections, and multi-institution liquidity distribution
@@ -130,6 +143,7 @@ available as authenticated JSON under `/api/analytics`:
 | `GET /api/analytics/pace` | Current cumulative spending curve and the previous six monthly baselines |
 | `GET /api/analytics/activity` | Weekday and amount-bracket distribution over the last 90 days |
 | `GET /api/analytics/projections?extra_monthly_minor=0&yield_bp=300` | Net-savings mean, sample deviation, and 1/5/10/15-year projection cones |
+| `POST /api/analytics/scenarios/simulate` | Base-vs-simulated cash-flow projection for a what-if scenario |
 | `GET /api/analytics/liquidity?days=90\|180` | Reconstructed per-institution balance series |
 
 Spending, pacing, activity, and projection calculations exclude internal
@@ -138,6 +152,115 @@ chart are reconstructed from current balances and transaction history; Fiscus
 does not need a separate balance-snapshot table. The endpoints and all chart
 assets are served by the embedded HTTP server and require the same Basic Auth as
 the rest of the dashboard.
+
+## Treasury workflows
+
+### Workspace profiles
+
+`profile` selects how the dashboard treats personal and business accounts:
+
+- `personal` and `business` lock the dashboard to that workspace.
+- `hybrid` (the default) supports **All / Personal / Business** views. The
+  selected view is carried by `?workspace=` and persisted in the
+  `fiscus_workspace` cookie.
+
+Account types come from the optional `accounts` mapping. Unmapped accounts
+default to `personal`.
+
+```yaml
+profile: "hybrid"
+accounts:
+  - id: "account-id-from-provider"
+    type: "business"
+```
+
+The profile also controls business-only modules: personal profiles hide the tax
+shield, reconciliation urgency, and missing-receipt alerts. Search and exports
+still respect the active workspace.
+
+### Balance reconciliation
+
+The first successful check establishes an opening-balance anchor for each
+account. Later checks compare the provider-reported balance with the ledger
+movement since that anchor, storing the expected balance, observed balance, and
+delta. A reconciliation alert fires only when the account state or delta
+changes, not on every polling cycle. The Overview shows reconciled, flagged, and
+total account counts; discrepancies are listed for audit.
+
+### Receipts and invoices
+
+Receipts can be uploaded from the Transactions page or sent as a Telegram
+document/photo. Fiscus stores the file under `attachments.directory`, extracts a
+date and amount from the filename/caption when possible, and tries to pair it
+with a booked transaction using the exact absolute amount, currency, and a ±3
+day booking window. Ambiguous matches stay unpaired for manual linking.
+
+```yaml
+attachments:
+  enabled: true
+  directory: "data/attachments"
+  max_size_bytes: 10485760
+  receipt_threshold_minor: 5000
+  grace_days: 5
+```
+
+The receipt inbox lists unpaired files. Business-account debits strictly above
+`receipt_threshold_minor` produce one missing-receipt alert after `grace_days`.
+Downloads are authenticated; file paths and digests are not exposed by the JSON
+API.
+
+### Tax shield
+
+Business and hybrid workspaces estimate the current quarter's VAT and income-tax
+reserve from booked business-account transactions. VAT is derived from gross
+amounts using `vat_rate_default`; income tax is retained on positive quarterly
+profit using `income_tax_retention`. Transfers and tax-category movements are
+excluded. Currencies are never mixed into a single total.
+
+```yaml
+tax:
+  enabled: true
+  vat_rate_default: 0.21
+  income_tax_retention: 0.15
+  quarter_start_months: [1, 4, 7, 10]
+```
+
+The overview card shows total business balance, the untouchable tax reserve, and
+**true operating capital** (`total balance - estimated tax due`) per currency.
+A warning is sent once per quarter and currency during the 14 days before
+quarter-end when a reserve is due.
+
+### Transaction search
+
+The Transactions page and Telegram `/buscar` use SQLite FTS5 with prefix
+matching across description, counterparty, category, notes, and workspace type.
+Structured filters can be combined with free text:
+
+```text
+coffee amount:>10 category:Dining status:booked has:receipt type:business
+```
+
+Supported filters are `amount:>`, `amount:>=`, `amount:<`, `amount:<=`,
+`amount:=`, `category:`, `status:booked|pending`, `has:receipt|no-receipt`, and
+`type:personal|business`. Invalid filter values return a clear error; results
+are still restricted by the active workspace.
+
+### Scenario simulator
+
+The Analytics workspace includes a **Simulate scenario** drawer. Adjust monthly
+income, monthly expenses, a one-off cash event and its month, then compare the
+baseline projection with the simulated path. The same calculation is available
+as an authenticated JSON endpoint:
+
+```sh
+curl -u admin:secret -X POST http://localhost:8080/api/analytics/scenarios/simulate \
+  -H 'Content-Type: application/json' \
+  -d '{"months":24,"income_delta_minor":50000,"expense_delta_minor":10000,"one_off_minor":-200000,"one_off_month":6,"annual_yield_bp":300}'
+```
+
+The response contains shared labels, baseline and simulated balance arrays,
+ending balances, the net change, and the effective scenario monthly cash flow.
+Horizons are 1–180 months; the UI exposes 12/24/36/60 months.
 
 ## Budgets and expected inflows
 
@@ -375,6 +498,7 @@ variables are:
 | Variable | Purpose |
 | --- | --- |
 | `FISCUS_PROVIDER` | Banking provider: `gocardless` or `enablebanking` |
+| `FISCUS_PROFILE` | Workspace profile: `personal`, `business`, or `hybrid` |
 | `FISCUS_DATABASE_PATH` | SQLite database file (default `data/fiscus.db`) |
 | `FISCUS_SERVER_ADDRESS` | HTTP(S) listen address (default `:8080`) |
 | `FISCUS_SERVER_USERNAME` / `FISCUS_SERVER_PASSWORD` | Dashboard Basic Auth |
@@ -389,6 +513,11 @@ variables are:
 | `FISCUS_ENABLEBANKING_INSTITUTION_NAME` | Default bank name for `fiscus connect` |
 | `FISCUS_TELEGRAM_BOT_TOKEN` / `..._CHAT_ID` | Telegram alerts |
 | `FISCUS_DISCORD_WEBHOOK_URL` | Discord alerts |
+| `FISCUS_ATTACHMENTS_ENABLED` / `..._DIRECTORY` | Receipt storage and storage path |
+| `FISCUS_ATTACHMENTS_RECEIPT_THRESHOLD_MINOR` / `..._GRACE_DAYS` | Missing-receipt policy |
+| `FISCUS_TAX_ENABLED` | Enable the quarterly tax shield |
+| `FISCUS_TAX_VAT_RATE_DEFAULT` / `..._INCOME_TAX_RETENTION` | Tax estimation rates |
+| `FISCUS_TAX_QUARTER_START_MONTHS` | Comma-separated fiscal quarter starts |
 | `FISCUS_LOG_LEVEL` | `debug`, `info`, `warn`, or `error` |
 
 Durations use Go syntax (`15m`, `24h`, `500ms`). Liquidity thresholds are
@@ -444,6 +573,14 @@ not be public.
 8. **Budget threshold**: month-to-date spending in a configured category crosses
    a warning or critical percentage. Alerts are de-duplicated per threshold,
    category, and month.
+9. **Reconciliation discrepancy**: an account's observed balance differs from
+   the anchored ledger expectation, or its reconciliation state changes.
+10. **Missing receipt**: a business-account debit strictly above the configured
+    threshold has no attachment after the grace period. Ambiguous auto-pairs are
+    never guessed.
+11. **Tax reserve approaching**: a positive estimated VAT/IRPF settlement exists
+    within 14 days of quarter-end. The alert reports VAT, income tax, and true
+    operating capital, and is de-duplicated per quarter and currency.
 
 The **Subscriptions & Fees** dashboard view estimates the monthly and annualized
 cost of active subscriptions and lists detected bank commissions. Subscriptions
@@ -465,6 +602,7 @@ for group chats). Supported commands:
 | `/saldo` | Consolidated balance and per-account breakdown |
 | `/sync` | Run a bank synchronization and report the outcome |
 | `/ultimos [n]` | Last `n` confirmed transactions with categories (max 50) |
+| `/buscar <texto> [filtros]` | FTS5 search with amount, category, status, receipt, and type filters |
 | `/runway` | Liquid balance, monthly burn, and runway in months per currency |
 | `/presupuesto` | Current-month category budget consumption |
 | `/help` | Show available commands |
@@ -473,8 +611,10 @@ When a booked transaction cannot be categorized, Fiscus can send an inline
 keyboard with up to five configured categories plus **Ignore**; tapping a button
 updates the stored transaction category and answers the callback. This behavior
 is controlled by `alerts.telegram.notify_uncategorized` and is enabled by
-default when the bot is configured. The polling loop stops cleanly as part of
-the daemon's SIGTERM/SIGINT shutdown.
+default when the bot is configured. Documents and photos sent to the bot are
+stored as receipts and auto-paired with matching transactions; the reply reports
+whether the file was linked or left in the receipt inbox. The polling loop stops
+cleanly as part of the daemon's SIGTERM/SIGINT shutdown.
 
 ## Backups
 
