@@ -3,6 +3,39 @@
 All notable changes to Fiscus are documented here. Versions use semantic
 versioning and annotated Git tags.
 
+## v1.0.1 - 2026-10-24
+
+Integrity and security patch for the v1.0.0 treasury platform.
+
+### Fixed
+
+- Balance reconciliation now compares the booked transaction ledger against
+  `closingBooked` or `interimBooked` balances. When an ASPSP only exposes an
+  available balance, pending debits and credits are added back to avoid
+  persistent false positives from card holds.
+- Discrepancy alerts are suppressed until the initial reconciliation baseline
+  has recorded transaction history.
+- Receipt downloads always use an attachment disposition with a sanitized
+  filename and an allowlisted PDF/JPEG/PNG/WEBP content type; anything else
+  falls back to `application/octet-stream`.
+- Receipt upload and pairing endpoints now require the `X-Fiscus-Request: 1`
+  header used by other state-changing dashboard actions.
+- `fiscus backup` and scheduled Telegram backups now produce a single `.tar.gz`
+  archive containing the online SQLite snapshot (`fiscus.db`) and the complete
+  `attachments/` directory.
+
+### Changed
+
+- The latest database schema version is 10.
+- README and configuration examples describe the new archive format and restore
+  procedure.
+
+### Verification
+
+- `go test -v -race ./...`
+- `golangci-lint run ./...`
+- `CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X 'main.version=v1.0.1'" ./cmd/fiscus`
+
 ## v1.0.0 - 2026-10-23
 
 Fiscus v1.0.0 is the unified personal and business treasury intelligence

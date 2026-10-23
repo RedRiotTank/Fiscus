@@ -181,11 +181,13 @@ still respect the active workspace.
 ### Balance reconciliation
 
 The first successful check establishes an opening-balance anchor for each
-account. Later checks compare the provider-reported balance with the ledger
-movement since that anchor, storing the expected balance, observed balance, and
-delta. A reconciliation alert fires only when the account state or delta
-changes, not on every polling cycle. The Overview shows reconciled, flagged, and
-total account counts; discrepancies are listed for audit.
+account. Later checks compare the booked ledger movement since that anchor with
+the provider's `closingBooked` or `interimBooked` balance. If the ASPSP only
+exposes an available balance, pending debits and credits are added back so card
+holds do not create persistent false positives. Discrepancy alerts stay
+suppressed until the initial baseline has recorded transaction history, then
+fire only when the state or delta changes. The Overview shows reconciled,
+flagged, and total account counts; discrepancies are listed for audit.
 
 ### Receipts and invoices
 
