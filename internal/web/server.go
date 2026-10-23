@@ -35,6 +35,7 @@ type Store interface {
 	ListAlerts(ctx context.Context, limit int) ([]domain.Alert, error)
 	ListConnections(ctx context.Context) ([]domain.Connection, error)
 	GetConnectionByID(ctx context.Context, id int64) (domain.Connection, error)
+	GetReconciliation(ctx context.Context, accountID string) (domain.Reconciliation, error)
 	CountTransactions(ctx context.Context) (int, error)
 	CountTransactionsFiltered(ctx context.Context, accountIDs []string) (int, error)
 	SpendingByCategory(ctx context.Context, from, to time.Time) ([]storage.CategorySpending, error)
@@ -154,14 +155,16 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) templateFuncs() template.FuncMap {
 	return template.FuncMap{
-		"money":         formatMoney,
-		"date":          formatDate,
-		"datetime":      formatDateTime,
-		"ago":           s.formatAgo,
-		"statusLabel":   statusLabel,
-		"statusClass":   statusClass,
-		"severityClass": severityClass,
-		"externalURL":   externalURL,
+		"money":               formatMoney,
+		"date":                formatDate,
+		"datetime":            formatDateTime,
+		"ago":                 s.formatAgo,
+		"statusLabel":         statusLabel,
+		"statusClass":         statusClass,
+		"severityClass":       severityClass,
+		"externalURL":         externalURL,
+		"reconciliationLabel": reconciliationLabel,
+		"reconciliationClass": reconciliationClass,
 	}
 }
 
@@ -425,6 +428,34 @@ func formatMoney(minor int64, currency string) string {
 var currencySymbols = map[string]string{
 	"EUR": "€", "USD": "$", "GBP": "£", "JPY": "¥", "CHF": "CHF ",
 	"SEK": "kr ", "NOK": "kr ", "DKK": "kr ", "PLN": "zł ", "CZK": "Kč ",
+}
+
+func reconciliationLabel(rec domain.Reconciliation) string {
+	if rec.AccountID == "" {
+		return "Not checked"
+	}
+	if rec.Balanced() {
+		return "Reconciled"
+	}
+	currency := rec.Currency
+	if currency == "" {
+		currency = "EUR"
+	}
+	amount := formatMoney(rec.LastDeltaMinor, currency)
+	if !strings.HasPrefix(amount, "-") {
+		amount = "+" + amount
+	}
+	return "Discrepancy: " + amount
+}
+
+func reconciliationClass(rec domain.Reconciliation) string {
+	if rec.AccountID == "" {
+		return "muted"
+	}
+	if rec.Balanced() {
+		return "ok"
+	}
+	return "error"
 }
 
 func formatDate(value any) string {

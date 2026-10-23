@@ -14,6 +14,7 @@ const (
 	RuleAnomaly           = "anomaly"
 	RuleLiquidity         = "liquidity"
 	RuleConsentExpiration = "consent_expiration"
+	RuleReconciliation    = "reconciliation"
 )
 
 // TransactionRule inspects a single transaction, usually against history.
@@ -38,6 +39,12 @@ type ConsentRule interface {
 type AnalysisRule interface {
 	Name() string
 	Evaluate(ctx context.Context) ([]domain.Alert, error)
+}
+
+// ReconciliationRule inspects a balance-integrity state transition.
+type ReconciliationRule interface {
+	Name() string
+	Evaluate(ctx context.Context, transition domain.ReconciliationTransition) ([]domain.Alert, error)
 }
 
 // DuplicateFinder finds prior transactions with the same counterparty and

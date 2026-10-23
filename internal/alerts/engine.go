@@ -31,31 +31,33 @@ type EngineObserver interface {
 
 // EngineConfig configures an Engine.
 type EngineConfig struct {
-	Store         AlertStore
-	Dispatcher    AlertDispatcher
-	Logger        *slog.Logger
-	Now           func() time.Time
-	TxRules       []TransactionRule
-	BalanceRules  []BalanceRule
-	ConsentRules  []ConsentRule
-	AnalysisRules []AnalysisRule
-	Observer      EngineObserver
-	Events        events.Sink
+	Store               AlertStore
+	Dispatcher          AlertDispatcher
+	Logger              *slog.Logger
+	Now                 func() time.Time
+	TxRules             []TransactionRule
+	BalanceRules        []BalanceRule
+	ConsentRules        []ConsentRule
+	AnalysisRules       []AnalysisRule
+	ReconciliationRules []ReconciliationRule
+	Observer            EngineObserver
+	Events              events.Sink
 }
 
 // Engine runs transaction and balance rules, persists de-duplicated alerts, and
 // dispatches them.
 type Engine struct {
-	store         AlertStore
-	dispatcher    AlertDispatcher
-	logger        *slog.Logger
-	now           func() time.Time
-	txRules       []TransactionRule
-	balanceRules  []BalanceRule
-	consentRules  []ConsentRule
-	analysisRules []AnalysisRule
-	observer      EngineObserver
-	events        events.Sink
+	store               AlertStore
+	dispatcher          AlertDispatcher
+	logger              *slog.Logger
+	now                 func() time.Time
+	txRules             []TransactionRule
+	balanceRules        []BalanceRule
+	consentRules        []ConsentRule
+	analysisRules       []AnalysisRule
+	reconciliationRules []ReconciliationRule
+	observer            EngineObserver
+	events              events.Sink
 }
 
 // NewEngine validates the configuration and returns an Engine.
@@ -70,16 +72,17 @@ func NewEngine(cfg EngineConfig) (*Engine, error) {
 		cfg.Now = time.Now
 	}
 	return &Engine{
-		store:         cfg.Store,
-		dispatcher:    cfg.Dispatcher,
-		logger:        cfg.Logger,
-		now:           cfg.Now,
-		txRules:       cfg.TxRules,
-		balanceRules:  cfg.BalanceRules,
-		consentRules:  cfg.ConsentRules,
-		analysisRules: cfg.AnalysisRules,
-		observer:      cfg.Observer,
-		events:        cfg.Events,
+		store:               cfg.Store,
+		dispatcher:          cfg.Dispatcher,
+		logger:              cfg.Logger,
+		now:                 cfg.Now,
+		txRules:             cfg.TxRules,
+		balanceRules:        cfg.BalanceRules,
+		consentRules:        cfg.ConsentRules,
+		analysisRules:       cfg.AnalysisRules,
+		reconciliationRules: cfg.ReconciliationRules,
+		observer:            cfg.Observer,
+		events:              cfg.Events,
 	}, nil
 }
 
@@ -176,6 +179,32 @@ func (e *Engine) OnAnalysis(ctx context.Context) ([]domain.Alert, error) {
 		}
 		for i := range alerts {
 			alert := alerts[i]
+			produced = append(produced, alert)
+			if err := e.persistAndDispatch(ctx, &produced[len(produced)-1]); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	return produced, errors.Join(errs...)
+}
+
+// OnReconciliation implements ingest.ReconciliationEvaluator.
+func (e *Engine) OnReconciliation(ctx context.Context, transition domain.ReconciliationTransition) ([]domain.Alert, error) {
+	var (
+		produced []domain.Alert
+		errs     []error
+	)
+	for _, rule := range e.reconciliationRules {
+		alerts, err := rule.Evaluate(ctx, transition)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("rule %s: %w", rule.Name(), err))
+			continue
+		}
+		for i := range alerts {
+			alert := alerts[i]
+			if alert.AccountID == "" {
+				alert.AccountID = transition.Reconciliation.AccountID
+			}
 			produced = append(produced, alert)
 			if err := e.persistAndDispatch(ctx, &produced[len(produced)-1]); err != nil {
 				errs = append(errs, err)

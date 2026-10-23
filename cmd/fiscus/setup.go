@@ -209,15 +209,16 @@ func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, 
 		Observer:  deliveryObserver,
 	})
 	engine, err := alerts.NewEngine(alerts.EngineConfig{
-		Store:         store,
-		Dispatcher:    dispatcher,
-		Logger:        logger,
-		TxRules:       []alerts.TransactionRule{duplicateRule, anomalyRule},
-		BalanceRules:  []alerts.BalanceRule{liquidityRule},
-		ConsentRules:  []alerts.ConsentRule{consentRule},
-		AnalysisRules: []alerts.AnalysisRule{subscriptionRule, budgetRule, ghostRule, inflowRule},
-		Observer:      engineObserver,
-		Events:        sink,
+		Store:               store,
+		Dispatcher:          dispatcher,
+		Logger:              logger,
+		TxRules:             []alerts.TransactionRule{duplicateRule, anomalyRule},
+		BalanceRules:        []alerts.BalanceRule{liquidityRule},
+		ConsentRules:        []alerts.ConsentRule{consentRule},
+		AnalysisRules:       []alerts.AnalysisRule{subscriptionRule, budgetRule, ghostRule, inflowRule},
+		ReconciliationRules: []alerts.ReconciliationRule{alerts.NewIntegrityRule()},
+		Observer:            engineObserver,
+		Events:              sink,
 	})
 	if err != nil {
 		return nil, err
