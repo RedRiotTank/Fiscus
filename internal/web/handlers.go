@@ -12,6 +12,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/analysis"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
+	"github.com/RedRiotTank/Fiscus/internal/tax"
 	"github.com/RedRiotTank/Fiscus/internal/treasury"
 )
 
@@ -67,6 +68,7 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 	data.SearchQuery = strings.TrimSpace(r.URL.Query().Get("q"))
 	data.Page = parsePage(r.URL.Query().Get("page"))
 	data.Limit = parseLimit(r.URL.Query().Get("limit"))
+	data.TaxEnabled = s.tax != nil
 
 	ctx := r.Context()
 	accounts, err := s.workspaceAccounts(ctx, data.Workspace.View)
@@ -198,6 +200,10 @@ func (s *Server) handleAccountType(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
+	if strings.EqualFold(strings.TrimSpace(query.Get("format")), "tax-summary") {
+		s.exportTaxSummary(w, r)
+		return
+	}
 	format, err := treasury.ParseFormat(query.Get("format"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -261,6 +267,57 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="fiscus-export-%s%s"`, s.now().UTC().Format("2006-01-02"), treasury.Extension(format)))
 	// #nosec G705 -- the response is a non-HTML download with an attachment disposition.
 	_, _ = w.Write(data)
+}
+
+func (s *Server) exportTaxSummary(w http.ResponseWriter, r *http.Request) {
+	if s.tax == nil {
+		http.Error(w, "Tax estimation is disabled", http.StatusServiceUnavailable)
+		return
+	}
+	now := s.now().UTC()
+	year := now.Year()
+	if raw := strings.TrimSpace(r.URL.Query().Get("year")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 2000 || parsed > 2200 {
+			http.Error(w, "Invalid year", http.StatusBadRequest)
+			return
+		}
+		year = parsed
+	}
+	quarter := s.tax.QuarterNumber(s.tax.QuarterFor(now))
+	if raw := strings.TrimSpace(r.URL.Query().Get("quarter")); raw != "" {
+		parsed, err := parseTaxQuarterParam(raw)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		quarter = parsed
+	}
+	shields, err := s.tax.ShieldsForQuarter(r.Context(), year, quarter)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	data, err := tax.SummaryCSV(shields)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="fiscus-tax-summary-%d-Q%d.csv"`, year, quarter))
+	// #nosec G705 -- the response is a non-HTML CSV download with an attachment disposition.
+	_, _ = w.Write(data)
+}
+
+func parseTaxQuarterParam(raw string) (int, error) {
+	value := strings.ToUpper(strings.TrimSpace(raw))
+	value = strings.TrimPrefix(value, "Q")
+	quarter, err := strconv.Atoi(value)
+	if err != nil || quarter < 1 || quarter > 4 {
+		return 0, errors.New("quarter must be Q1, Q2, Q3, or Q4")
+	}
+	return quarter, nil
 }
 
 func parseExportDate(raw string, endOfDay bool) (time.Time, error) {

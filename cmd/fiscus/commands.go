@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"text/tabwriter"
@@ -20,6 +21,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/config"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
+	"github.com/RedRiotTank/Fiscus/internal/tax"
 	"github.com/RedRiotTank/Fiscus/internal/treasury"
 )
 
@@ -546,13 +548,35 @@ func printRecategorizeResult(stdout io.Writer, result storage.RecategorizeResult
 func runExport(args []string, stdout, stderr io.Writer) error {
 	fs := newFlagSet("export", stderr)
 	configPath := fs.String("config", defaultConfigPath(), "path to YAML configuration")
-	formatRaw := fs.String("format", "csv", "export format: csv, hledger, or beancount")
+	formatRaw := fs.String("format", "csv", "export format: csv, hledger, beancount, or tax-summary")
 	fromRaw := fs.String("from", "", "include transactions on or after this date (YYYY-MM-DD)")
 	toRaw := fs.String("to", "", "include transactions on or before this date (YYYY-MM-DD)")
+	yearRaw := fs.String("year", "", "tax-summary year (default: current year)")
+	quarterRaw := fs.String("quarter", "", "tax-summary quarter: Q1, Q2, Q3, or Q4")
 	includeTransfers := fs.Bool("include-transfers", false, "include internal transfers between own accounts")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	cfg, err := loadConfig(*configPath)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := commandContext(2 * time.Minute)
+	defer cancel()
+	store, err := openStore(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			_, _ = fmt.Fprintf(stderr, "fiscus: close database: %v\n", err)
+		}
+	}()
+
+	if strings.EqualFold(strings.TrimSpace(*formatRaw), "tax-summary") {
+		return exportTaxSummary(ctx, cfg, store, stdout, *yearRaw, *quarterRaw)
+	}
+
 	format, err := treasury.ParseFormat(*formatRaw)
 	if err != nil {
 		return err
@@ -571,22 +595,6 @@ func runExport(args []string, stdout, stderr io.Writer) error {
 	if !from.IsZero() && !from.Before(to) {
 		return errors.New("export: --from must be before --to")
 	}
-
-	cfg, err := loadConfig(*configPath)
-	if err != nil {
-		return err
-	}
-	ctx, cancel := commandContext(2 * time.Minute)
-	defer cancel()
-	store, err := openStore(ctx, cfg)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err := store.Close(); err != nil {
-			_, _ = fmt.Fprintf(stderr, "fiscus: close database: %v\n", err)
-		}
-	}()
 
 	transactions, err := store.ListTransactionsBetween(ctx, from, to)
 	if err != nil {
@@ -608,6 +616,55 @@ func runExport(args []string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("export: write output: %w", err)
 	}
 	return nil
+}
+
+func exportTaxSummary(ctx context.Context, cfg *config.Config, store *storage.Store, stdout io.Writer, yearRaw, quarterRaw string) error {
+	if !cfg.Tax.Enabled {
+		return errors.New("export: tax estimation is disabled")
+	}
+	service, err := tax.New(store, configuredTaxConfig(cfg), time.Now)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	year := now.Year()
+	if strings.TrimSpace(yearRaw) != "" {
+		parsed, err := strconv.Atoi(strings.TrimSpace(yearRaw))
+		if err != nil || parsed < 2000 || parsed > 2200 {
+			return errors.New("export: --year must be a four-digit year")
+		}
+		year = parsed
+	}
+	quarter := service.QuarterNumber(service.QuarterFor(now))
+	if strings.TrimSpace(quarterRaw) != "" {
+		parsed, err := parseTaxQuarter(quarterRaw)
+		if err != nil {
+			return err
+		}
+		quarter = parsed
+	}
+	shields, err := service.ShieldsForQuarter(ctx, year, quarter)
+	if err != nil {
+		return err
+	}
+	data, err := tax.SummaryCSV(shields)
+	if err != nil {
+		return err
+	}
+	if _, err := stdout.Write(data); err != nil {
+		return fmt.Errorf("export: write tax summary: %w", err)
+	}
+	return nil
+}
+
+func parseTaxQuarter(raw string) (int, error) {
+	value := strings.ToUpper(strings.TrimSpace(raw))
+	value = strings.TrimPrefix(value, "Q")
+	quarter, err := strconv.Atoi(value)
+	if err != nil || quarter < 1 || quarter > 4 {
+		return 0, errors.New("export: --quarter must be Q1, Q2, Q3, or Q4")
+	}
+	return quarter, nil
 }
 
 func parseExportDateFlag(raw string, endOfDay bool) (time.Time, error) {

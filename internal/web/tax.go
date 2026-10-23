@@ -18,6 +18,7 @@ func (s *Server) loadTaxShields(ctx context.Context, data *PageData) error {
 			TaxReserveMinor:        shield.TaxReserveMinor,
 			TrueLiquidCapitalMinor: shield.TrueLiquidCapitalMinor,
 			VATDueMinor:            shield.VATDueMinor,
+			VATCreditMinor:         shield.VATCreditMinor,
 			IncomeTaxMinor:         shield.IncomeTaxMinor,
 			QuarterEnd:             shield.Quarter.End,
 		})

@@ -292,6 +292,23 @@ func configuredBudgets(cfg *config.Config) []budgets.Budget {
 	return out
 }
 
+func configuredTaxConfig(cfg *config.Config) tax.Config {
+	categories := make([]tax.CategoryConfig, 0, len(cfg.Tax.Categories))
+	for _, category := range cfg.Tax.Categories {
+		categories = append(categories, tax.CategoryConfig{
+			Name:              category.Name,
+			VATRate:           category.VATRate,
+			DeductiblePercent: category.DeductiblePercent,
+		})
+	}
+	return tax.Config{
+		VATRateDefault:     cfg.Tax.VATRateDefault,
+		IncomeTaxRetention: cfg.Tax.IncomeTaxRetention,
+		QuarterStartMonths: cfg.Tax.QuarterStartMonths,
+		Categories:         categories,
+	}
+}
+
 func configuredInflows(cfg *config.Config) []monitoring.Inflow {
 	out := make([]monitoring.Inflow, 0, len(cfg.ExpectedInflows))
 	for _, item := range cfg.ExpectedInflows {

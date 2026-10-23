@@ -45,6 +45,7 @@
       <a class="button ghost small" href="/transactions/export?format=csv{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}">CSV</a>
       <a class="button ghost small" href="/transactions/export?format=hledger{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}">Journal</a>
       <a class="button ghost small" href="/transactions/export?format=beancount{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}">Beancount</a>
+      {{if .TaxEnabled}}<a class="button ghost small" href="/transactions/export?format=tax-summary">Tax summary</a>{{end}}
     </div>
   </header>
   {{if .Transactions}}

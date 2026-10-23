@@ -66,7 +66,7 @@
                 <span>True operating capital</span>
                 <strong class="amount {{if lt .TrueLiquidCapitalMinor 0}}debit{{else}}credit{{end}}">{{money .TrueLiquidCapitalMinor .Currency}}</strong>
               </div>
-              <p class="tax-detail">VAT due {{money .VATDueMinor .Currency}} · income tax {{money .IncomeTaxMinor .Currency}}</p>
+              <p class="tax-detail">VAT due {{money .VATDueMinor .Currency}} · income tax {{money .IncomeTaxMinor .Currency}}{{if gt .VATCreditMinor 0}} · VAT credit {{money .VATCreditMinor .Currency}} carried forward{{end}}</p>
             </article>
           {{end}}
         </div>

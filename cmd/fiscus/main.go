@@ -75,7 +75,7 @@ Usage:
   fiscus sync           Run one synchronization cycle and exit
   fiscus recategorize   Re-run category rules over historical transactions
   fiscus backup         Write a .tar.gz backup with SQLite and attachments
-  fiscus export         Export transactions as CSV, hledger, or Beancount
+  fiscus export         Export transactions or a tax summary
   fiscus version        Print build information
 
 Run "fiscus <command> -h" for command flags.
@@ -168,11 +168,7 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 	}
 	var taxService *tax.Service
 	if cfg.Tax.Enabled {
-		taxService, err = tax.New(store, tax.Config{
-			VATRateDefault:     cfg.Tax.VATRateDefault,
-			IncomeTaxRetention: cfg.Tax.IncomeTaxRetention,
-			QuarterStartMonths: cfg.Tax.QuarterStartMonths,
-		}, nil)
+		taxService, err = tax.New(store, configuredTaxConfig(cfg), nil)
 		if err != nil {
 			return err
 		}

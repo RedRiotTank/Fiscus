@@ -225,12 +225,34 @@ amounts using `vat_rate_default`; income tax is retained on positive quarterly
 profit using `income_tax_retention`. Transfers and tax-category movements are
 excluded. Currencies are never mixed into a single total.
 
+Category-level overrides let each line item use its own VAT rate and income-tax
+deductibility. `deductible_percent` controls how much of an expense reduces the
+income-tax base and deductible VAT; `0` means fully non-deductible. Unlisted
+categories fall back to `vat_rate_default` and 100% deductibility. Negative VAT
+quarters carry a credit into later quarters instead of being clamped to zero.
+
 ```yaml
 tax:
   enabled: true
   vat_rate_default: 0.21
   income_tax_retention: 0.15
   quarter_start_months: [1, 4, 7, 10]
+  categories:
+    - name: "Software"
+      vat_rate: 0.21
+      deductible_percent: 1.00
+    - name: "Groceries"
+      vat_rate: 0.04
+      deductible_percent: 0.00
+    - name: "Exempt Services"
+      vat_rate: 0.00
+      deductible_percent: 1.00
+```
+
+Export a filing-oriented breakdown from the CLI or the Transactions page:
+
+```sh
+fiscus export --format=tax-summary --year=2026 --quarter=Q1
 ```
 
 The overview card shows total business balance, the untouchable tax reserve, and
