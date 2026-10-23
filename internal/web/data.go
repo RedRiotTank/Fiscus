@@ -40,6 +40,8 @@ type PageData struct {
 	AttachmentIDs       map[int64]int64
 	AttachmentsEnabled  bool
 	AttachmentNotice    string
+	TaxEnabled          bool
+	TaxShields          []TaxShieldView
 	ReconciliationTotal int
 	ReconciledAccounts  int
 	DiscrepancyAccounts int
@@ -114,6 +116,17 @@ type ConnectionView struct {
 	Accounts      []domain.Account
 	RateLimited   bool
 	CooldownUntil time.Time
+}
+
+// TaxShieldView is the display model for the business tax reserve card.
+type TaxShieldView struct {
+	Currency               string
+	TotalBalanceMinor      int64
+	TaxReserveMinor        int64
+	TrueLiquidCapitalMinor int64
+	VATDueMinor            int64
+	IncomeTaxMinor         int64
+	QuarterEnd             time.Time
 }
 
 func summarizeAccounts(accounts []domain.Account) []CurrencySummary {
@@ -300,6 +313,9 @@ func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 	}
 	data.TotalTransactions = total
 	if err := s.loadAttachmentData(ctx, data); err != nil {
+		return err
+	}
+	if err := s.loadTaxShields(ctx, data); err != nil {
 		return err
 	}
 	return s.loadReconciliations(ctx, data)

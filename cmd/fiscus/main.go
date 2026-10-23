@@ -17,6 +17,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/config"
 	"github.com/RedRiotTank/Fiscus/internal/observability"
 	"github.com/RedRiotTank/Fiscus/internal/reconciliation"
+	"github.com/RedRiotTank/Fiscus/internal/tax"
 )
 
 var (
@@ -164,6 +165,17 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 			return err
 		}
 	}
+	var taxService *tax.Service
+	if cfg.Tax.Enabled {
+		taxService, err = tax.New(store, tax.Config{
+			VATRateDefault:     cfg.Tax.VATRateDefault,
+			IncomeTaxRetention: cfg.Tax.IncomeTaxRetention,
+			QuarterStartMonths: cfg.Tax.QuarterStartMonths,
+		}, nil)
+		if err != nil {
+			return err
+		}
+	}
 
 	metrics := observability.New(version)
 	sink, err := buildEventSink(cfg, logger)
@@ -172,7 +184,7 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 	}
 	defer sink.Wait()
 
-	engine, err := buildEngine(cfg, store, logger, metrics, sink)
+	engine, err := buildEngine(cfg, store, logger, metrics, sink, taxService)
 	if err != nil {
 		return err
 	}
@@ -222,7 +234,7 @@ func runServe(args []string, _ io.Writer, stderr io.Writer) error {
 	if worker != nil {
 		trigger = worker
 	}
-	server, err := newWebServer(cfg, store, trigger, logger, metrics, authHandler, attachmentService)
+	server, err := newWebServer(cfg, store, trigger, logger, metrics, authHandler, attachmentService, taxService)
 	if err != nil {
 		return err
 	}

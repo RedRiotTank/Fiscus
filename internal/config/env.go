@@ -19,6 +19,10 @@ func applyEnv(cfg *Config) error {
 	int64Env("FISCUS_ATTACHMENTS_MAX_SIZE_BYTES", &cfg.Attachments.MaxSizeBytes, &errs)
 	int64Env("FISCUS_ATTACHMENTS_RECEIPT_THRESHOLD_MINOR", &cfg.Attachments.ReceiptThresholdMinor, &errs)
 	intEnv("FISCUS_ATTACHMENTS_GRACE_DAYS", &cfg.Attachments.GraceDays, &errs)
+	boolEnv("FISCUS_TAX_ENABLED", &cfg.Tax.Enabled, &errs)
+	floatEnv("FISCUS_TAX_VAT_RATE_DEFAULT", &cfg.Tax.VATRateDefault, &errs)
+	floatEnv("FISCUS_TAX_INCOME_TAX_RETENTION", &cfg.Tax.IncomeTaxRetention, &errs)
+	intSliceEnv("FISCUS_TAX_QUARTER_START_MONTHS", &cfg.Tax.QuarterStartMonths, &errs)
 	stringEnv("FISCUS_SERVER_ADDRESS", &cfg.Server.Address)
 	stringEnv("FISCUS_SERVER_USERNAME", &cfg.Server.Username)
 	stringEnv("FISCUS_SERVER_PASSWORD", &cfg.Server.Password)
@@ -138,6 +142,24 @@ func int64Env(name string, target *int64, errs *[]error) {
 	if err != nil {
 		*errs = append(*errs, fmt.Errorf("%s: invalid integer %q", name, value))
 		return
+	}
+	*target = parsed
+}
+
+func intSliceEnv(name string, target *[]int, errs *[]error) {
+	value, ok := os.LookupEnv(name)
+	if !ok {
+		return
+	}
+	parts := strings.Split(value, ",")
+	parsed := make([]int, 0, len(parts))
+	for _, part := range parts {
+		number, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil {
+			*errs = append(*errs, fmt.Errorf("%s: invalid integer list %q", name, value))
+			return
+		}
+		parsed = append(parsed, number)
 	}
 	*target = parsed
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/money"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
+	"github.com/RedRiotTank/Fiscus/internal/tax"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -79,6 +80,7 @@ type Config struct {
 	Classifier     Classifier
 	Budgets        []budgets.Budget
 	Attachments    *attachments.Service
+	Tax            *tax.Service
 }
 
 // Server renders dashboard pages and exposes health endpoints.
@@ -99,6 +101,7 @@ type Server struct {
 	classifier     Classifier
 	budgets        []budgets.Budget
 	attachments    *attachments.Service
+	tax            *tax.Service
 
 	pages    map[string]*template.Template
 	partials *template.Template
@@ -144,6 +147,7 @@ func New(cfg Config, store Store, trigger SyncTrigger) (*Server, error) {
 		classifier:     cfg.Classifier,
 		budgets:        cfg.Budgets,
 		attachments:    cfg.Attachments,
+		tax:            cfg.Tax,
 	}
 	if err := s.parseTemplates(); err != nil {
 		return nil, err
