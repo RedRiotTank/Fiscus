@@ -3,6 +3,49 @@
 All notable changes to Fiscus are documented here. Versions use semantic
 versioning and annotated Git tags.
 
+## v1.2.0 - 2026-10-24
+
+Advanced tax intelligence and cross-platform distribution release.
+
+### Added
+
+- Category-level tax rules:
+  - `tax.categories` assigns a VAT rate and income-tax deductibility to each
+    transaction category.
+  - VAT collected and deductible VAT are calculated per line item using the
+    assigned category rate.
+  - Non-deductible expenses are excluded from both VAT recovery and the income
+    tax base according to `deductible_percent`.
+  - Unlisted categories fall back to `vat_rate_default` with full deductibility.
+- VAT carry-forward:
+  - Negative VAT quarters produce a credit that offsets later quarters instead
+    of being clamped to zero.
+  - Tax shields and exports expose the carried-forward credit.
+- Tax filing export:
+  - `fiscus export --format=tax-summary --year=2026 --quarter=Q1`.
+  - Web download from `/transactions/export?format=tax-summary&year=2026&quarter=Q1`.
+  - Category-level rows plus per-currency totals with taxable bases, rates,
+    deductible expenses, VAT collected/paid, carry-forward, and estimated tax.
+- Multi-architecture builds:
+  - CGO-free GitHub Actions matrix for Linux x86-64, Linux ARM64, macOS Apple
+    Silicon, and Windows x86-64.
+  - Release workflow attaches every binary, per-file SHA-256 files, and a
+    combined checksum file.
+
+### Changed
+
+- Tax configuration validation covers category names, rate ranges,
+  deductibility ranges, and duplicate categories.
+- README documents category-level tax rules, carry-forward credits, the tax
+  summary export, and the supported release platforms.
+
+### Verification
+
+- `go test -v -race ./...`
+- `golangci-lint run ./...`
+- `CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build ./cmd/fiscus`
+- `CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X 'main.version=v1.2.0'" ./cmd/fiscus`
+
 ## v1.1.0 - 2026-10-24
 
 Usability and workflow release focused on receipt recovery, transaction
