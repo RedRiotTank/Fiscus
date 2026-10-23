@@ -80,6 +80,10 @@ from the Connections page after authorizing.
 
 See [Banking providers](#banking-providers) for setup details.
 
+Prebuilt CGO-free binaries are published for Linux x86-64, Linux ARM64,
+macOS Apple Silicon, and Windows x86-64. Every release includes per-file and
+combined SHA-256 checksums.
+
 ## Commands
 
 | Command | Description |
