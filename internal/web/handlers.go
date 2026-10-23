@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"fmt"
 	"html"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/RedRiotTank/Fiscus/internal/analysis"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
+	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"github.com/RedRiotTank/Fiscus/internal/treasury"
 )
 
@@ -135,6 +137,63 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, "transactions", data)
+}
+
+const maxNoteRunes = 2000
+
+func (s *Server) handleTransactionNotes(w http.ResponseWriter, r *http.Request) {
+	if !validSyncRequest(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		http.NotFound(w, r)
+		return
+	}
+	notes := strings.TrimSpace(r.FormValue("notes"))
+	if len([]rune(notes)) > maxNoteRunes {
+		http.Error(w, "Note is too long", http.StatusBadRequest)
+		return
+	}
+	if err := s.store.UpdateTransactionNotes(r.Context(), id, notes); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		s.logger.Error("update transaction notes", "transaction_id", id, "error", err)
+		http.Error(w, "Could not update note", http.StatusInternalServerError)
+		return
+	}
+	s.renderPartialData(w, "transaction_notes", domain.Transaction{ID: id, Notes: notes})
+}
+
+func (s *Server) handleAccountType(w http.ResponseWriter, r *http.Request) {
+	if !validSyncRequest(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	accountID := strings.TrimSpace(r.PathValue("id"))
+	accountType := strings.ToLower(strings.TrimSpace(r.FormValue("type")))
+	if accountID == "" || (accountType != domain.AccountTypePersonal && accountType != domain.AccountTypeBusiness) {
+		http.Error(w, "Invalid account or workspace type", http.StatusBadRequest)
+		return
+	}
+	if err := s.store.SetAccountType(r.Context(), accountID, accountType); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		s.logger.Error("update account workspace", "account_id", accountID, "error", err)
+		http.Error(w, "Could not update workspace", http.StatusInternalServerError)
+		return
+	}
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Refresh", "true")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	http.Redirect(w, r, "/connections", http.StatusSeeOther)
 }
 
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {

@@ -42,7 +42,7 @@ func openStore(ctx context.Context, cfg *config.Config) (*storage.Store, error) 
 		return nil, err
 	}
 	for id, accountType := range cfg.AccountTypes() {
-		if err := store.SetAccountType(ctx, id, accountType); err != nil && !errors.Is(err, storage.ErrNotFound) {
+		if err := store.ApplyConfigAccountType(ctx, id, accountType); err != nil && !errors.Is(err, storage.ErrNotFound) {
 			_ = store.Close()
 			return nil, fmt.Errorf("apply account type for %s: %w", id, err)
 		}

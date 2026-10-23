@@ -703,8 +703,18 @@ func TestAccountWorkspaceTypeLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetAccount: %v", err)
 	}
+	if stored.Type != domain.AccountTypeBusiness || !stored.TypeManual {
+		t.Fatalf("type = %q manual=%v, want business/manual", stored.Type, stored.TypeManual)
+	}
+	if err := s.ApplyConfigAccountType(ctx, account.ID, domain.AccountTypePersonal); err != nil {
+		t.Fatalf("ApplyConfigAccountType: %v", err)
+	}
+	stored, err = s.GetAccount(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("GetAccount after config apply: %v", err)
+	}
 	if stored.Type != domain.AccountTypeBusiness {
-		t.Fatalf("type = %q, want business", stored.Type)
+		t.Fatalf("manual type was overwritten by config: %q", stored.Type)
 	}
 	// Metadata-only upserts (Type empty) must not overwrite the mapping.
 	stored.Name = "Renamed"
@@ -734,6 +744,37 @@ func TestAccountWorkspaceTypeLifecycle(t *testing.T) {
 	}
 	if version < 6 {
 		t.Fatalf("schema version = %d, want >= 6", version)
+	}
+}
+
+func TestApplyConfigAccountTypeLeavesManualOverrideAlone(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	ctx := context.Background()
+	conn := seedConnection(t, s)
+	account := seedAccount(t, s, conn.ID)
+	if err := s.ApplyConfigAccountType(ctx, account.ID, domain.AccountTypeBusiness); err != nil {
+		t.Fatalf("ApplyConfigAccountType: %v", err)
+	}
+	stored, err := s.GetAccount(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("GetAccount: %v", err)
+	}
+	if stored.Type != domain.AccountTypeBusiness || stored.TypeManual {
+		t.Fatalf("configured account = %+v", stored)
+	}
+	if err := s.SetAccountType(ctx, account.ID, domain.AccountTypePersonal); err != nil {
+		t.Fatalf("SetAccountType: %v", err)
+	}
+	if err := s.ApplyConfigAccountType(ctx, account.ID, domain.AccountTypeBusiness); err != nil {
+		t.Fatalf("ApplyConfigAccountType after manual: %v", err)
+	}
+	stored, err = s.GetAccount(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("GetAccount after manual: %v", err)
+	}
+	if stored.Type != domain.AccountTypePersonal || !stored.TypeManual {
+		t.Fatalf("manual override lost = %+v", stored)
 	}
 }
 

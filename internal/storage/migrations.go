@@ -200,6 +200,12 @@ var migrations = []migration{
 			`ALTER TABLE account_reconciliation ADD COLUMN baseline_established INTEGER NOT NULL DEFAULT 1`,
 		},
 	},
+	{
+		version: 11,
+		statements: []string{
+			`ALTER TABLE accounts ADD COLUMN type_manual INTEGER NOT NULL DEFAULT 0`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and
