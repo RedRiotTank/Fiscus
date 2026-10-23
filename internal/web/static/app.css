@@ -1130,6 +1130,14 @@ select {
   overflow-wrap: anywhere;
 }
 
+.receipt-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .receipt-actions {
   display: flex;
   align-items: center;

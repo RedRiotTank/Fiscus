@@ -203,6 +203,26 @@ func (f *fakeEvaluator) balanceCount() int {
 	return len(f.balances)
 }
 
+type fakeReceiptRepairer struct {
+	mu     sync.Mutex
+	calls  int
+	paired int
+	err    error
+}
+
+func (f *fakeReceiptRepairer) RepairUnpaired(context.Context) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	return f.paired, f.err
+}
+
+func (f *fakeReceiptRepairer) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls
+}
+
 func newIngestTest(t *testing.T, bank *fakeBank, eval Evaluator) (*Worker, *storage.Store, domain.Connection) {
 	t.Helper()
 	ctx := context.Background()
@@ -355,6 +375,32 @@ func TestWorkerSyncPersistsAndEvaluates(t *testing.T) {
 	}
 	if !gotTo.Equal(time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)) {
 		t.Fatalf("transactions to = %v", gotTo)
+	}
+}
+
+func TestWorkerRepairsReceiptsAfterSuccessfulSync(t *testing.T) {
+	t.Parallel()
+	bank := standardBank()
+	w, _, _ := newIngestTest(t, bank, nil)
+	repairer := &fakeReceiptRepairer{paired: 2}
+	w.SetReceiptRepairer(repairer)
+	if err := w.SyncAll(context.Background()); err != nil {
+		t.Fatalf("SyncAll: %v", err)
+	}
+	if got := repairer.count(); got != 1 {
+		t.Fatalf("receipt repair calls = %d, want 1", got)
+	}
+
+	failing := standardBank()
+	failing.txErr["acc-1"] = errors.New("transaction feed unavailable")
+	failedWorker, _, _ := newIngestTest(t, failing, nil)
+	failedRepairer := &fakeReceiptRepairer{}
+	failedWorker.SetReceiptRepairer(failedRepairer)
+	if err := failedWorker.SyncAll(context.Background()); err == nil {
+		t.Fatal("expected sync failure")
+	}
+	if got := failedRepairer.count(); got != 0 {
+		t.Fatalf("receipt repair calls after failure = %d, want 0", got)
 	}
 }
 

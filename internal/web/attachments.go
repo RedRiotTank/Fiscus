@@ -57,6 +57,8 @@ func attachmentNotice(code string) string {
 		return "Receipt stored in the unpaired inbox. Link it to a transaction manually."
 	case "linked":
 		return "Receipt linked to the selected transaction."
+	case "repaired":
+		return "Receipt inbox re-paired against newly booked transactions."
 	case "error":
 		return "The receipt could not be stored. Check the file type and size."
 	default:
@@ -147,6 +149,24 @@ func (s *Server) redirectAttachment(w http.ResponseWriter, r *http.Request, code
 		return
 	}
 	http.Redirect(w, r, target, http.StatusSeeOther)
+}
+
+func (s *Server) handleAttachmentRepair(w http.ResponseWriter, r *http.Request) {
+	if !validSyncRequest(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	if s.attachments == nil {
+		http.Error(w, "Receipt storage is disabled", http.StatusServiceUnavailable)
+		return
+	}
+	repaired, err := s.attachments.RepairUnpaired(r.Context())
+	if err != nil {
+		s.logger.Error("receipt re-pairing failed", "repaired", repaired, "error", err)
+		s.redirectAttachment(w, r, "error")
+		return
+	}
+	s.redirectAttachment(w, r, "repaired")
 }
 
 func (s *Server) handleAttachmentPair(w http.ResponseWriter, r *http.Request) {

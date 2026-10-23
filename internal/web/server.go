@@ -208,6 +208,7 @@ func (s *Server) routes() http.Handler {
 	app.HandleFunc("GET /transactions", s.handleTransactions)
 	app.HandleFunc("GET /transactions/export", s.handleExport)
 	app.HandleFunc("POST /attachments", s.handleAttachmentUpload)
+	app.HandleFunc("POST /attachments/repair", s.handleAttachmentRepair)
 	app.HandleFunc("POST /attachments/{id}/pair", s.handleAttachmentPair)
 	app.HandleFunc("GET /attachments/{id}", s.handleAttachmentDownload)
 	app.HandleFunc("GET /api/attachments/unpaired", s.handleUnpairedAttachments)

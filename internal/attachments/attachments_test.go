@@ -135,6 +135,93 @@ func TestSaveWithAmbiguousCandidatesStaysUnpaired(t *testing.T) {
 	}
 }
 
+func TestRepairUnpairedPairsAfterLaterTransactionIngestion(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t)
+	att, err := f.service.SaveWeb(ctx, SaveInput{
+		Reader:      strings.NewReader("late receipt"),
+		Filename:    "2026-03-06 total 99.00.pdf",
+		ContentType: "application/pdf",
+	})
+	if err != nil {
+		t.Fatalf("SaveWeb: %v", err)
+	}
+	if att.Paired() {
+		t.Fatalf("receipt should start unpaired: %+v", att)
+	}
+	unpaired, err := f.service.ListUnpaired(ctx)
+	if err != nil {
+		t.Fatalf("ListUnpaired: %v", err)
+	}
+	if len(unpaired) != 1 {
+		t.Fatalf("unpaired = %+v", unpaired)
+	}
+
+	tx := domain.Transaction{
+		AccountID: "acc-1", ExternalID: "tx-late", AmountMinor: -9900, Currency: "EUR",
+		BookingDate:  time.Date(2026, 3, 6, 9, 0, 0, 0, time.UTC),
+		Counterparty: "Late Vendor", Status: domain.TransactionStatusBooked,
+	}
+	if _, _, err := f.store.UpsertTransaction(ctx, &tx); err != nil {
+		t.Fatalf("UpsertTransaction: %v", err)
+	}
+	repaired, err := f.service.RepairUnpaired(ctx)
+	if err != nil {
+		t.Fatalf("RepairUnpaired: %v", err)
+	}
+	if repaired != 1 {
+		t.Fatalf("repaired = %d, want 1", repaired)
+	}
+	unpaired, err = f.service.ListUnpaired(ctx)
+	if err != nil {
+		t.Fatalf("ListUnpaired after repair: %v", err)
+	}
+	if len(unpaired) != 0 {
+		t.Fatalf("unpaired after repair = %+v", unpaired)
+	}
+	attached, err := f.service.ListForTransaction(ctx, tx.ID)
+	if err != nil {
+		t.Fatalf("ListForTransaction: %v", err)
+	}
+	if len(attached) != 1 || attached[0].ID != att.ID {
+		t.Fatalf("attached = %+v", attached)
+	}
+}
+
+func TestRepairUnpairedLeavesAmbiguousReceiptsAlone(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newFixture(t)
+	second := domain.Transaction{
+		AccountID: "acc-1", ExternalID: "tx-2", AmountMinor: -1234, Currency: "EUR",
+		BookingDate: f.tx.BookingDate, Counterparty: "Other", Status: domain.TransactionStatusBooked,
+	}
+	if _, _, err := f.store.UpsertTransaction(ctx, &second); err != nil {
+		t.Fatalf("UpsertTransaction: %v", err)
+	}
+	att, err := f.service.SaveWeb(ctx, SaveInput{
+		Reader: strings.NewReader("ambiguous"), Filename: "2026-03-05 total 12.34.pdf",
+	})
+	if err != nil {
+		t.Fatalf("SaveWeb: %v", err)
+	}
+	repaired, err := f.service.RepairUnpaired(ctx)
+	if err != nil {
+		t.Fatalf("RepairUnpaired: %v", err)
+	}
+	if repaired != 0 {
+		t.Fatalf("repaired = %d, want 0", repaired)
+	}
+	unpaired, err := f.service.ListUnpaired(ctx)
+	if err != nil {
+		t.Fatalf("ListUnpaired: %v", err)
+	}
+	if len(unpaired) != 1 || unpaired[0].ID != att.ID {
+		t.Fatalf("unpaired = %+v", unpaired)
+	}
+}
+
 func TestSaveExplicitTransactionAndPathSanitization(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)

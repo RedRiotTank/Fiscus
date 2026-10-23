@@ -111,7 +111,12 @@
         <h2>Receipt inbox</h2>
         <p class="panel-sub">Unpaired documents waiting for a matching transaction</p>
       </div>
-      <button class="button ghost small" type="button" data-receipt-open>Add receipt</button>
+      <div class="receipt-head-actions">
+        <form hx-post="/attachments/repair">
+          <button class="button ghost small" type="submit">Re-pair inbox</button>
+        </form>
+        <button class="button ghost small" type="button" data-receipt-open>Add receipt</button>
+      </div>
     </header>
     {{if .UnpairedAttachments}}
       <ul class="receipt-list">
