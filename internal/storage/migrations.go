@@ -153,6 +153,44 @@ var migrations = []migration{
 			`CREATE INDEX IF NOT EXISTS idx_attachments_uploaded ON transaction_attachments(uploaded_at)`,
 		},
 	},
+	{
+		version: 9,
+		statements: []string{
+			`ALTER TABLE transactions ADD COLUMN notes TEXT NOT NULL DEFAULT ''`,
+			`CREATE VIRTUAL TABLE IF NOT EXISTS transactions_fts USING fts5(
+				transaction_id UNINDEXED,
+				description,
+				counterparty,
+				category,
+				notes,
+				account_type,
+				tokenize='unicode61'
+			)`,
+			`INSERT INTO transactions_fts (rowid, transaction_id, description, counterparty, category, notes, account_type)
+			 SELECT t.id, t.id, t.description, t.counterparty, t.category, t.notes, COALESCE(a.type, 'personal')
+			 FROM transactions t LEFT JOIN accounts a ON a.id = t.account_id`,
+			`CREATE TRIGGER IF NOT EXISTS transactions_fts_ai AFTER INSERT ON transactions BEGIN
+				INSERT INTO transactions_fts (rowid, transaction_id, description, counterparty, category, notes, account_type)
+				SELECT new.id, new.id, new.description, new.counterparty, new.category, new.notes,
+					COALESCE((SELECT type FROM accounts WHERE id = new.account_id), 'personal');
+			END`,
+			`CREATE TRIGGER IF NOT EXISTS transactions_fts_au AFTER UPDATE ON transactions BEGIN
+				DELETE FROM transactions_fts WHERE rowid = old.id;
+				INSERT INTO transactions_fts (rowid, transaction_id, description, counterparty, category, notes, account_type)
+				SELECT new.id, new.id, new.description, new.counterparty, new.category, new.notes,
+					COALESCE((SELECT type FROM accounts WHERE id = new.account_id), 'personal');
+			END`,
+			`CREATE TRIGGER IF NOT EXISTS transactions_fts_ad AFTER DELETE ON transactions BEGIN
+				DELETE FROM transactions_fts WHERE rowid = old.id;
+			END`,
+			`CREATE TRIGGER IF NOT EXISTS accounts_fts_type_au AFTER UPDATE OF type ON accounts BEGIN
+				DELETE FROM transactions_fts WHERE transaction_id IN (SELECT id FROM transactions WHERE account_id = new.id);
+				INSERT INTO transactions_fts (rowid, transaction_id, description, counterparty, category, notes, account_type)
+				SELECT t.id, t.id, t.description, t.counterparty, t.category, t.notes, COALESCE(new.type, 'personal')
+				FROM transactions t WHERE t.account_id = new.id;
+			END`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and

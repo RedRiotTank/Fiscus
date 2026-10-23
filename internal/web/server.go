@@ -21,6 +21,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/budgets"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/money"
+	"github.com/RedRiotTank/Fiscus/internal/search"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"github.com/RedRiotTank/Fiscus/internal/tax"
 	"golang.org/x/crypto/bcrypt"
@@ -81,6 +82,7 @@ type Config struct {
 	Budgets        []budgets.Budget
 	Attachments    *attachments.Service
 	Tax            *tax.Service
+	Search         *search.Service
 }
 
 // Server renders dashboard pages and exposes health endpoints.
@@ -102,6 +104,7 @@ type Server struct {
 	budgets        []budgets.Budget
 	attachments    *attachments.Service
 	tax            *tax.Service
+	search         *search.Service
 
 	pages    map[string]*template.Template
 	partials *template.Template
@@ -148,6 +151,7 @@ func New(cfg Config, store Store, trigger SyncTrigger) (*Server, error) {
 		budgets:        cfg.Budgets,
 		attachments:    cfg.Attachments,
 		tax:            cfg.Tax,
+		search:         cfg.Search,
 	}
 	if err := s.parseTemplates(); err != nil {
 		return nil, err

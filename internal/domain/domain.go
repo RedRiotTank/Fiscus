@@ -142,6 +142,7 @@ type Transaction struct {
 	Counterparty string
 	Description  string
 	Category     string
+	Notes        string
 	Status       string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time

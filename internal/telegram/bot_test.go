@@ -101,6 +101,19 @@ type fakeAPI struct {
 	fileData  []byte
 }
 
+type fakeSearcher struct {
+	query   string
+	limit   int
+	results []domain.Transaction
+	err     error
+}
+
+func (f *fakeSearcher) Search(_ context.Context, query string, limit int) ([]domain.Transaction, error) {
+	f.query = query
+	f.limit = limit
+	return f.results, f.err
+}
+
 type fakeIngestor struct {
 	filename    string
 	contentType string
@@ -345,6 +358,40 @@ func TestUltimosCommandUsesConfirmedTransactions(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("reply missing %q: %q", want, text)
 		}
+	}
+}
+
+func TestBuscarCommand(t *testing.T) {
+	t.Parallel()
+	api, server := newFakeAPI(t)
+	searcher := &fakeSearcher{results: []domain.Transaction{{
+		AccountID: "a1", Counterparty: "Coffee Shop", AmountMinor: -1250, Currency: "EUR",
+		BookingDate: time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC), Category: "Dining",
+	}}}
+	bot := newTestBot(t, api, server, &fakeStore{}, nil)
+	bot.search = searcher
+	bot.handleUpdate(context.Background(), messageUpdate(42, 7, "/buscar coffee amount:>10"))
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if searcher.query != "coffee amount:>10" || searcher.limit != 10 {
+		t.Fatalf("searcher = %+v", searcher)
+	}
+	if len(api.sent) != 1 || !strings.Contains(api.sent[0].Text, "Resultados (1)") ||
+		!strings.Contains(api.sent[0].Text, "Coffee Shop") {
+		t.Fatalf("reply = %+v", api.sent)
+	}
+}
+
+func TestBuscarRequiresQuery(t *testing.T) {
+	t.Parallel()
+	api, server := newFakeAPI(t)
+	bot := newTestBot(t, api, server, &fakeStore{}, nil)
+	bot.search = &fakeSearcher{}
+	bot.handleUpdate(context.Background(), messageUpdate(42, 7, "/buscar"))
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if len(api.sent) != 1 || !strings.Contains(api.sent[0].Text, "Uso: /buscar") {
+		t.Fatalf("reply = %+v", api.sent)
 	}
 }
 

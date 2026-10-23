@@ -12,7 +12,7 @@ import (
 )
 
 const transactionColumns = `id, account_id, external_id, amount_minor, currency, booking_date,
-	value_date, counterparty, description, category, status, created_at, updated_at`
+	value_date, counterparty, description, category, notes, status, created_at, updated_at`
 
 // TransactionFilter controls transaction listing.
 type TransactionFilter struct {
@@ -57,7 +57,7 @@ func scanTransaction(row rowScanner) (domain.Transaction, error) {
 	)
 	if err := row.Scan(
 		&t.ID, &t.AccountID, &t.ExternalID, &t.AmountMinor, &t.Currency, &booking,
-		&valueDate, &t.Counterparty, &t.Description, &t.Category, &t.Status, &createdAt, &updatedAt,
+		&valueDate, &t.Counterparty, &t.Description, &t.Category, &t.Notes, &t.Status, &createdAt, &updatedAt,
 	); err != nil {
 		return domain.Transaction{}, err
 	}
@@ -129,10 +129,10 @@ func (s *Store) UpsertTransaction(ctx context.Context, t *domain.Transaction) (i
 		res, execErr := tx.ExecContext(ctx, `
 			INSERT INTO transactions (
 				account_id, external_id, amount_minor, currency, booking_date, value_date,
-				counterparty, description, category, status, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				counterparty, description, category, notes, status, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			t.AccountID, t.ExternalID, t.AmountMinor, t.Currency, encodeTime(t.BookingDate),
-			encodeNullTime(t.ValueDate), t.Counterparty, t.Description, t.Category, t.Status,
+			encodeNullTime(t.ValueDate), t.Counterparty, t.Description, t.Category, t.Notes, t.Status,
 			encodeTime(t.CreatedAt), encodeTime(t.UpdatedAt),
 		)
 		if execErr != nil {
@@ -157,10 +157,10 @@ func (s *Store) UpsertTransaction(ctx context.Context, t *domain.Transaction) (i
 		_, execErr := tx.ExecContext(ctx, `
 			UPDATE transactions SET
 				amount_minor = ?, currency = ?, booking_date = ?, value_date = ?,
-				counterparty = ?, description = ?, category = ?, status = ?, updated_at = ?
+				counterparty = ?, description = ?, category = ?, notes = ?, status = ?, updated_at = ?
 			WHERE id = ?`,
 			t.AmountMinor, t.Currency, encodeTime(t.BookingDate), encodeNullTime(t.ValueDate),
-			t.Counterparty, t.Description, t.Category, t.Status, encodeTime(t.UpdatedAt), existingID,
+			t.Counterparty, t.Description, t.Category, t.Notes, t.Status, encodeTime(t.UpdatedAt), existingID,
 		)
 		if execErr != nil {
 			return false, false, fmt.Errorf("storage: update transaction: %w", execErr)

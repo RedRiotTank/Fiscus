@@ -1304,3 +1304,32 @@ select {
   color: var(--muted);
   font-size: 0.72rem;
 }
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 4px;
+}
+
+.search-bar input[type="search"] {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.search-hint {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.notice.error {
+  border-color: rgba(248, 113, 113, 0.5);
+  background: rgba(248, 113, 113, 0.08);
+  color: #fecaca;
+}
