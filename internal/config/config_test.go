@@ -46,6 +46,10 @@ func TestDefaultConfig(t *testing.T) {
 		cfg.Attachments.GraceDays != 5 {
 		t.Fatalf("attachments defaults = %+v", cfg.Attachments)
 	}
+	if !cfg.Tax.Enabled || cfg.Tax.VATRateDefault != 0.21 || cfg.Tax.IncomeTaxRetention != 0.15 ||
+		len(cfg.Tax.QuarterStartMonths) != 4 {
+		t.Fatalf("tax defaults = %+v", cfg.Tax)
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("validate: %v", err)
 	}
@@ -104,6 +108,59 @@ func TestAttachmentsEnvironmentOverride(t *testing.T) {
 		cfg.Attachments.MaxSizeBytes != 4096 || cfg.Attachments.ReceiptThresholdMinor != 9000 ||
 		cfg.Attachments.GraceDays != 2 {
 		t.Fatalf("attachments env = %+v", cfg.Attachments)
+	}
+}
+
+func TestLoadTax(t *testing.T) {
+	path := writeConfig(t, `
+tax:
+  enabled: true
+  vat_rate_default: 0.10
+  income_tax_retention: 0.20
+  quarter_start_months: [2, 5, 8, 11]
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.Tax.Enabled || cfg.Tax.VATRateDefault != 0.10 || cfg.Tax.IncomeTaxRetention != 0.20 ||
+		len(cfg.Tax.QuarterStartMonths) != 4 || cfg.Tax.QuarterStartMonths[3] != 11 {
+		t.Fatalf("tax = %+v", cfg.Tax)
+	}
+}
+
+func TestInvalidTaxRejected(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+	}{
+		{name: "VAT", yaml: "tax:\n  enabled: true\n  vat_rate_default: 1.2\n"},
+		{name: "retention", yaml: "tax:\n  enabled: true\n  income_tax_retention: -0.1\n"},
+		{name: "months", yaml: "tax:\n  enabled: true\n  quarter_start_months: [1, 4]\n"},
+		{name: "month range", yaml: "tax:\n  enabled: true\n  quarter_start_months: [0, 4, 7, 10]\n"},
+		{name: "duplicate", yaml: "tax:\n  enabled: true\n  quarter_start_months: [1, 1, 7, 10]\n"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := Load(writeConfig(t, test.yaml)); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}
+
+func TestTaxEnvironmentOverride(t *testing.T) {
+	t.Setenv("FISCUS_TAX_ENABLED", "false")
+	t.Setenv("FISCUS_TAX_VAT_RATE_DEFAULT", "0.05")
+	t.Setenv("FISCUS_TAX_INCOME_TAX_RETENTION", "0.25")
+	t.Setenv("FISCUS_TAX_QUARTER_START_MONTHS", "2,5,8,11")
+	cfg, err := Load(writeConfig(t, "profile: hybrid\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Tax.Enabled || cfg.Tax.VATRateDefault != 0.05 || cfg.Tax.IncomeTaxRetention != 0.25 ||
+		len(cfg.Tax.QuarterStartMonths) != 4 || cfg.Tax.QuarterStartMonths[0] != 2 {
+		t.Fatalf("tax env = %+v", cfg.Tax)
 	}
 }
 

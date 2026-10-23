@@ -28,6 +28,7 @@ type Config struct {
 	Budgets         []BudgetConfig         `yaml:"budgets"`
 	ExpectedInflows []ExpectedInflowConfig `yaml:"expected_inflows"`
 	Attachments     AttachmentsConfig      `yaml:"attachments"`
+	Tax             TaxConfig              `yaml:"tax"`
 	Backups         BackupsConfig          `yaml:"backups"`
 	Webhooks        []WebhookConfig        `yaml:"webhooks"`
 }
@@ -74,6 +75,16 @@ type AttachmentsConfig struct {
 	MaxSizeBytes          int64  `yaml:"max_size_bytes"`
 	ReceiptThresholdMinor int64  `yaml:"receipt_threshold_minor"`
 	GraceDays             int    `yaml:"grace_days"`
+}
+
+// TaxConfig controls the quarterly VAT and income-tax liquidity shield. Rates
+// are decimal fractions (0.21 = 21%) and QuarterStartMonths must contain the
+// four month numbers that begin each fiscal quarter.
+type TaxConfig struct {
+	Enabled            bool    `yaml:"enabled"`
+	VATRateDefault     float64 `yaml:"vat_rate_default"`
+	IncomeTaxRetention float64 `yaml:"income_tax_retention"`
+	QuarterStartMonths []int   `yaml:"quarter_start_months"`
 }
 
 // BackupsConfig controls optional scheduled backups and Telegram delivery.
@@ -227,6 +238,12 @@ func Default() *Config {
 			MaxSizeBytes:          10 << 20,
 			ReceiptThresholdMinor: 5000,
 			GraceDays:             5,
+		},
+		Tax: TaxConfig{
+			Enabled:            true,
+			VATRateDefault:     0.21,
+			IncomeTaxRetention: 0.15,
+			QuarterStartMonths: []int{1, 4, 7, 10},
 		},
 		Backups: BackupsConfig{
 			Directory: "backups",
@@ -432,6 +449,29 @@ func (c *Config) Validate() error {
 		}
 		if c.Attachments.GraceDays < 0 || c.Attachments.GraceDays > 365 {
 			errs = append(errs, errors.New("attachments.grace_days must be between 0 and 365"))
+		}
+	}
+	if c.Tax.Enabled {
+		if c.Tax.VATRateDefault < 0 || c.Tax.VATRateDefault >= 1 {
+			errs = append(errs, errors.New("tax.vat_rate_default must be between 0 and 1"))
+		}
+		if c.Tax.IncomeTaxRetention < 0 || c.Tax.IncomeTaxRetention >= 1 {
+			errs = append(errs, errors.New("tax.income_tax_retention must be between 0 and 1"))
+		}
+		if len(c.Tax.QuarterStartMonths) != 4 {
+			errs = append(errs, errors.New("tax.quarter_start_months must contain exactly four months"))
+		} else {
+			seen := make(map[int]struct{}, 4)
+			for _, month := range c.Tax.QuarterStartMonths {
+				if month < 1 || month > 12 {
+					errs = append(errs, fmt.Errorf("tax.quarter_start_months contains invalid month %d", month))
+					continue
+				}
+				if _, exists := seen[month]; exists {
+					errs = append(errs, fmt.Errorf("tax.quarter_start_months contains duplicate month %d", month))
+				}
+				seen[month] = struct{}{}
+			}
 		}
 	}
 	for i, hook := range c.Webhooks {

@@ -23,6 +23,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/monitoring"
 	"github.com/RedRiotTank/Fiscus/internal/observability"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
+	"github.com/RedRiotTank/Fiscus/internal/tax"
 	"github.com/RedRiotTank/Fiscus/internal/telegram"
 	"github.com/RedRiotTank/Fiscus/internal/web"
 	"github.com/RedRiotTank/Fiscus/internal/webhooks"
@@ -156,7 +157,7 @@ func buildTelegramBot(cfg *config.Config, store *storage.Store, worker *ingest.W
 	})
 }
 
-func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, metrics *observability.Metrics, sink events.Sink) (*alerts.Engine, error) {
+func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, metrics *observability.Metrics, sink events.Sink, taxService *tax.Service) (*alerts.Engine, error) {
 	thresholds, err := cfg.LiquidityThresholdsMinor()
 	if err != nil {
 		return nil, err
@@ -218,6 +219,9 @@ func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, 
 	if cfg.Attachments.Enabled && cfg.WorkspaceProfile() != domain.WorkspacePersonal {
 		analysisRules = append(analysisRules,
 			attachments.NewMissingReceiptRule(store, cfg.Attachments.ReceiptThresholdMinor, cfg.Attachments.GraceDays, nil))
+	}
+	if taxService != nil && cfg.WorkspaceProfile() != domain.WorkspacePersonal {
+		analysisRules = append(analysisRules, tax.NewQuarterlyRule(taxService, nil))
 	}
 	engine, err := alerts.NewEngine(alerts.EngineConfig{
 		Store:               store,
@@ -355,7 +359,7 @@ func buildWorker(cfg *config.Config, store *storage.Store, engine *alerts.Engine
 	return worker, nil
 }
 
-func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger, logger *slog.Logger, metrics *observability.Metrics, authHandler web.AuthorizationCallback, attachmentService *attachments.Service) (*web.Server, error) {
+func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger, logger *slog.Logger, metrics *observability.Metrics, authHandler web.AuthorizationCallback, attachmentService *attachments.Service, taxService *tax.Service) (*web.Server, error) {
 	classifier, err := buildCategoryClassifier(cfg)
 	if err != nil {
 		return nil, err
@@ -372,6 +376,7 @@ func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger,
 		Classifier:     classifier,
 		Budgets:        configuredBudgets(cfg),
 		Attachments:    attachmentService,
+		Tax:            taxService,
 	}, store, trigger)
 }
 

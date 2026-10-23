@@ -52,6 +52,13 @@ attachments:
   # Days to wait before warning about a missing receipt.
   grace_days: 5
 
+tax:
+  # Evaluated only when the workspace profile is business or hybrid.
+  enabled: true
+  vat_rate_default: 0.21
+  income_tax_retention: 0.15
+  quarter_start_months: [1, 4, 7, 10]
+
 gocardless:
   base_url: "https://bankaccountdata.gocardless.com/api/v2"
   # API credentials from the GoCardless Bank Account Data portal.
