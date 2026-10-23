@@ -55,6 +55,7 @@
             <th scope="col">Counterparty</th>
             <th scope="col">Category</th>
             <th scope="col">Description</th>
+            <th scope="col">Notes</th>
             <th scope="col">Workspace</th>
             <th scope="col">Receipt</th>
             <th scope="col">Status</th>
@@ -69,6 +70,7 @@
               <td>{{if .Counterparty}}{{.Counterparty}}{{else}}<span class="muted">—</span>{{end}}</td>
               <td><span class="badge category">{{if .Category}}{{.Category}}{{else}}Uncategorized{{end}}</span></td>
               <td class="description">{{if .Description}}{{.Description}}{{else}}<span class="muted">—</span>{{end}}</td>
+              <td class="notes">{{template "transaction_notes" .}}</td>
               <td><span class="badge workspace {{if eq .AccountType "business"}}business{{else}}personal{{end}}">{{if eq .AccountType "business"}}Business{{else}}Personal{{end}}</span></td>
               {{$attachmentID := index $.AttachmentIDs .ID}}
               <td>

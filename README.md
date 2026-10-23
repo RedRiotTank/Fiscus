@@ -165,7 +165,9 @@ the rest of the dashboard.
   `fiscus_workspace` cookie.
 
 Account types come from the optional `accounts` mapping. Unmapped accounts
-default to `personal`.
+default to `personal`. The Connections page also lets you switch an account
+between Personal and Business at runtime; that choice is stored in SQLite and
+is not overwritten by later config-driven mappings or a daemon restart.
 
 ```yaml
 profile: "hybrid"
@@ -250,6 +252,10 @@ Supported filters are `amount:>`, `amount:>=`, `amount:<`, `amount:<=`,
 `amount:=`, `category:`, `status:booked|pending`, `has:receipt|no-receipt`, and
 `type:personal|business`. Invalid filter values return a clear error; results
 are still restricted by the active workspace.
+
+Transaction notes can be edited inline on the Transactions page or with the
+Telegram `/nota <transaction_id> <texto>` command. Updates are written through
+the normal transaction update trigger, so FTS5 search reflects them immediately.
 
 ### Scenario simulator
 
@@ -609,6 +615,7 @@ for group chats). Supported commands:
 | `/sync` | Run a bank synchronization and report the outcome |
 | `/ultimos [n]` | Last `n` confirmed transactions with categories (max 50) |
 | `/buscar <texto> [filtros]` | FTS5 search with amount, category, status, receipt, and type filters |
+| `/nota <transaction_id> <texto>` | Attach or replace a note on a transaction |
 | `/runway` | Liquid balance, monthly burn, and runway in months per currency |
 | `/presupuesto` | Current-month category budget consumption |
 | `/help` | Show available commands |

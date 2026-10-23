@@ -24,12 +24,18 @@ type categoryUpdate struct {
 	Category string
 }
 
+type noteUpdate struct {
+	ID    int64
+	Notes string
+}
+
 type fakeStore struct {
 	accounts     []domain.Account
 	transactions []domain.Transaction
 	between      []domain.Transaction
 	spending     []storage.CategorySpending
 	updates      []categoryUpdate
+	notes        []noteUpdate
 	updateErr    error
 	limit        int
 	err          error
@@ -60,6 +66,14 @@ func (f *fakeStore) UpdateTransactionCategory(_ context.Context, id int64, categ
 		return f.updateErr
 	}
 	f.updates = append(f.updates, categoryUpdate{ID: id, Category: category})
+	return nil
+}
+
+func (f *fakeStore) UpdateTransactionNotes(_ context.Context, id int64, notes string) error {
+	if f.updateErr != nil {
+		return f.updateErr
+	}
+	f.notes = append(f.notes, noteUpdate{ID: id, Notes: notes})
 	return nil
 }
 
@@ -392,6 +406,35 @@ func TestBuscarRequiresQuery(t *testing.T) {
 	defer api.mu.Unlock()
 	if len(api.sent) != 1 || !strings.Contains(api.sent[0].Text, "Uso: /buscar") {
 		t.Fatalf("reply = %+v", api.sent)
+	}
+}
+
+func TestNotaCommandSavesNotes(t *testing.T) {
+	t.Parallel()
+	api, server := newFakeAPI(t)
+	store := &fakeStore{}
+	bot := newTestBot(t, api, server, store, nil)
+	bot.handleUpdate(context.Background(), messageUpdate(42, 7, "/nota 123 client reimbursed lunch"))
+	if len(store.notes) != 1 || store.notes[0].ID != 123 || store.notes[0].Notes != "client reimbursed lunch" {
+		t.Fatalf("notes = %+v", store.notes)
+	}
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if len(api.sent) != 1 || !strings.Contains(api.sent[0].Text, "Nota guardada") {
+		t.Fatalf("reply = %+v", api.sent)
+	}
+}
+
+func TestNotaCommandValidatesInput(t *testing.T) {
+	t.Parallel()
+	api, server := newFakeAPI(t)
+	bot := newTestBot(t, api, server, &fakeStore{}, nil)
+	bot.handleUpdate(context.Background(), messageUpdate(42, 7, "/nota nope text"))
+	bot.handleUpdate(context.Background(), messageUpdate(42, 7, "/nota 123"))
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if len(api.sent) != 2 || !strings.Contains(api.sent[0].Text, "ID") || !strings.Contains(api.sent[1].Text, "Uso: /nota") {
+		t.Fatalf("replies = %+v", api.sent)
 	}
 }
 

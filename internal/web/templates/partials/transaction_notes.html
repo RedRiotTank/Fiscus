@@ -1,0 +1,6 @@
+{{define "transaction_notes"}}
+<form class="notes-form" hx-patch="/api/transactions/{{.ID}}/notes" hx-target="this" hx-swap="outerHTML">
+  <input type="text" name="notes" value="{{.Notes}}" maxlength="2000" placeholder="Add a note…" aria-label="Note for transaction {{.ID}}">
+  <button class="button ghost small" type="submit">Save</button>
+</form>
+{{end}}

@@ -572,7 +572,7 @@ func (w *Worker) syncAccount(ctx context.Context, connection domain.Connection, 
 		return fmt.Errorf("load account metadata: %w", err)
 	}
 
-	if hint, ok := w.cfg.AccountTypes[accountID]; ok && hint != "" {
+	if hint, ok := w.cfg.AccountTypes[accountID]; ok && hint != "" && !account.TypeManual {
 		normalized := domain.NormalizeAccountType(hint)
 		if account.Type != normalized {
 			account.Type = normalized

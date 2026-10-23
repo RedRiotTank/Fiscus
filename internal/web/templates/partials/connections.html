@@ -59,7 +59,15 @@
                     <tr>
                       <td>{{if .Name}}{{.Name}}{{else}}{{.ID}}{{end}}</td>
                       <td class="mono">{{if .IBAN}}{{.IBAN}}{{else}}<span class="muted">—</span>{{end}}</td>
-                      <td><span class="badge workspace {{if eq .Type "business"}}business{{else}}personal{{end}}">{{if eq .Type "business"}}Business{{else}}Personal{{end}}</span></td>
+                      <td>
+                        <form hx-post="/api/accounts/{{.ID}}/type" hx-trigger="change" hx-target="#connections-panel" hx-swap="outerHTML">
+                          <select name="type" aria-label="Workspace for {{if .Name}}{{.Name}}{{else}}{{.ID}}{{end}}">
+                            <option value="personal" {{if eq .Type "personal"}}selected{{end}}>Personal</option>
+                            <option value="business" {{if eq .Type "business"}}selected{{end}}>Business</option>
+                          </select>
+                        </form>
+                        {{if .TypeManual}}<span class="muted small">manual</span>{{end}}
+                      </td>
                       <td class="right amount {{if lt .BalanceMinor 0}}debit{{else}}credit{{end}}">{{money .BalanceMinor .Currency}}</td>
                       {{$rec := index $.Reconciliations .ID}}
                       <td><span class="badge {{reconciliationClass $rec}}">{{reconciliationLabel $rec}}</span></td>

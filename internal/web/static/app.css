@@ -1130,6 +1130,18 @@ select {
   overflow-wrap: anywhere;
 }
 
+.notes-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 180px;
+}
+
+.notes-form input {
+  min-width: 0;
+  width: 160px;
+}
+
 .receipt-head-actions {
   display: flex;
   align-items: center;

@@ -46,6 +46,7 @@ type Store interface {
 	ListTransactionsBetween(ctx context.Context, from, to time.Time) ([]domain.Transaction, error)
 	SpendingByCategory(ctx context.Context, from, to time.Time) ([]storage.CategorySpending, error)
 	UpdateTransactionCategory(ctx context.Context, id int64, category string) error
+	UpdateTransactionNotes(ctx context.Context, id int64, notes string) error
 }
 
 // Syncer performs an immediate bank synchronization.
@@ -459,6 +460,8 @@ func (b *Bot) command(ctx context.Context, command string, args []string) string
 		return b.recent(ctx, args)
 	case "/buscar":
 		return b.searchTransactions(ctx, args)
+	case "/nota":
+		return b.note(ctx, args)
 	case "/runway":
 		return b.runway(ctx)
 	case "/presupuesto":
@@ -605,6 +608,27 @@ func (b *Bot) searchTransactions(ctx context.Context, args []string) string {
 	return truncate(out.String())
 }
 
+func (b *Bot) note(ctx context.Context, args []string) string {
+	if len(args) < 2 {
+		return "Uso: /nota <transaction_id> <texto>"
+	}
+	txID, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil || txID <= 0 {
+		return "El ID del movimiento no es válido."
+	}
+	text := strings.TrimSpace(strings.Join(args[1:], " "))
+	if text == "" {
+		return "Uso: /nota <transaction_id> <texto>"
+	}
+	if len([]rune(text)) > 2000 {
+		return "La nota es demasiado larga (máximo 2000 caracteres)."
+	}
+	if err := b.store.UpdateTransactionNotes(ctx, txID, text); err != nil {
+		return "No se pudo guardar la nota del movimiento."
+	}
+	return fmt.Sprintf("Nota guardada en el movimiento #%d.", txID)
+}
+
 func (b *Bot) runway(ctx context.Context) string {
 	accounts, err := b.store.ListAccounts(ctx)
 	if err != nil {
@@ -676,6 +700,7 @@ func helpText() string {
 		"/sync - Ejecutar una sincronización bancaria ahora",
 		"/ultimos [n] - Últimos movimientos confirmados (máximo 50)",
 		"/buscar <texto> [filtros] - Buscar movimientos (amount:>100, category:Utilities, has:receipt)",
+		"/nota <id> <texto> - Añadir una nota a un movimiento",
 		"/runway - Liquidez, consumo mensual y autonomía",
 		"/presupuesto - Consumo del presupuesto del mes actual",
 		"/help - Mostrar esta ayuda",

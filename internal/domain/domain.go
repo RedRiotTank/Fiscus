@@ -112,6 +112,7 @@ type Account struct {
 	OwnerName           string
 	Currency            string
 	Type                string
+	TypeManual          bool
 	BalanceMinor        int64
 	BalanceType         string
 	BalanceUpdatedAt    *time.Time

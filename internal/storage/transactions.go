@@ -200,6 +200,28 @@ func (s *Store) UpdateTransactionCategory(ctx context.Context, id int64, categor
 	return nil
 }
 
+// UpdateTransactionNotes changes a transaction's free-form notes. The FTS5
+// update trigger re-indexes the row immediately.
+func (s *Store) UpdateTransactionNotes(ctx context.Context, id int64, notes string) error {
+	if id <= 0 {
+		return ErrNotFound
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE transactions SET notes = ?, updated_at = ? WHERE id = ?`,
+		strings.TrimSpace(notes), encodeTime(nowUTC()), id)
+	if err != nil {
+		return fmt.Errorf("storage: update transaction notes: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("storage: update transaction notes: %w", err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // ListTransactions returns transactions matching the filter, newest first.
 func (s *Store) ListTransactions(ctx context.Context, filter TransactionFilter) ([]domain.Transaction, error) {
 	var (

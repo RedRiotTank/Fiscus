@@ -45,6 +45,8 @@ type Store interface {
 	SpendingByCategory(ctx context.Context, from, to time.Time) ([]storage.CategorySpending, error)
 	SpendingByCategoryForAccounts(ctx context.Context, from, to time.Time, accountIDs []string) ([]storage.CategorySpending, error)
 	ListTransactionsBetween(ctx context.Context, from, to time.Time) ([]domain.Transaction, error)
+	UpdateTransactionNotes(ctx context.Context, id int64, notes string) error
+	SetAccountType(ctx context.Context, accountID, accountType string) error
 	Recategorize(ctx context.Context, classify func(domain.Transaction) string, apply bool) (storage.RecategorizeResult, error)
 	Ping(ctx context.Context) error
 	SchemaVersion(ctx context.Context) (int, error)
@@ -212,6 +214,8 @@ func (s *Server) routes() http.Handler {
 	app.HandleFunc("POST /attachments/{id}/pair", s.handleAttachmentPair)
 	app.HandleFunc("GET /attachments/{id}", s.handleAttachmentDownload)
 	app.HandleFunc("GET /api/attachments/unpaired", s.handleUnpairedAttachments)
+	app.HandleFunc("PATCH /api/transactions/{id}/notes", s.handleTransactionNotes)
+	app.HandleFunc("POST /api/accounts/{id}/type", s.handleAccountType)
 	app.HandleFunc("GET /subscriptions", s.handleSubscriptions)
 	app.HandleFunc("GET /alerts", s.handleAlerts)
 	app.HandleFunc("GET /connections", s.handleConnections)
@@ -405,6 +409,10 @@ func (s *Server) render(w http.ResponseWriter, page string, data PageData) {
 }
 
 func (s *Server) renderPartial(w http.ResponseWriter, name string, data PageData) {
+	s.renderPartialData(w, name, data)
+}
+
+func (s *Server) renderPartialData(w http.ResponseWriter, name string, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	if err := s.partials.ExecuteTemplate(w, name, data); err != nil {
