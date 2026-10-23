@@ -193,6 +193,9 @@ type Reconciliation struct {
 	Status              string
 	DiscrepancyStart    *time.Time
 	DiscrepancyEnd      *time.Time
+	// BaselineEstablished is set after the first reconciliation pass that saw
+	// booked transaction history. The next pass may then raise discrepancies.
+	BaselineEstablished bool
 	UpdatedAt           time.Time
 }
 

@@ -299,7 +299,7 @@ func TestWorkerSyncPersistsAndEvaluates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetAccount: %v", err)
 	}
-	if account.BalanceMinor != 25050 || account.BalanceType != "interimAvailable" {
+	if account.BalanceMinor != 10000 || account.BalanceType != "closingBooked" {
 		t.Fatalf("balance = %d %q", account.BalanceMinor, account.BalanceType)
 	}
 	if account.Name != "Everyday" || account.Currency != "EUR" {
@@ -738,7 +738,7 @@ func TestSelectBalance(t *testing.T) {
 		{BalanceType: "expected", BalanceAmount: gocardless.Amount{Value: "3.00"}},
 	}
 	b, ok := selectBalance(balances)
-	if !ok || b.BalanceType != "interimAvailable" {
+	if !ok || b.BalanceType != "closingBooked" {
 		t.Fatalf("selected %+v ok=%v", b, ok)
 	}
 	b, ok = selectBalance([]gocardless.Balance{{BalanceType: "custom", BalanceAmount: gocardless.Amount{Value: "9.00"}}})

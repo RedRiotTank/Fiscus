@@ -734,13 +734,15 @@ func (w *Worker) evaluateReconciliation(ctx context.Context, account domain.Acco
 	return nil
 }
 
-// selectBalance prefers balances that represent spendable funds. GoCardless
-// commonly returns both interimAvailable and closingBooked.
+// selectBalance prefers booked closing balances because reconciliation compares
+// the official balance with the booked transaction ledger. GoCardless commonly
+// returns both closingBooked and interimAvailable; only fall back to available
+// balances when no booked balance is exposed.
 func selectBalance(balances []gocardless.Balance) (gocardless.Balance, bool) {
 	preference := []string{
+		"closingBooked", "interimBooked", "openingBooked",
 		"interimAvailable", "closingAvailable", "expected", "forwardAvailable",
-		"interimBooked", "closingBooked", "openingAvailable", "openingBooked",
-		"authorised", "available",
+		"openingAvailable", "authorised", "available",
 	}
 	for _, wanted := range preference {
 		for _, b := range balances {
