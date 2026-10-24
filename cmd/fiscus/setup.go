@@ -474,7 +474,7 @@ func buildWorker(cfg *config.Config, store *storage.Store, engine *alerts.Engine
 	return worker, nil
 }
 
-func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger, logger *slog.Logger, metrics *observability.Metrics, authHandler web.AuthorizationCallback, attachmentService *attachments.Service, taxService *tax.Service, searchService *search.Service, budgetManager *budgets.Manager) (*web.Server, error) {
+func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger, logger *slog.Logger, metrics *observability.Metrics, authHandler web.AuthorizationCallback, attachmentService *attachments.Service, taxService *tax.Service, searchService *search.Service, budgetPlanner *budgets.Planner) (*web.Server, error) {
 	classifier, err := buildCategoryClassifier(cfg)
 	if err != nil {
 		return nil, err
@@ -489,8 +489,7 @@ func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger,
 		MetricsHandler: metrics.Handler(),
 		AuthHandler:    authHandler,
 		Classifier:     classifier,
-		Budgets:        configuredBudgets(cfg),
-		BudgetManager:  budgetManager,
+		BudgetPlanner:  budgetPlanner,
 		BudgetAdvisory: configuredBudgetAdvisory(cfg),
 		IconOverrides:  cfg.Subscriptions.IconOverrides,
 		Attachments:    attachmentService,

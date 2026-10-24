@@ -130,8 +130,8 @@ func runDemoMode(opts demoOptions) error {
 		return fmt.Errorf("demo: tax service: %w", err)
 	}
 	metrics := observability.New(version)
-	budgetManager := budgets.NewManager(store, configuredBudgets(cfg), configuredBudgetAdvisory(cfg), nil)
-	server, err := newWebServer(cfg, store, nil, logger, metrics, nil, attachmentService, taxService, search.New(store), budgetManager)
+	budgetPlanner := budgets.NewPlanner(store, nil)
+	server, err := newWebServer(cfg, store, nil, logger, metrics, nil, attachmentService, taxService, search.New(store), budgetPlanner)
 	if err != nil {
 		return fmt.Errorf("demo: web server: %w", err)
 	}
@@ -218,16 +218,22 @@ func demoConfig(address, databasePath, attachmentsDir string) *config.Config {
 
 func demoBudgets() []config.BudgetConfig {
 	return []config.BudgetConfig{
-		{Category: "Restaurants", Limit: 45_000, Currency: "EUR", NotifyAtPercent: []int{80, 100}},
-		{Category: "Groceries", Limit: 24_000, Currency: "EUR", NotifyAtPercent: []int{80, 100}},
+		{Category: "Rent", Limit: 85_000, Currency: "EUR", NotifyAtPercent: []int{80, 100}},
+		{Category: "Groceries", Limit: 35_000, Currency: "EUR", NotifyAtPercent: []int{80, 100}},
+		{Category: "Utilities & Telecom", Limit: 20_000, Currency: "EUR", NotifyAtPercent: []int{80, 100}},
+		{Category: "Restaurants & Delivery", Limit: 30_000, Currency: "EUR", NotifyAtPercent: []int{80, 100}},
+		{Category: "Subscriptions", Limit: 9_000, Currency: "EUR", NotifyAtPercent: []int{80, 100}},
+		{Category: "Leisure & Shopping", Limit: 45_000, Currency: "EUR", NotifyAtPercent: []int{80, 100}},
+		{Category: "Emergency Fund", Limit: 30_000, Currency: "EUR", NotifyAtPercent: []int{80, 100}},
+		{Category: "Investments", Limit: 26_000, Currency: "EUR", NotifyAtPercent: []int{80, 100}},
 	}
 }
 
 func demoRules() []config.CategoryRule {
 	return []config.CategoryRule{
 		{Category: "Groceries", Pattern: "(?i)mercadona|carrefour|lidl"},
-		{Category: "Utilities", Pattern: "(?i)iberdrola|endesa|vodafone"},
-		{Category: "Restaurants", Pattern: "(?i)taberna|sushi|café central|pizzería"},
+		{Category: "Utilities & Telecom", Pattern: "(?i)iberdrola|endesa|vodafone"},
+		{Category: "Restaurants & Delivery", Pattern: "(?i)taberna|sushi|café central|pizzería"},
 		{Category: "Subscriptions", Pattern: "(?i)netflix|spotify|adobe|figma|github|namecheap"},
 		{Category: "Software", Pattern: "(?i)aws|stripe|cloudflare|apple|jetbrains"},
 		{Category: "Payroll", Pattern: "(?i)payroll|nómina|acme studio"},

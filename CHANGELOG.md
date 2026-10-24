@@ -3,6 +3,68 @@
 All notable changes to Fiscus are documented here. Versions use semantic
 versioning and annotated Git tags.
 
+## v1.4.0 - 2026-10-25
+
+Income-driven budget allocation and deep advisory release.
+
+### Added
+
+- Income-driven allocation engine:
+  - Monthly budget baseline from confirmed recurring net inflows. Personal uses
+    net income; Business uses operating revenue with a planned tax reserve.
+  - Needs, Wants, and Savings & Investment pillars with configurable target
+    percentages.
+  - Category allocations expressed as percentages of monthly income and
+    converted to category caps.
+  - Deep normative sub-caps for housing, groceries, utilities/telecom, dining,
+    lifestyle spending, and savings.
+  - Contextual warning and positive-reinforcement messages.
+  - Overallocated, unallocated, and over-target pillar detection.
+- Unified Budgets page:
+  - Removed the separate Budget Advisor card and destructive “Apply Recommended
+    Budgets” action.
+  - Added a total monthly income/operating revenue banner.
+  - Added an Advisory Active/Paused toggle persisted per workspace.
+  - Added a Customize Allocation drawer for pillar targets, category
+    assignments, category percentages, and custom category creation/deletion.
+  - Added Needs, Wants, and Savings pillar cards with target vs allocated
+    amounts, actual spend, progress bars, and health badges.
+  - Dual-ring donut now shows planned income allocation plus unallocated buffer,
+    with actual spending on the inner ring.
+- Workspace isolation:
+  - Personal and Business allocation profiles and categories are completely
+    separate.
+  - The All-workspaces view asks the operator to choose Personal or Business
+    instead of mixing categories.
+  - Empty workspaces render a clean “No budget configured” setup card and never
+    draw a 0% donut.
+- Persistence:
+  - Added SQLite `budget_profiles` and `budget_allocations` tables.
+  - Latest schema version is 13.
+- Demo overhaul:
+  - Personal income baseline €2,800 with Rent €850, Groceries €350,
+    Utilities €200, Restaurants €300, Subscriptions €90, Leisure & Shopping
+    €450, Emergency Fund €300, and Investments €260.
+  - Business operating revenue €5,500 with Tax Reserve €1,155, Software & Cloud
+    €450, Gestoría / Legal €200, and Office & Equipment €300.
+  - Personal and business dashboards now use completely distinct categories.
+
+### Changed
+
+- Subscription detection excludes savings, investments, transfers, tax reserve,
+  office/equipment, and leisure/shopping budget categories.
+- README and configuration examples document income-driven allocations and the
+  new customization endpoints.
+
+### Verification
+
+- `go test -v -race ./...`
+- `golangci-lint run ./...`
+- `CGO_ENABLED=0 go build -v ./cmd/fiscus`
+- Demo screenshots verified Personal, Business, and All-workspace budget views,
+  including the customized donut, workspace isolation, empty state, and advisory
+  messages.
+
 ## v1.3.3 - 2026-10-25
 
 Visual polish, budget visualization, and transaction ergonomics release.

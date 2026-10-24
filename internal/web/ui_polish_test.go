@@ -1,12 +1,14 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/RedRiotTank/Fiscus/internal/budgets"
+	"github.com/RedRiotTank/Fiscus/internal/domain"
 )
 
 func TestCategoryStylesAreDeterministic(t *testing.T) {
@@ -34,26 +36,23 @@ func TestCategoryStylesAreDeterministic(t *testing.T) {
 	if categoryColor("Groceries") != "#34d399" {
 		t.Fatalf("groceries color = %q", categoryColor("Groceries"))
 	}
+	if categoryColor("Emergency Fund") == categoryColor("Investments") {
+		t.Fatal("savings categories should have distinct chart colors")
+	}
 }
 
 func TestBuildBudgetDonut(t *testing.T) {
 	t.Parallel()
-	view := buildBudgetDonut([]budgets.Status{
-		{Category: "Restaurants", Currency: "EUR", LimitMinor: 45_000, SpentMinor: 45_522},
-		{Category: "Groceries", Currency: "EUR", LimitMinor: 24_000, SpentMinor: 21_756},
-		{Category: "Travel", Currency: "USD", LimitMinor: 10_000, SpentMinor: 2_000},
-	})
+	plan := budgets.Plan{
+		Currency: "EUR", BaselineMinor: 280_000,
+		Categories: []budgets.CategoryPlan{
+			{Category: "Restaurants", LimitMinor: 45_000, SpentMinor: 45_522},
+			{Category: "Groceries", LimitMinor: 24_000, SpentMinor: 21_756},
+		},
+	}
+	view := buildBudgetDonut(plan)
 	if view == nil {
 		t.Fatal("expected donut view")
-	}
-	if view.Currency != "EUR" || view.TotalBudgetMinor != 69_000 || view.TotalSpentMinor != 67_278 {
-		t.Fatalf("donut totals = %+v", view)
-	}
-	if view.Percent != 98 || len(view.Slices) != 2 {
-		t.Fatalf("donut summary = %+v", view)
-	}
-	if !view.Slices[0].Over || view.Slices[0].Percent != 101 {
-		t.Fatalf("restaurants slice = %+v", view.Slices[0])
 	}
 	var payload budgetDonutPayload
 	if err := json.Unmarshal([]byte(view.Data), &payload); err != nil {
@@ -63,12 +62,41 @@ func TestBuildBudgetDonut(t *testing.T) {
 		payload.Labels[0] != "Restaurants" || payload.Colors[0] != "#a78bfa" {
 		t.Fatalf("donut payload = %+v", payload)
 	}
+	plan.UnallocatedMinor = 100_000
+	view = buildBudgetDonut(plan)
+	if view == nil {
+		t.Fatal("expected donut view with unallocated buffer")
+	}
+	if err := json.Unmarshal([]byte(view.Data), &payload); err != nil {
+		t.Fatalf("decode donut payload: %v", err)
+	}
+	if len(payload.Labels) != 3 || payload.Labels[2] != "Unallocated" || payload.Colors[2] != "#475569" {
+		t.Fatalf("unallocated payload = %+v", payload)
+	}
 }
 
-func TestBudgetsPageRendersDonut(t *testing.T) {
+func seedPersonalBudgetPlan(t *testing.T, f *webFixture) {
+	t.Helper()
+	f.server.budgetPlanner = budgets.NewPlanner(f.store, f.server.now)
+	now := f.server.now().UTC()
+	err := f.store.SaveBudgetPlan(context.Background(), domain.BudgetProfile{
+		Workspace: domain.WorkspacePersonal, Currency: "EUR",
+		NeedsBPS: 5000, WantsBPS: 3000, SavingsBPS: 2000,
+		AdvisoryEnabled: true, UpdatedAt: now,
+	}, []domain.BudgetAllocation{
+		{Workspace: domain.WorkspacePersonal, Currency: "EUR", Category: "Dining", Pillar: "wants",
+			PercentBPS: 1000, NotifyAtPercent: []int{80, 100}, SortOrder: 0, UpdatedAt: now},
+	})
+	if err != nil {
+		t.Fatalf("SaveBudgetPlan: %v", err)
+	}
+}
+
+func TestBudgetsPageRendersIncomeDrivenPlan(t *testing.T) {
 	t.Parallel()
 	f := newWebFixture(t)
-	page := f.request(t, http.MethodGet, "/budgets", true, nil)
+	seedPersonalBudgetPlan(t, f)
+	page := f.request(t, http.MethodGet, "/budgets?workspace=personal", true, nil)
 	if page.Code != http.StatusOK {
 		t.Fatalf("budgets status = %d", page.Code)
 	}
@@ -77,9 +105,13 @@ func TestBudgetsPageRendersDonut(t *testing.T) {
 		`id="budget-donut"`,
 		`data-budget-donut=`,
 		`budget-donut-center`,
-		`Planned budget`,
-		`Month-to-date spent`,
+		`Advisory Active`,
+		`Customize Allocation`,
+		`Needs`,
+		`Wants`,
+		`Savings`,
 		`/static/budget-donut.js`,
+		`/static/budget-customize.js`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("budgets page missing %q", want)

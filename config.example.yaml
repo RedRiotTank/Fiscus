@@ -146,6 +146,9 @@ logging:
 # (for example 30000 = 300.00 EUR). Currency defaults to EUR. When consumption
 # crosses a threshold, an alert is emitted at most once per threshold, category,
 # and calendar month; 100% always produces a critical alert.
+# The income-driven Budgets page is managed from the UI and stored in SQLite
+# (budget_profiles + budget_allocations). The YAML items/advisory block below is
+# retained for legacy budget-pacing alerts and CLI workflows.
 budgets:
   items:
     - category: "Restaurants"

@@ -276,8 +276,10 @@ func isSubscriptionCategory(category string) bool {
 	}
 	switch category {
 	case "uncategorized", "groceries", "restaurants", "dining", "shopping",
-		"rent", "housing", "transfer", "transfers", "bank fees", "payroll",
-		"meals", "travel", "hardware", "office", "taxes", "tax":
+		"leisure & shopping", "rent", "housing", "transfer", "transfers",
+		"emergency fund", "savings", "saving", "investments", "investment",
+		"bank fees", "payroll", "meals", "travel", "hardware", "office",
+		"office & equipment", "tax reserve", "taxes", "tax":
 		return false
 	default:
 		return true

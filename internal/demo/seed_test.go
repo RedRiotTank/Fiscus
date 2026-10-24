@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -59,14 +60,14 @@ func TestSeedPopulatesCoherentDataset(t *testing.T) {
 	if len(dataset.Alerts) < 6 || len(dataset.Attachments) != 4 {
 		t.Fatalf("alerts/attachments = %d/%d", len(dataset.Alerts), len(dataset.Attachments))
 	}
-	if dataset.CurrentMonthSpend["Restaurants"] <= 0 || dataset.CurrentMonthSpend["Groceries"] <= 0 {
+	if dataset.CurrentMonthSpend["Restaurants & Delivery"] <= 0 || dataset.CurrentMonthSpend["Groceries"] <= 0 {
 		t.Fatalf("current month spend = %+v", dataset.CurrentMonthSpend)
 	}
 
 	wantBalances := map[string]int64{
 		accountSantander: 345_000,
 		accountSavings:   1_250_000,
-		accountBusiness:  885_000,
+		accountBusiness:  3_000_000,
 		accountWiseUSD:   125_000,
 		accountWiseGBP:   80_000,
 	}
@@ -204,7 +205,7 @@ func TestSeedPopulatesCoherentDataset(t *testing.T) {
 	}
 }
 
-func TestDemoBudgetAdvisorySignals(t *testing.T) {
+func TestDemoBudgetPlans(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	store, err := storage.Open(ctx, filepath.Join(t.TempDir(), "demo.db"))
@@ -220,42 +221,97 @@ func TestDemoBudgetAdvisorySignals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Seed: %v", err)
 	}
-	personal := make([]domain.Transaction, 0, len(dataset.Transactions))
-	for _, tx := range dataset.Transactions {
-		if tx.AccountID == accountSantander || tx.AccountID == accountSavings {
-			personal = append(personal, tx)
-		}
+
+	personalProfile, ok, err := store.GetBudgetProfile(ctx, domain.WorkspacePersonal, "EUR")
+	if err != nil || !ok {
+		t.Fatalf("personal profile = ok=%v err=%v", ok, err)
 	}
-	advisories := budgets.ComputeAdvisory(personal, []budgets.Budget{
-		{Category: "Restaurants", LimitMinor: 45_000, Currency: "EUR", NotifyAtPercent: []int{80, 100}},
-		{Category: "Groceries", LimitMinor: 24_000, Currency: "EUR", NotifyAtPercent: []int{80, 100}},
-	}, budgets.AdvisoryConfig{
-		Enabled: true, Model: budgets.AdvisoryModelHybrid,
-		NeedsPercent: 50, WantsPercent: 30, SavingsPercent: 20,
-		HeuristicWindowMonths: 6, OverbudgetWarningThreshold: 0.15, UnderbudgetNoticeThreshold: 0.30,
-	}, nil, now)
-	if len(advisories) != 1 {
-		t.Fatalf("advisories = %+v", advisories)
+	if personalProfile.NeedsBPS != 5000 || personalProfile.WantsBPS != 3000 || personalProfile.SavingsBPS != 2000 {
+		t.Fatalf("personal profile = %+v", personalProfile)
 	}
-	advisory := advisories[0]
-	if advisory.MonthlyNetIncomeMinor < 280_000 || advisory.MonthlyNetIncomeMinor > 281_000 {
-		t.Fatalf("demo income = %+v", advisory)
+	personalAllocations, err := store.ListBudgetAllocations(ctx, domain.WorkspacePersonal, "EUR")
+	if err != nil {
+		t.Fatalf("personal allocations: %v", err)
 	}
-	if advisory.UnallocatedWantsMinor < 17_000 || advisory.UnallocatedWantsMinor > 19_000 {
-		t.Fatalf("demo wants surplus = %d", advisory.UnallocatedWantsMinor)
+	if len(personalAllocations) != 8 {
+		t.Fatalf("personal allocations = %+v", personalAllocations)
 	}
-	byCategory := make(map[string]budgets.CategoryAdvisory, len(advisory.Categories))
-	for _, category := range advisory.Categories {
+	personalPlan := budgets.BuildPlan(budgets.Profile{
+		Workspace: domain.WorkspacePersonal, Currency: "EUR",
+		NeedsBPS: personalProfile.NeedsBPS, WantsBPS: personalProfile.WantsBPS,
+		SavingsBPS: personalProfile.SavingsBPS, AdvisoryEnabled: true,
+	}, convertAllocations(personalAllocations), demoSpending(dataset.CurrentMonthSpend), 280_000, 0, 280_000, now)
+	if personalPlan.AllocatedBPS != 10000 || personalPlan.AllocatedMinor != 280_000 ||
+		personalPlan.UnallocatedMinor != 0 || len(personalPlan.Categories) != 8 {
+		t.Fatalf("personal plan = %+v", personalPlan)
+	}
+	byCategory := make(map[string]budgets.CategoryPlan, len(personalPlan.Categories))
+	for _, category := range personalPlan.Categories {
 		byCategory[category.Category] = category
 	}
-	restaurants := byCategory["Restaurants"]
-	if restaurants.Status != budgets.StatusOverAllocated || restaurants.RecommendedMinor < 27_000 ||
-		restaurants.RecommendedMinor > 29_000 || restaurants.DeviationPercent < 55 {
-		t.Fatalf("restaurants advisory = %+v", restaurants)
+	if byCategory["Rent"].LimitMinor != 85_000 || byCategory["Groceries"].LimitMinor != 35_000 ||
+		byCategory["Restaurants & Delivery"].LimitMinor != 30_000 {
+		t.Fatalf("personal category limits = %+v", byCategory)
 	}
-	if groceries := byCategory["Groceries"]; groceries.Status != budgets.StatusBalanced {
-		t.Fatalf("groceries advisory = %+v", groceries)
+	if !hasBudgetMessage(personalPlan.Messages, "Dining Out & Delivery") {
+		t.Fatalf("expected dining advisory, got %+v", personalPlan.Messages)
 	}
+
+	businessProfile, ok, err := store.GetBudgetProfile(ctx, domain.WorkspaceBusiness, "EUR")
+	if err != nil || !ok {
+		t.Fatalf("business profile = ok=%v err=%v", ok, err)
+	}
+	if businessProfile.NeedsBPS != 1727 || businessProfile.SavingsBPS != 2100 {
+		t.Fatalf("business profile = %+v", businessProfile)
+	}
+	businessAllocations, err := store.ListBudgetAllocations(ctx, domain.WorkspaceBusiness, "EUR")
+	if err != nil {
+		t.Fatalf("business allocations: %v", err)
+	}
+	businessPlan := budgets.BuildPlan(budgets.Profile{
+		Workspace: domain.WorkspaceBusiness, Currency: "EUR",
+		NeedsBPS: businessProfile.NeedsBPS, WantsBPS: businessProfile.WantsBPS,
+		SavingsBPS: businessProfile.SavingsBPS, AdvisoryEnabled: true,
+	}, convertAllocations(businessAllocations), demoSpending(dataset.CurrentMonthSpend), 550_000, 115_500, 434_500, now)
+	if businessPlan.AllocatedBPS != 3827 || businessPlan.AllocatedMinor != 210_500 ||
+		businessPlan.UnallocatedMinor != 339_500 || len(businessPlan.Categories) != 4 {
+		t.Fatalf("business plan = %+v", businessPlan)
+	}
+	for _, category := range businessPlan.Categories {
+		switch category.Category {
+		case "Groceries", "Restaurants & Delivery", "Leisure & Shopping", "Rent":
+			t.Fatalf("personal category leaked into business plan: %+v", category)
+		}
+	}
+}
+
+func convertAllocations(items []domain.BudgetAllocation) []budgets.Allocation {
+	out := make([]budgets.Allocation, 0, len(items))
+	for _, item := range items {
+		out = append(out, budgets.Allocation{
+			Category: item.Category, Pillar: budgets.Pillar(item.Pillar),
+			PercentBPS: item.PercentBPS, NotifyAtPercent: item.NotifyAtPercent,
+			SortOrder: item.SortOrder, Custom: item.Custom,
+		})
+	}
+	return out
+}
+
+func demoSpending(spend map[string]int64) []storage.CategorySpending {
+	out := make([]storage.CategorySpending, 0, len(spend))
+	for category, minor := range spend {
+		out = append(out, storage.CategorySpending{Category: category, Currency: "EUR", Minor: minor})
+	}
+	return out
+}
+
+func hasBudgetMessage(messages []budgets.AdvisoryMessage, needle string) bool {
+	for _, message := range messages {
+		if strings.Contains(message.Title, needle) || strings.Contains(message.Body, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func countUnpaired(items []domain.Attachment) int {

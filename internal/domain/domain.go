@@ -242,3 +242,29 @@ type Alert struct {
 func (a Alert) Delivered() bool {
 	return a.DeliveredAt != nil
 }
+
+// BudgetProfile stores the income-allocation targets for one workspace and
+// currency. Percentages use basis points (10000 = 100%).
+type BudgetProfile struct {
+	Workspace       string
+	Currency        string
+	NeedsBPS        int
+	WantsBPS        int
+	SavingsBPS      int
+	AdvisoryEnabled bool
+	UpdatedAt       time.Time
+}
+
+// BudgetAllocation assigns a category to a pillar and expresses its planned
+// share of net monthly income in basis points.
+type BudgetAllocation struct {
+	Workspace       string
+	Currency        string
+	Category        string
+	Pillar          string
+	PercentBPS      int
+	NotifyAtPercent []int
+	SortOrder       int
+	Custom          bool
+	UpdatedAt       time.Time
+}

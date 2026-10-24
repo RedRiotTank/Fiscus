@@ -44,14 +44,15 @@ func TestRunDemoDryRunSeedsDatabase(t *testing.T) {
 func TestDemoBudgets(t *testing.T) {
 	t.Parallel()
 	configs := demoBudgets()
-	if len(configs) != 2 {
+	if len(configs) != 8 {
 		t.Fatalf("budgets = %+v", configs)
 	}
 	byCategory := make(map[string]int64, len(configs))
 	for _, item := range configs {
 		byCategory[item.Category] = item.Limit
 	}
-	if byCategory["Restaurants"] != 45_000 || byCategory["Groceries"] != 24_000 {
+	if byCategory["Rent"] != 85_000 || byCategory["Groceries"] != 35_000 ||
+		byCategory["Restaurants & Delivery"] != 30_000 || byCategory["Investments"] != 26_000 {
 		t.Fatalf("demo budgets = %+v", byCategory)
 	}
 }

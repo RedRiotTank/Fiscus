@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	"github.com/RedRiotTank/Fiscus/internal/attachments"
+	"github.com/RedRiotTank/Fiscus/internal/budgets"
 	"github.com/RedRiotTank/Fiscus/internal/config"
 	"github.com/RedRiotTank/Fiscus/internal/observability"
 	"github.com/RedRiotTank/Fiscus/internal/reconciliation"
@@ -23,7 +24,7 @@ import (
 )
 
 var (
-	version = "v1.3.3"
+	version = "v1.4.0"
 	commit  = "none"
 	date    = "unknown"
 )
@@ -191,6 +192,7 @@ func runServe(args []string, stdout, stderr io.Writer) error {
 	}
 	searchService := search.New(store)
 	budgetManager := buildBudgetManager(cfg, store)
+	budgetPlanner := budgets.NewPlanner(store, nil)
 
 	metrics := observability.New(version)
 	sink, err := buildEventSink(cfg, logger)
@@ -253,7 +255,7 @@ func runServe(args []string, stdout, stderr io.Writer) error {
 	if worker != nil {
 		trigger = worker
 	}
-	server, err := newWebServer(cfg, store, trigger, logger, metrics, authHandler, attachmentService, taxService, searchService, budgetManager)
+	server, err := newWebServer(cfg, store, trigger, logger, metrics, authHandler, attachmentService, taxService, searchService, budgetPlanner)
 	if err != nil {
 		return err
 	}

@@ -30,9 +30,10 @@ Telegram, Discord, webhooks, and scheduled backups are disabled in demo mode.
 The seeded dataset includes personal and business accounts, subscriptions with a
 price increase and a dormant Adobe subscription, payroll and client invoices,
 groceries, utilities, restaurants, internal transfers, uncategorized merchants,
-paired and unpaired receipts, budget advisory signals, tax shields,
-reconciliation history, and alert history. Use `fiscus demo --dry-run` to seed
-and inspect without starting the server, or `fiscus demo --dir ./demo-data` to
+paired and unpaired receipts, personal and business income-driven budget plans,
+tax shields, reconciliation history, and alert history. Use
+`fiscus demo --dry-run` to seed and inspect without starting the server, or
+`fiscus demo --dir ./demo-data` to
 keep the demo database and attachments on disk. `fiscus serve --demo` starts the
 same environment using the normal serve entrypoint.
 
@@ -46,8 +47,8 @@ same environment using the normal serve entrypoint.
   and dormant (“ghost”) subscriptions
 - Regex-based transaction categorization, retroactive rule re-evaluation, and
   YAML rule suggestions for frequent Uncategorized counterparties
-- Monthly category budgets with threshold pacing alerts, dashboard progress
-  bars, and a 50/30/20 + historical budget advisory engine
+- Income-driven 50/30/20 budget allocation with deep sub-caps, workspace
+  isolation, a dual-ring budget donut, and configurable category assignments
 - Recurring subscription and bank-fee detection with Inactive / Potential Ghost
   marking when a charge goes quiet, plus embedded official brand icons
 - Operational burn rate, runway, and internal-transfer-aware accounting exports
@@ -338,20 +339,36 @@ changing that slider updates both projections and simulated scenarios.
 
 ## Budgets and expected inflows
 
-Monthly category budgets use integer minor units. Currency defaults to EUR. The
-overview dashboard and the dedicated **Budgets** page show month-to-date
-consumption and a progress bar for each budget; the bar turns warning or
-critical as thresholds are crossed. The budgets panel also renders a dual-ring
-Chart.js donut: the outer ring is the planned category allocation and the inner
-ring is month-to-date spending, with overspent slices highlighted in amber or
-red.
+Budgets are **income-driven allocations**, not arbitrary spending caps. Fiscus
+derives a monthly baseline from confirmed recurring net inflows and asks you to
+allocate that baseline across **Needs**, **Wants**, and **Savings & Investment**.
+In Business workspace the baseline is operating revenue, with a planned tax
+reserve included in the allocation.
 
-The **Budget Advisor** adds proactive 50/30/20 and historical-heuristic
-guidance. It estimates monthly net operational income from confirmed booked
-credits, excludes internal transfers and loans, and deducts estimated tax
-provisions in business and hybrid profiles. It then classifies spending into
-Needs, Wants, and Savings buckets, recommends category ceilings, warns about
-over-allocation, and highlights surplus that could be redirected to savings.
+The dedicated **Budgets** page is the single unified budget view. It includes:
+
+- A dual-ring Chart.js donut: the outer ring is the planned category allocation
+  and the inner ring is actual month-to-date spending.
+- A center metric showing the percentage of income allocated and any remaining
+  unallocated buffer.
+- Needs, Wants, and Savings pillar cards with target percentages, allocated
+  amounts, actual spending, progress bars, and health badges.
+- A prominent **Advisory Active** toggle with deep sub-cap checks for housing,
+  groceries, utilities, dining, lifestyle spending, and savings rate.
+- A **Customize Allocation** drawer for editing pillar targets, category
+  percentages, pillar assignments, and custom categories.
+- Strict workspace isolation. Personal and Business have separate income
+  baselines, categories, profiles, and advisory settings. The All-workspaces
+  view asks you to choose one; it never mixes personal and business budgets.
+
+The default personal profile is 50/30/20. Category shares are entered as
+percentages of monthly income and are persisted in SQLite (`budget_profiles` and
+`budget_allocations`, schema version 13). There is no destructive “apply
+recommended budgets” action; changes happen only through the allocation editor.
+
+The YAML `budgets.items` block remains supported for legacy budget-pacing alerts
+and CLI tooling, but the income-driven Budgets page is managed from the UI and
+SQLite allocation tables:
 
 ```yaml
 budgets:
@@ -360,48 +377,18 @@ budgets:
       limit: 45000          # 450.00 EUR
       currency: "EUR"
       notify_at_percent: [80, 100]
-    - category: "Groceries"
-      limit: 24000          # 240.00 EUR
-      currency: "EUR"
-      notify_at_percent: [80, 100]
   advisory:
     enabled: true
-    model: "hybrid"         # normative, heuristic, or hybrid
-    normative_split:
-      needs_percent: 50
-      wants_percent: 30
-      savings_percent: 20
     heuristic_window_months: 6
-    overbudget_warning_threshold: 0.15
-    underbudget_notice_threshold: 0.30
 ```
 
-The legacy plain-list form remains supported for existing configurations:
-
-```yaml
-budgets:
-  - category: "Restaurants"
-    limit: 30000
-    currency: "EUR"
-    notify_at_percent: [80, 100]
-```
-
-Recommended budgets can be adopted from the UI or CLI and are persisted in
-SQLite. The advisor can be paused from the UI without editing YAML.
-
-```sh
-fiscus budgets recommend
-fiscus budgets recommend --model=normative
-fiscus budgets recommend --apply
-```
-
-The same data is available as authenticated JSON:
+Budget editor and advisory endpoints:
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /api/budgets/advisory` | Current 50/30/20 capacities, category recommendations, and deviation statuses |
-| `POST /api/budgets/advisory/apply` | Apply recommendations to existing category caps |
-| `POST /api/budgets/advisory/toggle` | Pause or resume advisory calculations |
+| `GET /api/budgets/customize` | Load the allocation editor for one workspace/currency |
+| `POST /api/budgets/customize` | Persist pillar targets, category assignments, and custom categories |
+| `POST /api/budgets/advisory/toggle` | Pause or resume advisory checks for one workspace |
 
 `notify_at_percent` is optional. The 100% threshold is always included and is
 critical. Fiscus reports the highest newly crossed threshold in each evaluation,
