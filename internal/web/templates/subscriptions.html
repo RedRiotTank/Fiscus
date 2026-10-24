@@ -47,7 +47,7 @@
             <div class="subscription-card-head">
               {{$icon := brandIcon .Counterparty}}
               {{if $icon}}
-                <span class="service-avatar service-brand" aria-hidden="true"><img src="{{$icon}}" alt="" width="44" height="44" loading="lazy" decoding="async"></span>
+                <span class="service-avatar service-brand" aria-hidden="true"><img src="{{$icon}}" alt="" width="44" height="44"></span>
               {{else}}
                 <span class="service-avatar {{serviceClass .Counterparty}}" aria-hidden="true">{{serviceInitials .Counterparty}}</span>
               {{end}}
@@ -92,7 +92,7 @@
             <div class="subscription-card-head">
               {{$icon := brandIcon .Counterparty}}
               {{if $icon}}
-                <span class="service-avatar service-brand" aria-hidden="true"><img src="{{$icon}}" alt="" width="44" height="44" loading="lazy" decoding="async"></span>
+                <span class="service-avatar service-brand" aria-hidden="true"><img src="{{$icon}}" alt="" width="44" height="44"></span>
               {{else}}
                 <span class="service-avatar {{serviceClass .Counterparty}}" aria-hidden="true">{{serviceInitials .Counterparty}}</span>
               {{end}}

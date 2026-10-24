@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"io/fs"
 	"net/http"
 	"strings"
 	"testing"
@@ -72,18 +73,26 @@ func TestSubscriptionsPageRendersBrandIcon(t *testing.T) {
 	t.Parallel()
 	f := newWebFixture(t)
 	ctx := context.Background()
-	for i, date := range []time.Time{
-		time.Date(2026, 1, 20, 10, 0, 0, 0, time.UTC),
-		time.Date(2026, 2, 20, 10, 0, 0, 0, time.UTC),
+	for _, merchant := range []struct {
+		name   string
+		amount int64
+	}{
+		{name: "Spotify AB", amount: -1_099},
+		{name: "Bookkeeping Co", amount: -5_000},
 	} {
-		tx := domain.Transaction{
-			AccountID: "acc-1", ExternalID: "spotify-" + date.Format("200601"),
-			AmountMinor: -1_099, Currency: "EUR", BookingDate: date,
-			Counterparty: "Spotify AB", Description: "Spotify Premium",
-			Category: "Subscriptions", Status: domain.TransactionStatusBooked,
-		}
-		if _, _, err := f.store.UpsertTransaction(ctx, &tx); err != nil {
-			t.Fatalf("UpsertTransaction %d: %v", i, err)
+		for _, date := range []time.Time{
+			time.Date(2026, 1, 20, 10, 0, 0, 0, time.UTC),
+			time.Date(2026, 2, 20, 10, 0, 0, 0, time.UTC),
+		} {
+			tx := domain.Transaction{
+				AccountID: "acc-1", ExternalID: merchant.name + "-" + date.Format("200601"),
+				AmountMinor: merchant.amount, Currency: "EUR", BookingDate: date,
+				Counterparty: merchant.name, Description: merchant.name + " subscription",
+				Category: "Subscriptions", Status: domain.TransactionStatusBooked,
+			}
+			if _, _, err := f.store.UpsertTransaction(ctx, &tx); err != nil {
+				t.Fatalf("UpsertTransaction %s: %v", merchant.name, err)
+			}
 		}
 	}
 	page := f.request(t, http.MethodGet, "/subscriptions", true, nil)
@@ -95,6 +104,9 @@ func TestSubscriptionsPageRendersBrandIcon(t *testing.T) {
 		"Spotify AB",
 		"/static/icons/brands/spotify.svg",
 		"service-avatar service-brand",
+		"Bookkeeping Co",
+		"service-avatar service-default",
+		`aria-hidden="true">BC</span>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("subscriptions page missing %q", want)
@@ -102,5 +114,53 @@ func TestSubscriptionsPageRendersBrandIcon(t *testing.T) {
 	}
 	if strings.Contains(body, `aria-hidden="true">S</span>`) {
 		t.Error("Spotify still rendered an initials avatar")
+	}
+}
+
+func TestBrandIconWrapperIsTransparent(t *testing.T) {
+	t.Parallel()
+	css, err := fs.ReadFile(assets, "static/app.css")
+	if err != nil {
+		t.Fatalf("read app.css: %v", err)
+	}
+	text := string(css)
+	start := strings.Index(text, ".service-avatar.service-brand {")
+	if start < 0 {
+		t.Fatal("brand icon wrapper style is missing")
+	}
+	end := strings.Index(text[start:], "}")
+	if end < 0 {
+		t.Fatal("brand icon wrapper style is malformed")
+	}
+	block := text[start : start+end]
+	if !strings.Contains(block, "background: transparent") {
+		t.Fatalf("brand icon wrapper is not transparent: %s", block)
+	}
+	if strings.Contains(block, "border:") || strings.Contains(block, "#ffffff") {
+		t.Fatalf("brand icon wrapper still has a visible frame: %s", block)
+	}
+}
+
+func TestBrandSVGsHaveTransparentCanvas(t *testing.T) {
+	t.Parallel()
+	entries, err := fs.ReadDir(assets, "static/icons/brands")
+	if err != nil {
+		t.Fatalf("read brand icons: %v", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".svg") {
+			continue
+		}
+		data, err := fs.ReadFile(assets, "static/icons/brands/"+entry.Name())
+		if err != nil {
+			t.Fatalf("read %s: %v", entry.Name(), err)
+		}
+		svg := string(data)
+		if strings.Contains(svg, `width="100%"`) || strings.Contains(svg, `height="100%"`) {
+			t.Errorf("%s has a full-canvas background rectangle", entry.Name())
+		}
+		if strings.Contains(svg, `fill="white"`) || strings.Contains(svg, `fill="#ffffff"`) {
+			t.Errorf("%s has a hardcoded white background fill", entry.Name())
+		}
 	}
 }
