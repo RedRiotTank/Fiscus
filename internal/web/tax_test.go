@@ -29,7 +29,7 @@ func TestTaxShieldCardForBusinessWorkspace(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("dashboard status = %d", resp.Code)
 	}
-	for _, want := range []string{"Tax Shield", "Caja limpia", "True operating capital", "Tax reserve"} {
+	for _, want := range []string{"Tax Shield", "Net Operating Liquidity", "True liquid capital", "Tax reserve"} {
 		if !strings.Contains(resp.Body.String(), want) {
 			t.Errorf("dashboard missing %q", want)
 		}

@@ -53,7 +53,7 @@
               {{end}}
               <div class="subscription-name">
                 <h3>{{.Counterparty}}</h3>
-                <span class="badge category">{{if .Category}}{{.Category}}{{else}}Subscription{{end}}</span>
+                <span class="badge category {{categoryClass .Category}}">{{if .Category}}{{.Category}}{{else}}Subscription{{end}}</span>
               </div>
               <span class="badge ok">Active</span>
             </div>
@@ -98,7 +98,7 @@
               {{end}}
               <div class="subscription-name">
                 <h3>{{.Counterparty}}</h3>
-                <span class="badge category">{{if .Category}}{{.Category}}{{else}}Subscription{{end}}</span>
+                <span class="badge category {{categoryClass .Category}}">{{if .Category}}{{.Category}}{{else}}Subscription{{end}}</span>
               </div>
               <span class="badge pending">Potential ghost</span>
             </div>
@@ -148,7 +148,7 @@
                   <span class="account-name">{{.Counterparty}}</span>
                   {{if gt .PriceIncreaseMinor 0}}<span class="badge pending">price increase</span>{{end}}
                 </td>
-                <td><span class="badge category">{{if .Category}}{{.Category}}{{else}}Subscription{{end}}</span></td>
+                <td><span class="badge category {{categoryClass .Category}}">{{if .Category}}{{.Category}}{{else}}Subscription{{end}}</span></td>
                 <td>{{.AccountName}}</td>
                 <td><span class="badge muted">{{.Frequency}} · ~{{.IntervalDays}}d</span></td>
                 <td class="nowrap">{{date .LastCharge}}</td>
@@ -195,7 +195,7 @@
                 <td class="nowrap">{{date .BookingDate}}</td>
                 <td>{{.AccountName}}</td>
                 <td class="description">{{if .Description}}{{.Description}}{{else}}{{.Counterparty}}{{end}}</td>
-                <td><span class="badge category">{{.Label}}</span></td>
+                <td><span class="badge muted">{{.Label}}</span></td>
                 <td class="right amount debit">{{money .AmountMinor .Currency}}</td>
               </tr>
             {{end}}

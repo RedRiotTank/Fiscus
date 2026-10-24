@@ -43,7 +43,7 @@ func (r *QuarterlyRule) Evaluate(ctx context.Context) ([]domain.Alert, error) {
 			continue
 		}
 		message := fmt.Sprintf(
-			"Reserve %s %s before %s: VAT %s + income tax %s. True operating capital after reserve: %s %s.",
+			"Reserve %s %s before %s: VAT %s + income tax %s. True liquid capital after reserve: %s %s.",
 			money.FormatGrouped(shield.TaxReserveMinor, shield.Currency), shield.Currency,
 			shield.Quarter.End.Format("02 Jan 2006"),
 			money.FormatGrouped(shield.VATDueMinor, shield.Currency),

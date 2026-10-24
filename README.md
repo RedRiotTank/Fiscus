@@ -341,7 +341,10 @@ changing that slider updates both projections and simulated scenarios.
 Monthly category budgets use integer minor units. Currency defaults to EUR. The
 overview dashboard and the dedicated **Budgets** page show month-to-date
 consumption and a progress bar for each budget; the bar turns warning or
-critical as thresholds are crossed.
+critical as thresholds are crossed. The budgets panel also renders a dual-ring
+Chart.js donut: the outer ring is the planned category allocation and the inner
+ring is month-to-date spending, with overspent slices highlighted in amber or
+red.
 
 The **Budget Advisor** adds proactive 50/30/20 and historical-heuristic
 guidance. It estimates monthly net operational income from confirmed booked

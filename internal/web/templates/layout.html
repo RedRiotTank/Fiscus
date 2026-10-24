@@ -7,7 +7,9 @@
   <meta name="color-scheme" content="dark">
   <meta name="robots" content="noindex, nofollow">
   <title>{{.Title}} · Fiscus</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230ea5e9'/%3E%3Cpath d='M20 18h26v8H29v8h14v8H29v12h-9z' fill='%23031018'/%3E%3C/svg%3E">
+  <link rel="icon" type="image/png" sizes="256x256" href="/static/favicon.png">
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
   <link rel="stylesheet" href="/static/app.css">
   <link rel="stylesheet" href="/static/analytics.css">
   <link rel="stylesheet" href="/static/analytics-pace.css">
@@ -15,6 +17,7 @@
   <link rel="stylesheet" href="/static/analytics-projections.css">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/chart.umd.min.js" defer></script>
+  <script src="/static/budget-donut.js" defer></script>
   <script src="/static/analytics-core.js" defer></script>
   <script src="/static/analytics-spending.js" defer></script>
   <script src="/static/analytics-pace.js" defer></script>
@@ -28,7 +31,7 @@
   <header class="topbar">
     <div class="topbar-inner">
       <a class="brand" href="/" aria-label="Fiscus overview">
-        <span class="brand-mark" aria-hidden="true">F</span>
+        <span class="brand-mark" aria-hidden="true"><img class="brand-logo" src="/static/brand.png" alt="" width="885" height="588"></span>
         <span class="brand-text">
           <strong>Fiscus</strong>
           <small>treasury monitor</small>

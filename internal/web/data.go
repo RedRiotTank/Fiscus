@@ -25,6 +25,7 @@ type PageData struct {
 	CategorySpending      []CategorySpendingView
 	SpendingMonth         string
 	Budgets               []budgets.Status
+	BudgetDonut           *BudgetDonutView
 	BudgetAdvisories      []budgets.Advisory
 	BudgetAdvisoryEnabled bool
 	BudgetAdvisoryModel   string
@@ -318,6 +319,7 @@ func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 		return err
 	}
 	data.Budgets = budgets.Compute(spending, activeBudgets, now)
+	data.BudgetDonut = buildBudgetDonut(data.Budgets)
 	windowStart := now.Add(-time.Duration(treasury.DefaultBurnWindowDays) * 24 * time.Hour)
 	windowTransactions, err := s.store.ListTransactionsBetween(ctx, windowStart, now.Add(24*time.Hour))
 	if err != nil {

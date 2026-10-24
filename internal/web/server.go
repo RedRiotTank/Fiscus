@@ -196,6 +196,7 @@ func (s *Server) templateFuncs() template.FuncMap {
 		"serviceInitials":     serviceInitials,
 		"serviceClass":        serviceClass,
 		"brandIcon":           s.brandIcon,
+		"categoryClass":       categoryClass,
 	}
 }
 
