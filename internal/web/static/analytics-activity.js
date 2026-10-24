@@ -78,6 +78,10 @@ function initActivity() {
         empty.hidden = false;
         empty.textContent = "Could not load spending activity.";
       }
+      const summary = document.getElementById("activity-summary");
+      if (summary) {
+        summary.textContent = "Activity unavailable";
+      }
       console.error(error);
     });
   }

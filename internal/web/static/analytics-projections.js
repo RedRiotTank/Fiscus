@@ -160,6 +160,9 @@ function initProjections() {
         render();
       } catch (error) {
         A.setEmpty("projection-chart", "projection-chart-empty", true, "Could not load wealth projections.");
+        if (summary) {
+          summary.textContent = "Projection unavailable";
+        }
         console.error(error);
       }
     }

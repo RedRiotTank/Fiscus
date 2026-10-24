@@ -103,6 +103,26 @@
     };
   }
 
+  let initialized = false;
+
+  function runInitializer(initializer) {
+    try {
+      initializer();
+    } catch (error) {
+      console.error("Fiscus analytics initializer failed", error);
+    }
+  }
+
+  function markUnavailable(message) {
+    ["pace-velocity", "activity-summary", "projection-summary", "liquidity-summary", "scenario-summary"]
+      .forEach(function (id) {
+        const element = document.getElementById(id);
+        if (element && /Loading|^$/.test(element.textContent.trim())) {
+          element.textContent = message;
+        }
+      });
+  }
+
   const api = {
     palette: palette,
     solid: palette.map((item) => item.border),
@@ -116,30 +136,37 @@
     initializers: [],
     register: function (initializer) {
       api.initializers.push(initializer);
+      if (initialized) {
+        runInitializer(initializer);
+      }
     }
   };
 
   window.FiscusAnalytics = api;
 
   function init() {
-    if (typeof Chart === "undefined") {
+    if (initialized) {
       return;
     }
+    if (typeof Chart === "undefined") {
+      console.error("Fiscus analytics: Chart.js failed to load");
+      markUnavailable("Analytics charts unavailable: Chart.js did not load.");
+      return;
+    }
+    initialized = true;
     Chart.defaults.color = "#b8c5d3";
     Chart.defaults.borderColor = "rgba(34, 48, 65, 0.65)";
     Chart.defaults.font.family = "ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-    api.initializers.forEach(function (initializer) {
-      try {
-        initializer();
-      } catch (error) {
-        console.error(error);
-      }
-    });
+    api.initializers.forEach(runInitializer);
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
+  // Deferred scripts execute in order before DOMContentLoaded. Waiting for
+  // DOMContentLoaded ensures every analytics module has registered its
+  // initializer before Chart.js starts rendering.
+  if (document.readyState === "loading" || document.readyState === "interactive") {
+    document.addEventListener("DOMContentLoaded", init, { once: true });
   } else {
     init();
   }
+  window.addEventListener("load", init, { once: true });
 })();

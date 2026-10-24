@@ -366,7 +366,15 @@ func (s *Server) handleSubscriptions(w http.ResponseWriter, r *http.Request) {
 		snapshot.Subscriptions = subscriptions
 		snapshot.Fees = fees
 	}
-	data.Subscriptions = subscriptionViews(snapshot.Subscriptions, accountMap(accounts))
+	views := subscriptionViews(snapshot.Subscriptions, accountMap(accounts))
+	data.Subscriptions = views
+	for _, view := range views {
+		if view.Active {
+			data.ActiveSubscriptions = append(data.ActiveSubscriptions, view)
+		} else {
+			data.InactiveSubscriptions = append(data.InactiveSubscriptions, view)
+		}
+	}
 	data.Fees = feeViews(snapshot.Fees, accountMap(accounts))
 	data.MonthlyCosts = currencyAmountViews(snapshot.MonthlyCosts)
 	data.AnnualCosts = currencyAmountViews(snapshot.AnnualCosts)

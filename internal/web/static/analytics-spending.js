@@ -198,6 +198,9 @@ function initSpending() {
         A.setEmpty("spending-donut", "spending-donut-empty", true, "Could not load spending analytics.");
         A.setEmpty("spending-trend", "spending-trend-empty", true, "Could not load spending analytics.");
         A.setEmpty("spending-waterfall", "spending-waterfall-empty", true, "Could not load spending analytics.");
+        if (periodLabel) {
+          periodLabel.textContent = "Spending analytics unavailable";
+        }
         console.error(error);
       }
     }

@@ -48,6 +48,10 @@ func (r *SubscriptionRule) Evaluate(ctx context.Context) ([]domain.Alert, error)
 			continue
 		}
 		percent := IncreasePercent(subscription.AmountMinor, subscription.PreviousAmountMinor)
+		changedAt := subscription.PriceChangedAt
+		if changedAt.IsZero() {
+			changedAt = subscription.LastCharge
+		}
 		title := fmt.Sprintf("Subscription price increased: %s", subscription.Counterparty)
 		message := fmt.Sprintf(
 			"%s increased from %s %s to %s %s (+%d%%) on %s.",
@@ -55,7 +59,7 @@ func (r *SubscriptionRule) Evaluate(ctx context.Context) ([]domain.Alert, error)
 			money.FormatGrouped(subscription.PreviousAmountMinor, subscription.Currency), subscription.Currency,
 			money.FormatGrouped(subscription.AmountMinor, subscription.Currency), subscription.Currency,
 			percent,
-			subscription.LastCharge.Format("2 Jan 2006"),
+			changedAt.Format("2 Jan 2006"),
 		)
 		out = append(out, domain.Alert{
 			Rule:      RuleSubscriptionPriceIncrease,
@@ -66,7 +70,7 @@ func (r *SubscriptionRule) Evaluate(ctx context.Context) ([]domain.Alert, error)
 			DedupKey: fmt.Sprintf("subscription-price:%s:%s:%s:%d:%d",
 				subscription.AccountID,
 				strings.ToLower(strings.TrimSpace(subscription.Counterparty)),
-				subscription.LastCharge.UTC().Format("2006-01-02"),
+				changedAt.UTC().Format("2006-01-02"),
 				subscription.AmountMinor,
 				subscription.PreviousAmountMinor,
 			),

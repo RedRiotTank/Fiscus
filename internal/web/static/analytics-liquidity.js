@@ -82,6 +82,10 @@ function initLiquidity() {
         }
       } catch (error) {
         A.setEmpty("liquidity-chart", "liquidity-chart-empty", true, "Could not load liquidity distribution.");
+        const summary = document.getElementById("liquidity-summary");
+        if (summary) {
+          summary.textContent = "Liquidity unavailable";
+        }
         console.error(error);
       }
     }

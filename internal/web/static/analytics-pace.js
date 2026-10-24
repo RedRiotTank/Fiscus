@@ -100,6 +100,11 @@ function initPace() {
         }
       } catch (error) {
         A.setEmpty("pace-chart", "pace-chart-empty", true, "Could not load spending pace.");
+        const indicator = document.getElementById("pace-velocity");
+        if (indicator) {
+          indicator.className = "velocity-pill";
+          indicator.textContent = "Pace unavailable";
+        }
         console.error(error);
       }
     }

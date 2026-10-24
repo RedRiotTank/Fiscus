@@ -224,8 +224,30 @@ func TestDashboardAuthAndContent(t *testing.T) {
 	if got := resp.Header().Get("Cache-Control"); got != "no-store" {
 		t.Fatalf("cache control = %q", got)
 	}
-	if !strings.Contains(resp.Header().Get("Content-Security-Policy"), "default-src 'self'") {
-		t.Fatalf("missing CSP: %q", resp.Header().Get("Content-Security-Policy"))
+	csp := resp.Header().Get("Content-Security-Policy")
+	for _, want := range []string{"default-src 'self'", "script-src 'self' 'unsafe-inline'", "style-src 'self' 'unsafe-inline'", "img-src 'self' data:", "connect-src 'self'"} {
+		if !strings.Contains(csp, want) {
+			t.Fatalf("CSP missing %q: %q", want, csp)
+		}
+	}
+}
+
+func TestFormatVersionLabel(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{input: "v1.2.2", want: "v1.2.2"},
+		{input: "1.2.2", want: "v1.2.2"},
+		{input: "vv1.2", want: "v1.2"},
+		{input: " dev ", want: "vdev"},
+		{input: "", want: "dev"},
+	}
+	for _, test := range tests {
+		if got := formatVersionLabel(test.input); got != test.want {
+			t.Errorf("formatVersionLabel(%q) = %q, want %q", test.input, got, test.want)
+		}
 	}
 }
 
@@ -238,6 +260,13 @@ func TestSubscriptionsAndFeesPage(t *testing.T) {
 		{AccountID: "acc-1", ExternalID: "sub-1", AmountMinor: -999, Currency: "EUR", BookingDate: time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC), Counterparty: "Streaming", Status: domain.TransactionStatusBooked, Category: "Subscriptions"},
 		{AccountID: "acc-1", ExternalID: "sub-2", AmountMinor: -999, Currency: "EUR", BookingDate: time.Date(2026, 2, 4, 0, 0, 0, 0, time.UTC), Counterparty: "Streaming", Status: domain.TransactionStatusBooked, Category: "Subscriptions"},
 		{AccountID: "acc-1", ExternalID: "sub-3", AmountMinor: -999, Currency: "EUR", BookingDate: time.Date(2026, 3, 5, 0, 0, 0, 0, time.UTC), Counterparty: "Streaming", Status: domain.TransactionStatusBooked, Category: "Subscriptions"},
+		{AccountID: "acc-1", ExternalID: "hike-1", AmountMinor: -999, Currency: "EUR", BookingDate: time.Date(2026, 1, 8, 0, 0, 0, 0, time.UTC), Counterparty: "Spotify", Status: domain.TransactionStatusBooked, Category: "Subscriptions"},
+		{AccountID: "acc-1", ExternalID: "hike-2", AmountMinor: -1099, Currency: "EUR", BookingDate: time.Date(2026, 2, 8, 0, 0, 0, 0, time.UTC), Counterparty: "Spotify", Status: domain.TransactionStatusBooked, Category: "Subscriptions"},
+		{AccountID: "acc-1", ExternalID: "hike-3", AmountMinor: -1099, Currency: "EUR", BookingDate: time.Date(2026, 3, 8, 0, 0, 0, 0, time.UTC), Counterparty: "Spotify", Status: domain.TransactionStatusBooked, Category: "Subscriptions"},
+		{AccountID: "acc-1", ExternalID: "adobe-1", AmountMinor: -5999, Currency: "EUR", BookingDate: time.Date(2025, 10, 1, 0, 0, 0, 0, time.UTC), Counterparty: "Adobe", Status: domain.TransactionStatusBooked, Category: "Subscriptions"},
+		{AccountID: "acc-1", ExternalID: "adobe-2", AmountMinor: -5999, Currency: "EUR", BookingDate: time.Date(2025, 11, 1, 0, 0, 0, 0, time.UTC), Counterparty: "Adobe", Status: domain.TransactionStatusBooked, Category: "Subscriptions"},
+		{AccountID: "acc-1", ExternalID: "adobe-3", AmountMinor: -5999, Currency: "EUR", BookingDate: time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC), Counterparty: "Adobe", Status: domain.TransactionStatusBooked, Category: "Subscriptions"},
+		{AccountID: "acc-1", ExternalID: "adobe-4", AmountMinor: -5999, Currency: "EUR", BookingDate: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), Counterparty: "Adobe", Status: domain.TransactionStatusBooked, Category: "Subscriptions"},
 		{AccountID: "acc-1", ExternalID: "fee-1", AmountMinor: -1500, Currency: "EUR", BookingDate: now.Add(-48 * time.Hour), Counterparty: "Comisi\u00f3n mantenimiento", Status: domain.TransactionStatusBooked, Category: "Fees"},
 	}
 	for i := range transactions {
@@ -252,8 +281,11 @@ func TestSubscriptionsAndFeesPage(t *testing.T) {
 	}
 	body := resp.Body.String()
 	for _, want := range []string{
-		"Subscriptions &amp; Fees", "Recurring subscriptions", "Streaming", "€9.99",
-		"€119.88", "Detected bank fees", "Maintenance fee", "€15.00",
+		"Subscriptions &amp; Fees", "Active subscriptions", "Recurring transaction history",
+		"Streaming", "Spotify", "Adobe", "€9.99", "€119.88", "Previously €9.99", "price increase",
+		"Dormant / potential ghost", "Potential ghost",
+		"Detected bank fees", "Maintenance fee", "€15.00",
+		"subscription-card", "service-avatar", "Active",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("subscriptions page missing %q", want)
