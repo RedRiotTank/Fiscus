@@ -3,6 +3,33 @@
 All notable changes to Fiscus are documented here. Versions use semantic
 versioning and annotated Git tags.
 
+## v1.3.2 - 2026-10-24
+
+Subscription icon transparency fix.
+
+### Fixed
+
+- Removed the white/gray wrapper background and border behind official
+  subscription brand icons.
+- Brand icon containers now use a transparent background with only light
+  padding for breathing room.
+- Kept the styled, colored initials avatar exclusively for fallback merchants.
+- Removed the Basic-Fit canvas background rectangle and the Adobe clip-path
+  white fill from the embedded SVG catalog.
+- Adjusted dark monochrome brand marks and the generic briefcase icon so they
+  remain visible on the dark card surface without a container background.
+- Removed lazy loading from brand icons so logos render immediately on the
+  subscription grid.
+
+### Verification
+
+- `go test -v -race ./...`
+- `golangci-lint run ./...`
+- `CGO_ENABLED=0 go build -v ./cmd/fiscus`
+- Demo screenshot verification confirmed transparent icons for Vodafone, Apple,
+  Cloudflare, GitHub Copilot, Stripe, Spotify, Netflix, AWS, JetBrains,
+  Namecheap, Adobe, and the briefcase override, with no gray square artifacts.
+
 ## v1.3.1 - 2026-10-24
 
 Official subscription brand icon release.
