@@ -167,6 +167,15 @@ budgets:
     overbudget_warning_threshold: 0.15
     underbudget_notice_threshold: 0.30
 
+# Optional subscription card icon overrides. Keys are normalized merchant
+# names (case and punctuation insensitive). Values are bundled icon slugs such
+# as "briefcase" or embedded paths such as "/static/icons/brands/spotify.svg".
+# Unknown, invalid, or external icon references fall back to initials.
+subscriptions:
+  icon_overrides:
+    "Mi Gestoria SL": "briefcase"
+    # "Custom Provider": "custom-brand"
+
 # Optional expected monthly credits. When a matching booked credit of at least
 # amount_min (integer minor units) does not arrive inside expected_days plus the
 # grace period, one alert is emitted for that month. Currency defaults to EUR.

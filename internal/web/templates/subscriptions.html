@@ -45,7 +45,12 @@
         {{range .ActiveSubscriptions}}
           <article class="subscription-card">
             <div class="subscription-card-head">
-              <span class="service-avatar {{serviceClass .Counterparty}}" aria-hidden="true">{{serviceInitials .Counterparty}}</span>
+              {{$icon := brandIcon .Counterparty}}
+              {{if $icon}}
+                <span class="service-avatar service-brand" aria-hidden="true"><img src="{{$icon}}" alt="" width="44" height="44" loading="lazy" decoding="async"></span>
+              {{else}}
+                <span class="service-avatar {{serviceClass .Counterparty}}" aria-hidden="true">{{serviceInitials .Counterparty}}</span>
+              {{end}}
               <div class="subscription-name">
                 <h3>{{.Counterparty}}</h3>
                 <span class="badge category">{{if .Category}}{{.Category}}{{else}}Subscription{{end}}</span>
@@ -85,7 +90,12 @@
         {{range .InactiveSubscriptions}}
           <article class="subscription-card">
             <div class="subscription-card-head">
-              <span class="service-avatar {{serviceClass .Counterparty}}" aria-hidden="true">{{serviceInitials .Counterparty}}</span>
+              {{$icon := brandIcon .Counterparty}}
+              {{if $icon}}
+                <span class="service-avatar service-brand" aria-hidden="true"><img src="{{$icon}}" alt="" width="44" height="44" loading="lazy" decoding="async"></span>
+              {{else}}
+                <span class="service-avatar {{serviceClass .Counterparty}}" aria-hidden="true">{{serviceInitials .Counterparty}}</span>
+              {{end}}
               <div class="subscription-name">
                 <h3>{{.Counterparty}}</h3>
                 <span class="badge category">{{if .Category}}{{.Category}}{{else}}Subscription{{end}}</span>

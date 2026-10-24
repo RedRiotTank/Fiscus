@@ -198,6 +198,7 @@ func demoConfig(address, databasePath, attachmentsDir string) *config.Config {
 		{Name: "Insurance", VATRate: 0, DeductiblePercent: 1},
 	}
 	cfg.Budgets.Items = demoBudgets()
+	cfg.Subscriptions.IconOverrides = map[string]string{"Gestoría Fiscal": "briefcase"}
 	cfg.Budgets.Advisory = config.BudgetAdvisoryConfig{
 		Enabled:                    true,
 		Model:                      "hybrid",

@@ -3,6 +3,49 @@
 All notable changes to Fiscus are documented here. Versions use semantic
 versioning and annotated Git tags.
 
+## v1.3.1 - 2026-10-24
+
+Official subscription brand icon release.
+
+### Added
+
+- Embedded, offline brand SVG catalog:
+  - Streaming and entertainment brands including Netflix, Spotify, Disney+,
+    YouTube, Google, Apple, HBO Max, and Prime Video.
+  - Cloud and technology brands including AWS, GitHub, Cloudflare, OpenAI,
+    JetBrains, Vercel, DigitalOcean, Hetzner, and Heroku.
+  - Telecom and utility brands including Vodafone, Movistar, Orange, Endesa,
+    and Iberdrola.
+  - Productivity and software brands including Adobe, Microsoft, Slack,
+    Notion, 1Password, Google Workspace, Figma, Namecheap, and Stripe.
+  - Fitness and miscellaneous brands including Basic-Fit, Strava, and Audible,
+    plus a generic briefcase icon.
+- Pure Go resolver in `pkg/icons`:
+  - Case-, accent-, and punctuation-insensitive merchant normalization.
+  - Specific substring matching for merchant descriptions such as
+    `SPOTIFY AB`, `AMAZON WEB SERVICES`, and `GITHUB SPONSORS`.
+  - Configurable `subscriptions.icon_overrides` merchant-to-icon mappings.
+  - Safe handling of bundled slugs and `/static/icons/brands/...` paths.
+  - Automatic fallback to initials for unknown, missing, or invalid icons.
+- Subscription cards:
+  - Active and dormant cards render official brand icons in a consistent
+    44x44 rounded container.
+  - Initials fallback keeps the exact same dimensions and layout.
+  - Icons are served locally from `GET /static/icons/brands/{name}.svg`.
+  - CSP remains compatible through the existing `img-src 'self' data:` policy.
+- Demo and privacy:
+  - All seeded demo subscriptions resolve to brand icons, including a
+    briefcase override for the fiscal advisor.
+  - README and privacy documentation describe the offline, embedded catalog.
+
+### Verification
+
+- `go test -v -race ./...`
+- `golangci-lint run ./...`
+- `CGO_ENABLED=0 go build -v ./cmd/fiscus`
+- Demo smoke test verified brand SVG URLs, initials fallback, SVG content type,
+  and CSP headers on `/subscriptions`.
+
 ## v1.3.0 - 2026-10-24
 
 Intelligent budget advisory release.

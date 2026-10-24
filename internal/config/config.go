@@ -26,6 +26,7 @@ type Config struct {
 	Logging         LoggingConfig          `yaml:"logging"`
 	Rules           []CategoryRule         `yaml:"rules"`
 	Budgets         BudgetsConfig          `yaml:"budgets"`
+	Subscriptions   SubscriptionsConfig    `yaml:"subscriptions"`
 	ExpectedInflows []ExpectedInflowConfig `yaml:"expected_inflows"`
 	Attachments     AttachmentsConfig      `yaml:"attachments"`
 	Tax             TaxConfig              `yaml:"tax"`
@@ -120,6 +121,12 @@ func mappingValue(node *yaml.Node, key string) *yaml.Node {
 		}
 	}
 	return nil
+}
+
+// SubscriptionsConfig controls subscription presentation. IconOverrides maps
+// exact or partial normalized merchant names to bundled icon slugs or paths.
+type SubscriptionsConfig struct {
+	IconOverrides map[string]string `yaml:"icon_overrides"`
 }
 
 // ExpectedInflowConfig describes a recurring credit that should arrive each
@@ -611,6 +618,17 @@ func (c *Config) Validate() error {
 		}
 		if inflow.GraceDays < 0 {
 			errs = append(errs, fmt.Errorf("expected_inflows[%d].grace_days cannot be negative", i))
+		}
+	}
+	for merchant, icon := range c.Subscriptions.IconOverrides {
+		if strings.TrimSpace(merchant) == "" {
+			errs = append(errs, errors.New("subscriptions.icon_overrides merchant keys cannot be empty"))
+		}
+		if strings.TrimSpace(icon) == "" {
+			errs = append(errs, fmt.Errorf("subscriptions.icon_overrides[%q] icon cannot be empty", merchant))
+		}
+		if strings.Contains(icon, "://") || strings.Contains(icon, "..") {
+			errs = append(errs, fmt.Errorf("subscriptions.icon_overrides[%q] must be a bundled slug or /static/icons/brands path", merchant))
 		}
 	}
 	for i, budget := range c.Budgets.Items {
