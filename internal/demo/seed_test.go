@@ -12,6 +12,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"github.com/RedRiotTank/Fiscus/internal/treasury"
+	"github.com/RedRiotTank/Fiscus/pkg/icons"
 )
 
 func TestSeedPopulatesCoherentDataset(t *testing.T) {
@@ -265,4 +266,32 @@ func countUnpaired(items []domain.Attachment) int {
 		}
 	}
 	return count
+}
+
+func TestDemoSubscriptionsResolveBrandIcons(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store, err := storage.Open(ctx, filepath.Join(t.TempDir(), "demo.db"))
+	if err != nil {
+		t.Fatalf("storage.Open: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	dataset, err := Seed(ctx, store, filepath.Join(t.TempDir(), "attachments"), now)
+	if err != nil {
+		t.Fatalf("Seed: %v", err)
+	}
+	snapshot := analysis.Analyze(dataset.Transactions, now)
+	if len(snapshot.Subscriptions) == 0 {
+		t.Fatal("expected detected demo subscriptions")
+	}
+	resolver := icons.New(map[string]string{"Gestoría Fiscal": "briefcase"})
+	for _, subscription := range snapshot.Subscriptions {
+		if _, ok := resolver.Resolve(subscription.Counterparty); !ok {
+			t.Errorf("demo subscription %q does not resolve to a brand icon", subscription.Counterparty)
+		}
+	}
 }

@@ -49,7 +49,7 @@ same environment using the normal serve entrypoint.
 - Monthly category budgets with threshold pacing alerts, dashboard progress
   bars, and a 50/30/20 + historical budget advisory engine
 - Recurring subscription and bank-fee detection with Inactive / Potential Ghost
-  marking when a charge goes quiet
+  marking when a charge goes quiet, plus embedded official brand icons
 - Operational burn rate, runway, and internal-transfer-aware accounting exports
 - Personal, business, and hybrid workspace profiles with locked views or an
   explicit All / Personal / Business dashboard switcher
@@ -709,6 +709,24 @@ not be public.
 The **Subscriptions & Fees** dashboard view estimates the monthly and annualized
 cost of active subscriptions and lists detected bank commissions. Subscriptions
 without a recent charge are labelled `Inactive / Potential Ghost`.
+
+Active and dormant subscription cards resolve merchant names such as
+`SPOTIFY AB`, `Amazon Web Services`, or `GitHub Copilot` to bundled official
+brand SVGs. The catalog is embedded in the binary and served from
+`/static/icons/brands/`; Fiscus never contacts a third-party icon host at
+runtime. Unmatched merchants and invalid overrides fall back to the deterministic
+initials avatar.
+
+```yaml
+subscriptions:
+  icon_overrides:
+    "Mi Gestoria SL": "briefcase"
+    "Custom Provider": "custom-brand"
+```
+
+Override keys are normalized for case, accents, and punctuation. Values may be a
+bundled slug such as `briefcase` or an embedded path such as
+`/static/icons/brands/spotify.svg`. Unknown references fall back to initials.
 
 Alerts are persisted before dispatch. A deterministic de-duplication key prevents
 the same condition from notifying twice. Telegram and Discord deliveries are

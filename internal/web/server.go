@@ -24,10 +24,11 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/search"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"github.com/RedRiotTank/Fiscus/internal/tax"
+	"github.com/RedRiotTank/Fiscus/pkg/icons"
 	"golang.org/x/crypto/bcrypt"
 )
 
-//go:embed templates/*.html templates/partials/*.html static/*
+//go:embed templates/*.html templates/partials/*.html static
 var assets embed.FS
 
 // Store is the read surface required by the dashboard.
@@ -84,6 +85,7 @@ type Config struct {
 	Budgets        []budgets.Budget
 	BudgetManager  *budgets.Manager
 	BudgetAdvisory budgets.AdvisoryConfig
+	IconOverrides  map[string]string
 	Attachments    *attachments.Service
 	Tax            *tax.Service
 	Search         *search.Service
@@ -108,6 +110,8 @@ type Server struct {
 	budgets        []budgets.Budget
 	budgetManager  *budgets.Manager
 	budgetAdvisory budgets.AdvisoryConfig
+	iconResolver   *icons.Resolver
+	brandIcons     map[string]struct{}
 	attachments    *attachments.Service
 	tax            *tax.Service
 	search         *search.Service
@@ -157,6 +161,8 @@ func New(cfg Config, store Store, trigger SyncTrigger) (*Server, error) {
 		budgets:        cfg.Budgets,
 		budgetManager:  cfg.BudgetManager,
 		budgetAdvisory: budgets.NormalizeAdvisoryConfig(cfg.BudgetAdvisory),
+		iconResolver:   icons.New(cfg.IconOverrides),
+		brandIcons:     embeddedBrandIcons(),
 		attachments:    cfg.Attachments,
 		tax:            cfg.Tax,
 		search:         cfg.Search,
@@ -189,6 +195,7 @@ func (s *Server) templateFuncs() template.FuncMap {
 		"versionLabel":        formatVersionLabel,
 		"serviceInitials":     serviceInitials,
 		"serviceClass":        serviceClass,
+		"brandIcon":           s.brandIcon,
 	}
 }
 
@@ -522,6 +529,35 @@ func serviceClass(name string) string {
 	default:
 		return "service-default"
 	}
+}
+
+func embeddedBrandIcons() map[string]struct{} {
+	entries, err := fs.ReadDir(assets, "static/icons/brands")
+	if err != nil {
+		return map[string]struct{}{}
+	}
+	out := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".svg") {
+			continue
+		}
+		out[strings.TrimSuffix(entry.Name(), ".svg")] = struct{}{}
+	}
+	return out
+}
+
+func (s *Server) brandIcon(name string) string {
+	if s.iconResolver == nil {
+		return ""
+	}
+	slug, ok := s.iconResolver.Resolve(name)
+	if !ok {
+		return ""
+	}
+	if _, embedded := s.brandIcons[slug]; !embedded {
+		return ""
+	}
+	return "/static/icons/brands/" + slug + ".svg"
 }
 
 func formatVersionLabel(value string) string {

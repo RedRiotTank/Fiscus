@@ -428,6 +428,19 @@ a:focus-visible {
   letter-spacing: 0.02em;
 }
 
+.service-avatar.service-brand {
+  padding: 6px;
+  background: #ffffff;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.service-avatar.service-brand img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .service-netflix { background: linear-gradient(145deg, #e50914, #7f0007); }
 .service-spotify { background: linear-gradient(145deg, #1db954, #0d6b30); }
 .service-aws { background: linear-gradient(145deg, #ff9900, #9a5b00); color: #1b1200; }

@@ -694,3 +694,35 @@ func TestWorkspaceProfileEnvironmentOverride(t *testing.T) {
 		t.Fatalf("profile = %q", cfg.WorkspaceProfile())
 	}
 }
+
+func TestLoadSubscriptionIconOverrides(t *testing.T) {
+	cfg, err := Load(writeConfig(t, `
+subscriptions:
+  icon_overrides:
+    "Mi Gestoria SL": "briefcase"
+    "Custom Provider": "/static/icons/brands/custom-brand.svg"
+`))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	overrides := cfg.Subscriptions.IconOverrides
+	if len(overrides) != 2 || overrides["Mi Gestoria SL"] != "briefcase" ||
+		overrides["Custom Provider"] != "/static/icons/brands/custom-brand.svg" {
+		t.Fatalf("icon overrides = %+v", overrides)
+	}
+}
+
+func TestInvalidSubscriptionIconOverridesRejected(t *testing.T) {
+	t.Parallel()
+	tests := []string{
+		"subscriptions:\n  icon_overrides:\n    \"\": briefcase\n",
+		"subscriptions:\n  icon_overrides:\n    \"Provider\": \"\"\n",
+		"subscriptions:\n  icon_overrides:\n    \"Provider\": \"https://example.test/icon.svg\"\n",
+		"subscriptions:\n  icon_overrides:\n    \"Provider\": \"../secret\"\n",
+	}
+	for _, yaml := range tests {
+		if _, err := Load(writeConfig(t, yaml)); err == nil {
+			t.Fatalf("expected validation error for %q", yaml)
+		}
+	}
+}

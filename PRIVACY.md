@@ -48,7 +48,8 @@ deleting the connection in Fiscus.
 
 Bank data is stored in a SQLite database on a private server controlled by the
 operator. Data is not sent to the Fiscus software developers, and Fiscus does not
-include analytics or telemetry.
+include analytics or telemetry. Subscription brand icons are embedded in the
+binary and served locally; the dashboard never contacts third-party icon hosts.
 
 If the operator enables Telegram or Discord notifications, alert content may be
 sent to those services. The operator is responsible for configuring those
