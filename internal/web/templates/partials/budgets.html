@@ -9,11 +9,46 @@
     </div>
     <span class="muted small">{{.SpendingMonth}}</span>
   </header>
+  {{if .BudgetDonut}}
+    <div class="budget-donut-section">
+      <div class="budget-donut-visual">
+        <div class="budget-donut-wrap">
+          <canvas id="budget-donut" data-budget-donut="{{.BudgetDonut.Data}}" role="img" aria-label="Planned budget and month-to-date spending by category"></canvas>
+          <div class="budget-donut-center" aria-hidden="true">
+            <strong>{{.BudgetDonut.Percent}}%</strong>
+            <span>spent</span>
+            <small>{{money .BudgetDonut.TotalSpentMinor .BudgetDonut.Currency}} of {{money .BudgetDonut.TotalBudgetMinor .BudgetDonut.Currency}}</small>
+          </div>
+        </div>
+        <div class="budget-donut-ring-key">
+          <span><i class="ring-key ring-outer"></i>Planned budget</span>
+          <span><i class="ring-key ring-inner"></i>Month-to-date spent</span>
+        </div>
+      </div>
+      <div class="budget-donut-legend">
+        <div class="budget-donut-legend-head">
+          <h3>Plan vs actual</h3>
+          <span class="badge muted">{{.BudgetDonut.Currency}}</span>
+        </div>
+        <p>Outer ring shows category allocation; inner ring tracks month-to-date spending. Overspent categories are red.</p>
+        <ul>
+          {{range .BudgetDonut.Slices}}
+            <li class="budget-donut-legend-row">
+              <span class="budget-donut-swatch" style="background: {{.Color}}"></span>
+              <span class="budget-donut-name">{{.Category}}</span>
+              <span class="budget-donut-values">{{money .SpentMinor .Currency}} / {{money .BudgetMinor .Currency}}</span>
+              <span class="badge {{if .Over}}severity-warning{{else}}muted{{end}}">{{.Percent}}%</span>
+            </li>
+          {{end}}
+        </ul>
+      </div>
+    </div>
+  {{end}}
   <ul class="budget-list">
     {{range .Budgets}}
       <li class="budget-row budget-{{.Tone}}">
         <div class="budget-top">
-          <span class="badge category">{{.Category}}</span>
+          <span class="badge category {{categoryClass .Category}}">{{.Category}}</span>
           <strong class="{{.Tone}}">{{.Percent}}%</strong>
         </div>
         <progress class="budget-progress {{.Tone}}" max="100" value="{{.BarWidth}}">{{.Percent}}%</progress>

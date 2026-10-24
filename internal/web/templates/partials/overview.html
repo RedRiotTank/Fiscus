@@ -42,8 +42,8 @@
     <section class="panel tax-shield">
       <header class="panel-head">
         <div>
-          <h2>Tax Shield <span class="badge workspace business">Caja limpia</span></h2>
-          <p class="panel-sub">Quarterly VAT and income-tax reserve · updated from booked business transactions</p>
+          <h2>Tax Shield <span class="badge workspace business">Net Operating Liquidity</span></h2>
+          <p class="panel-sub">Available funds after tax reserve · quarterly VAT and income-tax provision</p>
         </div>
       </header>
       {{if .TaxShields}}
@@ -63,7 +63,7 @@
                 <strong class="amount debit">{{money .TaxReserveMinor .Currency}}</strong>
               </div>
               <div class="tax-row liquid">
-                <span>True operating capital</span>
+                <span>True liquid capital</span>
                 <strong class="amount {{if lt .TrueLiquidCapitalMinor 0}}debit{{else}}credit{{end}}">{{money .TrueLiquidCapitalMinor .Currency}}</strong>
               </div>
               <p class="tax-detail">VAT due {{money .VATDueMinor .Currency}} · income tax {{money .IncomeTaxMinor .Currency}}{{if gt .VATCreditMinor 0}} · VAT credit {{money .VATCreditMinor .Currency}} carried forward{{end}}</p>
@@ -89,7 +89,7 @@
       <ul class="category-spending">
         {{range .CategorySpending}}
           <li>
-            <span class="badge category">{{.Category}}</span>
+            <span class="badge category {{categoryClass .Category}}">{{.Category}}</span>
             <strong class="amount debit">{{money .Minor .Currency}}</strong>
           </li>
         {{end}}

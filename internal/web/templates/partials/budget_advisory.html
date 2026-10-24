@@ -2,7 +2,7 @@
 <section class="panel budget-advisor" id="budget-advisor">
   <header class="panel-head">
     <div>
-      <h2>Budget Advisor <span class="badge category">{{.BudgetAdvisoryModel}}</span></h2>
+      <h2>Budget Advisor <span class="badge muted">{{.BudgetAdvisoryModel}}</span></h2>
       <p class="panel-sub">50/30/20 guidance and category recommendations from confirmed monthly inflows.</p>
     </div>
     <form hx-post="/api/budgets/advisory/toggle" hx-target="#budget-advisor" hx-swap="outerHTML" hx-trigger="change">

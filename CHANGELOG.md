@@ -3,6 +3,53 @@
 All notable changes to Fiscus are documented here. Versions use semantic
 versioning and annotated Git tags.
 
+## v1.3.3 - 2026-10-25
+
+Visual polish, budget visualization, and transaction ergonomics release.
+
+### Added
+
+- Concentric dual-ring budget donut:
+  - Outer ring shows the planned category budget allocation.
+  - Inner ring shows month-to-date spending aligned radially by category.
+  - Overspent categories render in amber, with deeper red for significant
+    overspend.
+  - Center stat shows overall month-to-date consumption and total spend versus
+    total budget.
+  - Tooltips show category, spent amount, budget amount, and percentage.
+  - A category legend includes color swatches, amounts, and per-category
+    percentage badges.
+- Deterministic category styling:
+  - Known categories use semantic color pairs for groceries, utilities, dining,
+    software, housing, health, shopping, travel, insurance, fees, income,
+    savings, and professional services.
+  - Unknown categories fall back to a deterministic curated palette.
+  - Category badges include a color-matched prefix dot for faster scanning.
+- Responsive transaction history:
+  - Fixed proportional column widths remove horizontal scrolling on desktop.
+  - Description and counterparty are combined into a single transaction column
+    with a muted secondary line.
+  - Long descriptions truncate with ellipsis and expose the full text through a
+    native hover title.
+  - Account names also expose hover titles and truncate cleanly.
+- Spacing and localization:
+  - Added separation between transaction history and the receipt inbox.
+  - Added separation between the Budget Advisor and Budgets panels.
+  - Replaced the Spanish “Caja limpia” badge with **Net Operating Liquidity**
+    and standardized the row label to **True liquid capital**.
+  - Updated the tax alert wording to match.
+- Branding:
+  - Header and favicon now use the uploaded Fiscus logo assets.
+
+### Verification
+
+- `go test -v -race ./...`
+- `golangci-lint run ./...`
+- `CGO_ENABLED=0 go build -v ./cmd/fiscus`
+- Demo screenshot verification confirmed the dual-ring donut, colorful category
+  badges, full-width transaction table, hover-title truncation, section spacing,
+  and English tax-shield terminology.
+
 ## v1.3.2 - 2026-10-24
 
 Subscription icon transparency fix.

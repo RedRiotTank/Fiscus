@@ -31,7 +31,7 @@
 </form>
 <p class="search-hint">Prefix search across descriptions, counterparties, categories, notes, and workspace type.</p>
 
-<section class="panel">
+<section class="panel transactions-history">
   <header class="panel-head">
     <div>
       <h2>Transaction history</h2>
@@ -49,15 +49,25 @@
     </div>
   </header>
   {{if .Transactions}}
-    <div class="table-wrap">
-      <table>
+    <div class="table-wrap transactions-table-wrap">
+      <table class="transactions-table">
+        <colgroup>
+          <col class="tx-col-booked">
+          <col class="tx-col-account">
+          <col class="tx-col-transaction">
+          <col class="tx-col-category">
+          <col class="tx-col-notes">
+          <col class="tx-col-workspace">
+          <col class="tx-col-receipt">
+          <col class="tx-col-status">
+          <col class="tx-col-amount">
+        </colgroup>
         <thead>
           <tr>
             <th scope="col">Booked</th>
             <th scope="col">Account</th>
-            <th scope="col">Counterparty</th>
+            <th scope="col">Transaction</th>
             <th scope="col">Category</th>
-            <th scope="col">Description</th>
             <th scope="col">Notes</th>
             <th scope="col">Workspace</th>
             <th scope="col">Receipt</th>
@@ -69,10 +79,12 @@
           {{range .Transactions}}
             <tr id="tx-{{.ID}}">
               <td class="nowrap">{{date .BookingDate}}</td>
-              <td>{{.AccountName}}</td>
-              <td>{{if .Counterparty}}{{.Counterparty}}{{else}}<span class="muted">—</span>{{end}}</td>
-              <td><span class="badge category">{{if .Category}}{{.Category}}{{else}}Uncategorized{{end}}</span></td>
-              <td class="description">{{if .Description}}{{.Description}}{{else}}<span class="muted">—</span>{{end}}</td>
+              <td class="tx-account" title="{{.AccountName}}">{{.AccountName}}</td>
+              <td class="description" title="{{if .Description}}{{.Description}}{{else}}{{.Counterparty}}{{end}}">
+                <span class="tx-description">{{if .Description}}{{.Description}}{{else}}<span class="muted">—</span>{{end}}</span>
+                {{if .Counterparty}}<span class="tx-counterparty" title="{{.Counterparty}}">{{.Counterparty}}</span>{{end}}
+              </td>
+              <td class="tx-category"><span class="badge category {{categoryClass .Category}}" title="{{if .Category}}{{.Category}}{{else}}Uncategorized{{end}}">{{if .Category}}{{.Category}}{{else}}Uncategorized{{end}}</span></td>
               <td class="notes">{{template "transaction_notes" .}}</td>
               <td><span class="badge workspace {{if eq .AccountType "business"}}business{{else}}personal{{end}}">{{if eq .AccountType "business"}}Business{{else}}Personal{{end}}</span></td>
               {{$attachmentID := index $.AttachmentIDs .ID}}
