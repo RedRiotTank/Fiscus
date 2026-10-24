@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RedRiotTank/Fiscus/internal/budgets"
 	"github.com/RedRiotTank/Fiscus/internal/categories"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
@@ -159,9 +158,6 @@ func newWebFixture(t *testing.T) *webFixture {
 			{Category: "Dining", Pattern: "(?i)coffee|cafe"},
 			{Category: "Payroll", Pattern: "(?i)employer"},
 		}),
-		Budgets: []budgets.Budget{{
-			Category: "Dining", LimitMinor: 2500, Currency: "EUR", NotifyAtPercent: []int{80, 100},
-		}},
 	}, store, trigger)
 	if err != nil {
 		t.Fatalf("web.New: %v", err)
@@ -212,7 +208,7 @@ func TestDashboardAuthAndContent(t *testing.T) {
 		"Cash position", "Everyday", "Savings", "€1,250.50", "€500.00",
 		"Coffee Shop", "Possible duplicate charge", "Low balance", "Dev Bank", "Linked",
 		"Spending by category", "Dining", "€12.50", "monthly burn", "Runway",
-		"Budgets", "50%", "€12.50 of €25.00", "32% of month elapsed",
+		"Budgets", "Workspace-specific", "Choose Personal or Business",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("dashboard missing %q", want)

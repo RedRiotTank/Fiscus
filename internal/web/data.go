@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/analysis"
-	"github.com/RedRiotTank/Fiscus/internal/budgets"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"github.com/RedRiotTank/Fiscus/internal/treasury"
@@ -17,53 +16,53 @@ import (
 
 // PageData is the common view model for all templates.
 type PageData struct {
-	Title                 string
-	Active                string
-	Version               string
-	Now                   time.Time
-	Summary               []CurrencySummary
-	CategorySpending      []CategorySpendingView
-	SpendingMonth         string
-	Budgets               []budgets.Status
-	BudgetDonut           *BudgetDonutView
-	BudgetAdvisories      []budgets.Advisory
-	BudgetAdvisoryEnabled bool
-	BudgetAdvisoryModel   string
-	Subscriptions         []SubscriptionView
-	ActiveSubscriptions   []SubscriptionView
-	InactiveSubscriptions []SubscriptionView
-	Fees                  []FeeView
-	MonthlyCosts          []CurrencyAmountView
-	AnnualCosts           []CurrencyAmountView
-	FeeTotals             []CurrencyAmountView
-	Treasury              []RunwayView
-	Accounts              []domain.Account
-	Transactions          []TransactionView
-	Alerts                []AlertView
-	Connections           []ConnectionView
-	Reconciliations       map[string]domain.Reconciliation
-	UnpairedAttachments   []domain.Attachment
-	AttachmentIDs         map[int64]int64
-	AttachmentsEnabled    bool
-	AttachmentNotice      string
-	TaxEnabled            bool
-	TaxShields            []TaxShieldView
-	ReconciliationTotal   int
-	ReconciledAccounts    int
-	DiscrepancyAccounts   int
-	TotalAccounts         int
-	TotalTransactions     int
-	Workspace             WorkspaceState
-	Path                  string
-	FilterAccount         string
-	SearchQuery           string
-	Page                  int
-	Limit                 int
-	PrevPage              int
-	NextPage              int
-	HasNext               bool
-	ErrorMessage          string
-	AuthStatus            string
+	Title                   string
+	Active                  string
+	Version                 string
+	Now                     time.Time
+	Summary                 []CurrencySummary
+	CategorySpending        []CategorySpendingView
+	SpendingMonth           string
+	BudgetPlan              *BudgetPlanView
+	BudgetEmpty             bool
+	BudgetWorkspaceRequired bool
+	BudgetWorkspace         string
+	BudgetCurrency          string
+	Subscriptions           []SubscriptionView
+	ActiveSubscriptions     []SubscriptionView
+	InactiveSubscriptions   []SubscriptionView
+	Fees                    []FeeView
+	MonthlyCosts            []CurrencyAmountView
+	AnnualCosts             []CurrencyAmountView
+	FeeTotals               []CurrencyAmountView
+	Treasury                []RunwayView
+	Accounts                []domain.Account
+	Transactions            []TransactionView
+	Alerts                  []AlertView
+	Connections             []ConnectionView
+	Reconciliations         map[string]domain.Reconciliation
+	UnpairedAttachments     []domain.Attachment
+	AttachmentIDs           map[int64]int64
+	AttachmentsEnabled      bool
+	AttachmentNotice        string
+	TaxEnabled              bool
+	TaxShields              []TaxShieldView
+	ReconciliationTotal     int
+	ReconciledAccounts      int
+	DiscrepancyAccounts     int
+	TotalAccounts           int
+	TotalTransactions       int
+	Workspace               WorkspaceState
+	Path                    string
+	FilterAccount           string
+	SearchQuery             string
+	Page                    int
+	Limit                   int
+	PrevPage                int
+	NextPage                int
+	HasNext                 bool
+	ErrorMessage            string
+	AuthStatus              string
 }
 
 // CurrencySummary aggregates balances for one currency.
@@ -277,20 +276,6 @@ func runwayLabel(runway treasury.Runway) string {
 	return fmt.Sprintf("%d.%d months", runway.RunwayTenths/10, runway.RunwayTenths%10)
 }
 
-func (s *Server) activeBudgets(ctx context.Context) ([]budgets.Budget, error) {
-	if s.budgetManager != nil {
-		return s.budgetManager.Active(ctx)
-	}
-	return s.budgets, nil
-}
-
-func (s *Server) advisoryConfig(ctx context.Context) (budgets.AdvisoryConfig, error) {
-	if s.budgetManager != nil {
-		return s.budgetManager.Advisory(ctx)
-	}
-	return budgets.NormalizeAdvisoryConfig(s.budgetAdvisory), nil
-}
-
 func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 	accounts, err := s.workspaceAccounts(ctx, data.Workspace.View)
 	if err != nil {
@@ -301,7 +286,6 @@ func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 	data.TotalAccounts = len(accounts)
 	now := s.now().UTC()
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
-	data.SpendingMonth = monthStart.Format("January 2006")
 	var spending []storage.CategorySpending
 	if data.Workspace.View == domain.WorkspaceAll || len(accounts) > 0 {
 		spending, err = s.store.SpendingByCategoryForAccounts(ctx, monthStart, monthStart.AddDate(0, 1, 0), accountIDsArg(accounts, data.Workspace.View))
@@ -314,12 +298,7 @@ func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 			Category: item.Category, Currency: item.Currency, Minor: item.Minor,
 		})
 	}
-	activeBudgets, err := s.activeBudgets(ctx)
-	if err != nil {
-		return err
-	}
-	data.Budgets = budgets.Compute(spending, activeBudgets, now)
-	data.BudgetDonut = buildBudgetDonut(data.Budgets)
+	data.SpendingMonth = monthStart.Format("January 2006")
 	windowStart := now.Add(-time.Duration(treasury.DefaultBurnWindowDays) * 24 * time.Hour)
 	windowTransactions, err := s.store.ListTransactionsBetween(ctx, windowStart, now.Add(24*time.Hour))
 	if err != nil {
@@ -346,42 +325,10 @@ func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 	if err := s.loadTaxShields(ctx, data); err != nil {
 		return err
 	}
-	if err := s.loadBudgetAdvisory(ctx, data); err != nil {
+	if err := s.loadBudgetPlan(ctx, data, spending); err != nil {
 		return err
 	}
 	return s.loadReconciliations(ctx, data)
-}
-
-func (s *Server) loadBudgetAdvisory(ctx context.Context, data *PageData) error {
-	cfg, err := s.advisoryConfig(ctx)
-	if err != nil {
-		return err
-	}
-	data.BudgetAdvisoryEnabled = cfg.Enabled
-	data.BudgetAdvisoryModel = cfg.Model
-	if !cfg.Enabled {
-		return nil
-	}
-	active, err := s.activeBudgets(ctx)
-	if err != nil {
-		return err
-	}
-	now := s.now().UTC()
-	windowStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).
-		AddDate(0, -(budgets.NormalizeAdvisoryConfig(cfg).HeuristicWindowMonths - 1), 0)
-	transactions, err := s.store.ListTransactionsBetween(ctx, windowStart, now.Add(24*time.Hour))
-	if err != nil {
-		return err
-	}
-	transactions = filterTransactions(transactions, allowedAccountIDs(data.Accounts, data.Workspace.View), data.Workspace.View)
-	taxProvision := make(map[string]int64)
-	if !data.Workspace.Personal {
-		for _, shield := range data.TaxShields {
-			taxProvision[shield.Currency] += shield.TaxReserveMinor / 3
-		}
-	}
-	data.BudgetAdvisories = budgets.ComputeAdvisory(transactions, active, cfg, taxProvision, now)
-	return nil
 }
 
 func (s *Server) loadConnections(ctx context.Context, data *PageData) error {

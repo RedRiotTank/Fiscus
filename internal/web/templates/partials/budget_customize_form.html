@@ -1,0 +1,76 @@
+{{define "budget_customize_form"}}
+<div class="budget-dialog-inner">
+  <header class="budget-dialog-head">
+    <div>
+      <p class="eyebrow">Income-driven allocation</p>
+      <h2 id="budget-customize-title">Customize {{if eq .Workspace "business"}}business{{else}}personal{{end}} budget</h2>
+      <p>Set pillar targets and category shares of monthly income. Category shares are independent; pillar targets are advisory benchmarks.</p>
+    </div>
+    <button class="icon-button" type="button" data-budget-customize-close aria-label="Close">×</button>
+  </header>
+  {{if .Error}}<p class="notice error" role="alert">{{.Error}}</p>{{end}}
+  <form hx-post="/api/budgets/customize" hx-target="#budget-customize-content" hx-swap="innerHTML">
+    <input type="hidden" name="workspace" value="{{.Workspace}}">
+    <input type="hidden" name="currency" value="{{.Currency}}">
+    <fieldset class="budget-pillar-targets">
+      <legend>Pillar targets <span class="muted small">(% of monthly income)</span></legend>
+      <label>Needs <input name="needs_percent" type="number" step="0.01" min="0" max="100" value="{{bpsInput .Profile.NeedsBPS}}" required></label>
+      <label>Wants <input name="wants_percent" type="number" step="0.01" min="0" max="100" value="{{bpsInput .Profile.WantsBPS}}" required></label>
+      <label>Savings <input name="savings_percent" type="number" step="0.01" min="0" max="100" value="{{bpsInput .Profile.SavingsBPS}}" required></label>
+    </fieldset>
+    <div class="table-wrap">
+      <table class="budget-editor-table">
+        <thead>
+          <tr>
+            <th scope="col">Category</th>
+            <th scope="col">Pillar</th>
+            <th scope="col">% of income</th>
+            <th scope="col">Remove</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Allocations}}
+            <tr>
+              <td>
+                <input type="hidden" name="category" value="{{.Category}}">
+                <span class="account-name">{{.Category}}</span>
+                {{if .Custom}}<span class="badge muted">Custom</span>{{end}}
+              </td>
+              <td>
+                <select name="pillar" aria-label="Pillar for {{.Category}}">
+                  <option value="needs" {{if eq .Pillar "needs"}}selected{{end}}>Needs</option>
+                  <option value="wants" {{if eq .Pillar "wants"}}selected{{end}}>Wants</option>
+                  <option value="savings" {{if eq .Pillar "savings"}}selected{{end}}>Savings</option>
+                </select>
+              </td>
+              <td><input name="percent" type="number" step="0.01" min="0" max="100" value="{{bpsInput .PercentBPS}}" required></td>
+              <td><label class="budget-remove"><input type="checkbox" name="delete" value="{{.Category}}"> Remove</label></td>
+            </tr>
+          {{else}}
+            <tr>
+              <td colspan="4" class="muted">No categories yet. Add your first category below.</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    <div class="budget-editor-add">
+      <h3>Add custom category</h3>
+      <p class="muted small">Use a category name that matches your transactions, or add a new one and categorize transactions with it later.</p>
+      <div class="budget-editor-add-row">
+        <input name="new_category" type="text" maxlength="80" placeholder="e.g. Freelance subcontractors">
+        <select name="new_pillar" aria-label="Pillar for new category">
+          <option value="needs">Needs</option>
+          <option value="wants">Wants</option>
+          <option value="savings">Savings</option>
+        </select>
+        <input name="new_percent" type="number" step="0.01" min="0" max="100" placeholder="% of income">
+      </div>
+    </div>
+    <footer class="budget-dialog-foot">
+      <button class="button ghost" type="button" data-budget-customize-close>Cancel</button>
+      <button class="button" type="submit">Save Allocation</button>
+    </footer>
+  </form>
+</div>
+{{end}}

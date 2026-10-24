@@ -82,8 +82,7 @@ type Config struct {
 	MetricsHandler http.Handler
 	AuthHandler    AuthorizationCallback
 	Classifier     Classifier
-	Budgets        []budgets.Budget
-	BudgetManager  *budgets.Manager
+	BudgetPlanner  *budgets.Planner
 	BudgetAdvisory budgets.AdvisoryConfig
 	IconOverrides  map[string]string
 	Attachments    *attachments.Service
@@ -107,8 +106,7 @@ type Server struct {
 	metricsHandler http.Handler
 	authHandler    AuthorizationCallback
 	classifier     Classifier
-	budgets        []budgets.Budget
-	budgetManager  *budgets.Manager
+	budgetPlanner  *budgets.Planner
 	budgetAdvisory budgets.AdvisoryConfig
 	iconResolver   *icons.Resolver
 	brandIcons     map[string]struct{}
@@ -158,8 +156,7 @@ func New(cfg Config, store Store, trigger SyncTrigger) (*Server, error) {
 		metricsHandler: cfg.MetricsHandler,
 		authHandler:    cfg.AuthHandler,
 		classifier:     cfg.Classifier,
-		budgets:        cfg.Budgets,
-		budgetManager:  cfg.BudgetManager,
+		budgetPlanner:  cfg.BudgetPlanner,
 		budgetAdvisory: budgets.NormalizeAdvisoryConfig(cfg.BudgetAdvisory),
 		iconResolver:   icons.New(cfg.IconOverrides),
 		brandIcons:     embeddedBrandIcons(),
@@ -197,6 +194,8 @@ func (s *Server) templateFuncs() template.FuncMap {
 		"serviceClass":        serviceClass,
 		"brandIcon":           s.brandIcon,
 		"categoryClass":       categoryClass,
+		"bpsPercent":          bpsPercent,
+		"bpsInput":            bpsInput,
 	}
 }
 
@@ -227,9 +226,9 @@ func (s *Server) routes() http.Handler {
 	app.HandleFunc("GET /transactions", s.handleTransactions)
 	app.HandleFunc("GET /transactions/export", s.handleExport)
 	app.HandleFunc("GET /budgets", s.handleBudgets)
-	app.HandleFunc("GET /api/budgets/advisory", s.handleBudgetAdvisoryJSON)
+	app.HandleFunc("GET /api/budgets/customize", s.handleBudgetCustomize)
+	app.HandleFunc("POST /api/budgets/customize", s.handleBudgetCustomizeSave)
 	app.HandleFunc("POST /api/budgets/advisory/toggle", s.handleBudgetAdvisoryToggle)
-	app.HandleFunc("POST /api/budgets/advisory/apply", s.handleBudgetAdvisoryApply)
 	app.HandleFunc("POST /attachments", s.handleAttachmentUpload)
 	app.HandleFunc("POST /attachments/repair", s.handleAttachmentRepair)
 	app.HandleFunc("POST /attachments/{id}/pair", s.handleAttachmentPair)

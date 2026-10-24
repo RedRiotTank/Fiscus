@@ -1,64 +1,173 @@
 {{define "budget_panel"}}
-{{template "budget_advisory" .}}
-{{if .Budgets}}
-<section class="panel">
-  <header class="panel-head">
-    <div>
-      <h2>Budgets</h2>
-      <p class="panel-sub">Month-to-date category consumption and pacing</p>
+<section class="panel budget-panel" id="budget-panel">
+  {{if .BudgetWorkspaceRequired}}
+    <header class="panel-head">
+      <div>
+        <p class="eyebrow">Workspace budgets</p>
+        <h2>Budgets</h2>
+        <p class="panel-sub">Income-driven allocations are separated by workspace.</p>
+      </div>
+      <span class="badge muted">Select a workspace</span>
+    </header>
+    <div class="budget-empty">
+      <span class="eyebrow">Workspace-specific</span>
+      <h3>Choose Personal or Business</h3>
+      <p>Budgets, income baselines, and categories are isolated by workspace. Select one to view its allocation.</p>
+      <div class="budget-empty-actions">
+        <a class="button small" href="/budgets?workspace=personal">Personal budgets</a>
+        <a class="button ghost small" href="/budgets?workspace=business">Business budgets</a>
+      </div>
     </div>
-    <span class="muted small">{{.SpendingMonth}}</span>
-  </header>
-  {{if .BudgetDonut}}
-    <div class="budget-donut-section">
-      <div class="budget-donut-visual">
-        <div class="budget-donut-wrap">
-          <canvas id="budget-donut" data-budget-donut="{{.BudgetDonut.Data}}" role="img" aria-label="Planned budget and month-to-date spending by category"></canvas>
-          <div class="budget-donut-center" aria-hidden="true">
-            <strong>{{.BudgetDonut.Percent}}%</strong>
-            <span>spent</span>
-            <small>{{money .BudgetDonut.TotalSpentMinor .BudgetDonut.Currency}} of {{money .BudgetDonut.TotalBudgetMinor .BudgetDonut.Currency}}</small>
+  {{else if .BudgetEmpty}}
+    <header class="panel-head">
+      <div>
+        <p class="eyebrow">Income-driven allocation</p>
+        <h2>Budgets</h2>
+        <p class="panel-sub">{{if eq .BudgetWorkspace "business"}}Business operating allocation{{else}}Personal allocation{{end}} · {{.BudgetCurrency}}</p>
+      </div>
+    </header>
+    <div class="budget-empty">
+      <span class="eyebrow">No budget configured</span>
+      <h3>No budget configured for this workspace</h3>
+      <p>Click <strong>Set Up Budget</strong> to establish your {{if eq .BudgetWorkspace "business"}}business operating{{else}}personal{{end}} income-driven allocation.</p>
+      <button class="button small"
+        hx-get="/api/budgets/customize?workspace={{.BudgetWorkspace}}&currency={{.BudgetCurrency}}"
+        hx-target="#budget-customize-content" hx-swap="innerHTML"
+        data-budget-customize-open>Set Up Budget</button>
+    </div>
+  {{else}}
+    <header class="panel-head budget-plan-head">
+      <div>
+        <p class="eyebrow">Income-driven allocation</p>
+        <h2>Budgets</h2>
+        <p class="panel-sub">
+          <span class="budget-baseline-label">{{.BudgetPlan.BaselineLabel}}</span>
+          <strong>{{money .BudgetPlan.BaselineMinor .BudgetPlan.Currency}}</strong>
+          · {{.BudgetPlan.BaselineSubtitle}}
+        </p>
+      </div>
+      <div class="budget-head-actions">
+        <form hx-post="/api/budgets/advisory/toggle" hx-trigger="change" hx-target="#budget-panel" hx-swap="outerHTML">
+          <input type="hidden" name="workspace" value="{{.BudgetWorkspace}}">
+          <input type="hidden" name="currency" value="{{.BudgetPlan.Currency}}">
+          <label class="toggle">
+            <input type="checkbox" name="enabled" value="true" {{if .BudgetPlan.AdvisoryEnabled}}checked{{end}}>
+            <span>{{if .BudgetPlan.AdvisoryEnabled}}Advisory Active{{else}}Advisory Paused{{end}}</span>
+          </label>
+        </form>
+        <button class="button small"
+          hx-get="/api/budgets/customize?workspace={{.BudgetWorkspace}}&currency={{.BudgetPlan.Currency}}"
+          hx-target="#budget-customize-content" hx-swap="innerHTML"
+          data-budget-customize-open>Customize Allocation</button>
+      </div>
+    </header>
+
+    {{if .BudgetPlan.Messages}}
+      <div class="budget-messages">
+        {{range .BudgetPlan.Messages}}
+          <article class="budget-message {{.Severity}}">
+            <span class="badge {{if eq .Severity "warning"}}severity-warning{{else if eq .Severity "success"}}ok{{else}}severity-info{{end}}">
+              {{if eq .Severity "warning"}}Advisory{{else if eq .Severity "success"}}Positive{{else}}Info{{end}}
+            </span>
+            <div>
+              <strong>{{.Title}}</strong>
+              <p>{{.Body}}</p>
+            </div>
+          </article>
+        {{end}}
+      </div>
+    {{end}}
+
+    <div class="budget-overview-grid">
+      <div class="budget-donut-area">
+        {{if .BudgetPlan.Donut}}
+          <div class="budget-donut-wrap">
+            <canvas id="budget-donut" data-budget-donut="{{.BudgetPlan.Donut.Data}}" role="img" aria-label="Planned income allocation and month-to-date spending by category"></canvas>
+            <div class="budget-donut-center" aria-hidden="true">
+              <strong>{{.BudgetPlan.AllocatedPercent}}%</strong>
+              <span>allocated</span>
+              <small>{{money .BudgetPlan.AllocatedMinor .BudgetPlan.Currency}} of {{money .BudgetPlan.BaselineMinor .BudgetPlan.Currency}}</small>
+              {{if gt .BudgetPlan.UnallocatedMinor 0}}
+                <small class="budget-donut-buffer">{{money .BudgetPlan.UnallocatedMinor .BudgetPlan.Currency}} unallocated</small>
+              {{else if lt .BudgetPlan.UnallocatedMinor 0}}
+                <small class="budget-donut-over">{{money .BudgetPlan.UnallocatedMinor .BudgetPlan.Currency}} over-allocated</small>
+              {{end}}
+            </div>
           </div>
-        </div>
-        <div class="budget-donut-ring-key">
-          <span><i class="ring-key ring-outer"></i>Planned budget</span>
-          <span><i class="ring-key ring-inner"></i>Month-to-date spent</span>
-        </div>
+          <div class="budget-donut-ring-key">
+            <span><i class="ring-key ring-outer"></i>Planned allocation</span>
+            <span><i class="ring-key ring-inner"></i>Actual spend</span>
+          </div>
+        {{else}}
+          <div class="budget-empty-donut">
+            <strong>No income baseline yet</strong>
+            <p>Confirm recurring inflows to calculate an income-driven allocation.</p>
+          </div>
+        {{end}}
       </div>
-      <div class="budget-donut-legend">
-        <div class="budget-donut-legend-head">
-          <h3>Plan vs actual</h3>
-          <span class="badge muted">{{.BudgetDonut.Currency}}</span>
+
+      <div class="budget-summary-card">
+        <div class="budget-summary-head">
+          <span class="badge workspace {{if eq .BudgetWorkspace "business"}}business{{else}}personal{{end}}">{{if eq .BudgetWorkspace "business"}}Business{{else}}Personal{{end}}</span>
+          <span class="badge muted">{{.BudgetPlan.Currency}}</span>
         </div>
-        <p>Outer ring shows category allocation; inner ring tracks month-to-date spending. Overspent categories are red.</p>
-        <ul>
-          {{range .BudgetDonut.Slices}}
-            <li class="budget-donut-legend-row">
-              <span class="budget-donut-swatch" style="background: {{.Color}}"></span>
-              <span class="budget-donut-name">{{.Category}}</span>
-              <span class="budget-donut-values">{{money .SpentMinor .Currency}} / {{money .BudgetMinor .Currency}}</span>
-              <span class="badge {{if .Over}}severity-warning{{else}}muted{{end}}">{{.Percent}}%</span>
-            </li>
+        <dl class="budget-summary-list">
+          <div><dt>Income baseline</dt><dd>{{money .BudgetPlan.BaselineMinor .BudgetPlan.Currency}}</dd></div>
+          <div><dt>Allocated</dt><dd>{{money .BudgetPlan.AllocatedMinor .BudgetPlan.Currency}} · {{.BudgetPlan.AllocatedPercent}}%</dd></div>
+          <div><dt>Unallocated</dt><dd>{{money .BudgetPlan.UnallocatedMinor .BudgetPlan.Currency}} · {{.BudgetPlan.UnallocatedPercent}}%</dd></div>
+          <div><dt>Month-to-date spend</dt><dd>{{money .BudgetPlan.TotalSpentMinor .BudgetPlan.Currency}}</dd></div>
+        </dl>
+        <p class="budget-summary-note">Category percentages are shares of monthly income. Adjust pillar targets and category assignments any time.</p>
+      </div>
+    </div>
+
+    <div class="budget-pillar-grid">
+      {{range .BudgetPlan.Pillars}}
+        <section class="budget-pillar-card pillar-{{.Pillar}}">
+          <header class="budget-pillar-head">
+            <div>
+              <p class="eyebrow">{{.Label}}</p>
+              <h3>{{bpsPercent .AllocatedBPS}} allocated</h3>
+            </div>
+            {{if $.BudgetPlan.AdvisoryEnabled}}
+              <span class="badge {{if eq .AllocationTone "over-target"}}severity-warning{{else if eq .AllocationTone "under-target"}}muted{{else}}ok{{end}}">
+                {{if eq .AllocationTone "over-target"}}Over target{{else if eq .AllocationTone "under-target"}}Under target{{else}}On target{{end}}
+              </span>
+            {{end}}
+          </header>
+          <div class="budget-pillar-meta">
+            <span>Target {{bpsPercent .TargetBPS}}</span>
+            <span>{{money .AllocatedMinor $.BudgetPlan.Currency}} allocated</span>
+            <span>{{money .SpentMinor $.BudgetPlan.Currency}} spent</span>
+          </div>
+          <progress class="budget-progress {{.Tone}}" max="100" value="{{if gt .Percent 100}}100{{else}}{{.Percent}}{{end}}">{{.Percent}}%</progress>
+          {{if .Categories}}
+            <ul class="budget-category-list">
+              {{range .Categories}}
+                <li>
+                  <div class="budget-category-head">
+                    <span class="badge category {{categoryClass .Category}}">{{.Category}}</span>
+                    {{if .Custom}}<span class="badge muted">Custom</span>{{end}}
+                    <span class="budget-category-share">{{bpsPercent .PercentBPS}}</span>
+                  </div>
+                  <div class="budget-category-meta">
+                    <span>{{money .SpentMinor $.BudgetPlan.Currency}} of {{money .LimitMinor $.BudgetPlan.Currency}}</span>
+                    <span class="badge {{if eq .Tone "critical"}}error{{else if eq .Tone "warning"}}pending{{else}}ok{{end}}">{{.Percent}}%</span>
+                  </div>
+                  <progress class="budget-progress {{.Tone}}" max="100" value="{{if gt .Percent 100}}100{{else}}{{.Percent}}{{end}}">{{.Percent}}%</progress>
+                </li>
+              {{end}}
+            </ul>
+          {{else}}
+            <p class="budget-empty-pillar">No categories assigned to this pillar.</p>
           {{end}}
-        </ul>
-      </div>
+        </section>
+      {{end}}
     </div>
   {{end}}
-  <ul class="budget-list">
-    {{range .Budgets}}
-      <li class="budget-row budget-{{.Tone}}">
-        <div class="budget-top">
-          <span class="badge category {{categoryClass .Category}}">{{.Category}}</span>
-          <strong class="{{.Tone}}">{{.Percent}}%</strong>
-        </div>
-        <progress class="budget-progress {{.Tone}}" max="100" value="{{.BarWidth}}">{{.Percent}}%</progress>
-        <div class="budget-meta">
-          <span>{{money .SpentMinor .Currency}} of {{money .LimitMinor .Currency}}</span>
-          <span class="muted">{{.MonthElapsedPercent}}% of month elapsed</span>
-        </div>
-      </li>
-    {{end}}
-  </ul>
+
+  <dialog id="budget-customize-dialog" class="budget-dialog" aria-labelledby="budget-customize-title">
+    <div id="budget-customize-content"></div>
+  </dialog>
 </section>
-{{end}}
 {{end}}

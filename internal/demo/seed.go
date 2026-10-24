@@ -131,6 +131,9 @@ func Seed(ctx context.Context, store *storage.Store, attachmentsDir string, now 
 	if err != nil {
 		return Dataset{}, err
 	}
+	if err := seedBudgetPlans(ctx, store, now); err != nil {
+		return Dataset{}, err
+	}
 	return Dataset{
 		Connections:       connections,
 		Accounts:          accounts,
@@ -204,7 +207,7 @@ func (b *builder) seedAccounts() ([]domain.Connection, []domain.Account, error) 
 		{
 			id: accountBusiness, connection: demoConnectionBBVA,
 			name: "BBVA Empresas - Freelance Operating", iban: "ES7101823000000000000001",
-			currency: "EUR", accountTyp: domain.AccountTypeBusiness, balance: 885_000,
+			currency: "EUR", accountTyp: domain.AccountTypeBusiness, balance: 3_000_000,
 		},
 		{
 			id: accountWiseUSD, connection: demoConnectionWise,
@@ -250,9 +253,9 @@ func (b *builder) seedTransactions() error {
 }
 
 func (b *builder) ensureCurrentMonthBudgets() {
-	if b.currentSpend["Restaurants"] == 0 {
+	if b.currentSpend["Restaurants & Delivery"] == 0 {
 		b.add("current-restaurant", accountSantander, b.now, -4_200, "EUR",
-			"Café Central", "Dining out", "Restaurants", domain.TransactionStatusBooked, "")
+			"Café Central", "Dining out", "Restaurants & Delivery", domain.TransactionStatusBooked, "")
 	}
 	if b.currentSpend["Groceries"] == 0 {
 		b.add("current-groceries", accountSantander, b.now, -6_500, "EUR",
@@ -271,41 +274,39 @@ func (b *builder) seedPersonalMonth(month time.Time, monthKey string, monthIndex
 		"Spotify", "Spotify Premium", "Subscriptions", domain.TransactionStatusBooked, "")
 	b.add("payroll-"+monthKey, accountSantander, b.date(month, 22), 280_000, "EUR",
 		"ACME Studio S.L.", "Monthly payroll", "Payroll", domain.TransactionStatusBooked, "")
-	b.add("rent-"+monthKey, accountSantander, b.date(month, 1), -100_000, "EUR",
+	b.add("rent-"+monthKey, accountSantander, b.date(month, 1), -85_000, "EUR",
 		"Inmobiliaria Centro", "Monthly rent", "Rent", domain.TransactionStatusBooked, "")
 	b.add("transfer-out-"+monthKey, accountSantander, b.date(month, 2), -30_000, "EUR",
-		"Revolut Vault", "Monthly emergency-fund transfer", "Transfer", domain.TransactionStatusBooked, "")
+		"Revolut Vault", "Monthly emergency-fund transfer", "Emergency Fund", domain.TransactionStatusBooked, "")
 	b.add("transfer-in-"+monthKey, accountSavings, b.date(month, 2), 30_000, "EUR",
 		"Santander Smart", "Monthly emergency-fund transfer", "Transfer", domain.TransactionStatusBooked, "")
-	if monthIndex%2 == 0 {
-		b.add("savings-interest-"+monthKey, accountSavings, b.date(month, 20), 125, "EUR",
-			"Revolut", "Savings interest", "Interest", domain.TransactionStatusBooked, "")
-	}
+	b.add("investment-"+monthKey, accountSantander, b.date(month, 3), -26_000, "EUR",
+		"Indexa Capital", "Monthly index fund contribution", "Investments", domain.TransactionStatusBooked, "")
 
 	groceryDays := []int{3, 10, 17}
 	for i, day := range groceryDays {
 		name := groceryNames[monthIndex*len(groceryDays)+i]
 		b.add(fmt.Sprintf("groceries-%d-%s", i, monthKey), accountSantander, b.date(month, day),
-			-b.amount(4_000, 9_800), "EUR", name, "Weekly groceries", "Groceries",
+			-b.amount(7_500, 10_000), "EUR", name, "Weekly groceries", "Groceries",
 			domain.TransactionStatusBooked, "")
 	}
 
 	b.add("utilities-1-"+monthKey, accountSantander, b.date(month, 5), -b.amount(5_500, 8_500), "EUR",
-		electricityNames[monthIndex], "Electricity bill", "Utilities", domain.TransactionStatusBooked, "")
+		electricityNames[monthIndex], "Electricity bill", "Utilities & Telecom", domain.TransactionStatusBooked, "")
 	b.add("utilities-2-"+monthKey, accountSantander, b.date(month, 12), -b.amount(3_800, 6_200), "EUR",
-		gasNames[monthIndex], "Gas bill", "Utilities", domain.TransactionStatusBooked, "")
+		gasNames[monthIndex], "Gas bill", "Utilities & Telecom", domain.TransactionStatusBooked, "")
 	b.add("utilities-3-"+monthKey, accountSantander, b.date(month, 20), -4_990, "EUR",
-		"Vodafone", "Fibra + Móvil", "Utilities", domain.TransactionStatusBooked, "")
+		"Vodafone", "Fibra + Móvil", "Utilities & Telecom", domain.TransactionStatusBooked, "")
 
 	restaurantDays := []int{4, 9, 14, 19}
 	for i, day := range restaurantDays {
 		name := restaurantNames[monthIndex*len(restaurantDays)+i]
 		b.add(fmt.Sprintf("restaurant-%d-%s", i, monthKey), accountSantander, b.date(month, day),
-			-b.amount(10_000, 13_000), "EUR", name, "Dining out", "Restaurants",
+			-b.amount(7_800, 9_200), "EUR", name, "Dining out", "Restaurants & Delivery",
 			domain.TransactionStatusBooked, "")
 	}
-	b.add("shopping-"+monthKey, accountSantander, b.date(month, 16), -b.amount(11_000, 15_000), "EUR",
-		"Amazon", "Household shopping", "Shopping", domain.TransactionStatusBooked, "")
+	b.add("shopping-"+monthKey, accountSantander, b.date(month, 16), -b.amount(28_000, 32_000), "EUR",
+		"Amazon", "Household shopping", "Leisure & Shopping", domain.TransactionStatusBooked, "")
 
 	if monthIndex == 1 || monthIndex == 4 {
 		b.add("bank-fee-"+monthKey, accountSantander, b.date(month, 1), -1_500, "EUR",
@@ -326,27 +327,26 @@ func (b *builder) seedPersonalMonth(month time.Time, monthKey string, monthIndex
 }
 
 func (b *builder) seedBusinessMonth(month time.Time, monthKey string, monthIndex int) error {
-	invoice := int64(120_000)
+	invoice := int64(550_000)
 	counterparty := "Acme Studio S.L."
 	if monthIndex%2 == 1 {
-		invoice = 350_000
 		counterparty = "Northwind Retail"
 	}
 	b.add("invoice-"+monthKey, accountBusiness, b.date(month, 5), invoice, "EUR",
 		counterparty, "Client invoice payment", "Sales", domain.TransactionStatusBooked, "Invoice paid")
 
 	b.add("aws-"+monthKey, accountBusiness, b.date(month, 2), -6_420, "EUR",
-		"Amazon Web Services", "AWS Cloud", "Software", domain.TransactionStatusBooked, "Production hosting")
+		"Amazon Web Services", "AWS Cloud", "Software & Cloud", domain.TransactionStatusBooked, "Production hosting")
 	b.add("stripe-"+monthKey, accountBusiness, b.date(month, 7), -8_900, "EUR",
-		"Stripe", "Payment processing fees", "Software", domain.TransactionStatusBooked, "")
+		"Stripe", "Payment processing fees", "Software & Cloud", domain.TransactionStatusBooked, "")
 	b.add("cloudflare-"+monthKey, accountBusiness, b.date(month, 9), -2_000, "EUR",
-		"Cloudflare", "Cloudflare Pro", "Software", domain.TransactionStatusBooked, "")
+		"Cloudflare", "Cloudflare Pro", "Software & Cloud", domain.TransactionStatusBooked, "")
 	b.add("apple-"+monthKey, accountBusiness, b.date(month, 15), -9_900, "EUR",
-		"Apple", "Apple Developer Program", "Software", domain.TransactionStatusBooked, "")
-	b.add("coworking-"+monthKey, accountBusiness, b.date(month, 1), -119_000, "EUR",
-		"Impact Hub", "Coworking rent", "Rent", domain.TransactionStatusBooked, "")
+		"Apple", "Apple Developer Program", "Software & Cloud", domain.TransactionStatusBooked, "")
+	b.add("coworking-"+monthKey, accountBusiness, b.date(month, 1), -25_000, "EUR",
+		"Impact Hub", "Coworking desk", "Office & Equipment", domain.TransactionStatusBooked, "")
 	b.add("accountant-"+monthKey, accountBusiness, b.date(month, 10), -6_000, "EUR",
-		"Gestoría Fiscal", "Asesoría fiscal", "Professional Services", domain.TransactionStatusBooked, "")
+		"Gestoría Fiscal", "Asesoría fiscal", "Gestoría / Legal", domain.TransactionStatusBooked, "")
 	b.add("travel-"+monthKey, accountBusiness, b.date(month, 17), -40_000, "EUR",
 		"Iberia", "Client visit flight", "Travel", domain.TransactionStatusBooked, "")
 	b.add("meals-"+monthKey, accountBusiness, b.date(month, 20), -15_000, "EUR",
@@ -356,9 +356,9 @@ func (b *builder) seedBusinessMonth(month time.Time, monthKey string, monthIndex
 
 func (b *builder) seedOneOffTransactions() {
 	b.add("jetbrains", accountBusiness, b.now.AddDate(0, 0, -120), -28_900, "EUR",
-		"JetBrains", "All Products Pack yearly license", "Software", domain.TransactionStatusBooked, "Annual renewal")
+		"JetBrains", "All Products Pack yearly license", "Software & Cloud", domain.TransactionStatusBooked, "Annual renewal")
 	b.add("jetbrains-previous", accountBusiness, b.now.AddDate(0, 0, -480), -28_900, "EUR",
-		"JetBrains", "All Products Pack yearly license", "Software", domain.TransactionStatusBooked, "Annual renewal")
+		"JetBrains", "All Products Pack yearly license", "Software & Cloud", domain.TransactionStatusBooked, "Annual renewal")
 	b.add("domain", accountSantander, b.now.AddDate(0, 0, -150), -1_450, "EUR",
 		"Namecheap", "Domain registration", "Subscriptions", domain.TransactionStatusBooked, "")
 	b.add("domain-previous", accountSantander, b.now.AddDate(0, 0, -510), -1_450, "EUR",
@@ -632,4 +632,51 @@ func demoJPEG() []byte {
 	// #nosec G104 -- bytes.Buffer writes cannot fail.
 	_ = jpeg.Encode(&buf, imageData, &jpeg.Options{Quality: 82})
 	return buf.Bytes()
+}
+
+func seedBudgetPlans(ctx context.Context, store *storage.Store, now time.Time) error {
+	personal := domain.BudgetProfile{
+		Workspace: domain.WorkspacePersonal, Currency: "EUR",
+		NeedsBPS: 5000, WantsBPS: 3000, SavingsBPS: 2000,
+		AdvisoryEnabled: true, UpdatedAt: now,
+	}
+	personalAllocations := []domain.BudgetAllocation{
+		{Category: "Rent", Pillar: "needs", PercentBPS: 3036, NotifyAtPercent: []int{80, 100}, SortOrder: 0},
+		{Category: "Groceries", Pillar: "needs", PercentBPS: 1250, NotifyAtPercent: []int{80, 100}, SortOrder: 1},
+		{Category: "Utilities & Telecom", Pillar: "needs", PercentBPS: 714, NotifyAtPercent: []int{80, 100}, SortOrder: 2},
+		{Category: "Restaurants & Delivery", Pillar: "wants", PercentBPS: 1071, NotifyAtPercent: []int{80, 100}, SortOrder: 3},
+		{Category: "Subscriptions", Pillar: "wants", PercentBPS: 321, NotifyAtPercent: []int{80, 100}, SortOrder: 4},
+		{Category: "Leisure & Shopping", Pillar: "wants", PercentBPS: 1608, NotifyAtPercent: []int{80, 100}, SortOrder: 5},
+		{Category: "Emergency Fund", Pillar: "savings", PercentBPS: 1071, NotifyAtPercent: []int{80, 100}, SortOrder: 6},
+		{Category: "Investments", Pillar: "savings", PercentBPS: 929, NotifyAtPercent: []int{80, 100}, SortOrder: 7},
+	}
+	for i := range personalAllocations {
+		personalAllocations[i].Workspace = domain.WorkspacePersonal
+		personalAllocations[i].Currency = "EUR"
+		personalAllocations[i].UpdatedAt = now
+	}
+	if err := store.SaveBudgetPlan(ctx, personal, personalAllocations); err != nil {
+		return fmt.Errorf("demo: seed personal budget plan: %w", err)
+	}
+
+	business := domain.BudgetProfile{
+		Workspace: domain.WorkspaceBusiness, Currency: "EUR",
+		NeedsBPS: 1727, WantsBPS: 0, SavingsBPS: 2100,
+		AdvisoryEnabled: true, UpdatedAt: now,
+	}
+	businessAllocations := []domain.BudgetAllocation{
+		{Category: "Software & Cloud", Pillar: "needs", PercentBPS: 818, NotifyAtPercent: []int{80, 100}, SortOrder: 0},
+		{Category: "Gestoría / Legal", Pillar: "needs", PercentBPS: 364, NotifyAtPercent: []int{80, 100}, SortOrder: 1},
+		{Category: "Office & Equipment", Pillar: "needs", PercentBPS: 545, NotifyAtPercent: []int{80, 100}, SortOrder: 2},
+		{Category: "Tax Reserve", Pillar: "savings", PercentBPS: 2100, NotifyAtPercent: []int{80, 100}, SortOrder: 3},
+	}
+	for i := range businessAllocations {
+		businessAllocations[i].Workspace = domain.WorkspaceBusiness
+		businessAllocations[i].Currency = "EUR"
+		businessAllocations[i].UpdatedAt = now
+	}
+	if err := store.SaveBudgetPlan(ctx, business, businessAllocations); err != nil {
+		return fmt.Errorf("demo: seed business budget plan: %w", err)
+	}
+	return nil
 }

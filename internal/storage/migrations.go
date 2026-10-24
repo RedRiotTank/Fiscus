@@ -224,6 +224,33 @@ var migrations = []migration{
 			)`,
 		},
 	},
+	{
+		version: 13,
+		statements: []string{
+			`CREATE TABLE IF NOT EXISTS budget_profiles (
+				workspace TEXT NOT NULL,
+				currency TEXT NOT NULL,
+				needs_bps INTEGER NOT NULL DEFAULT 5000,
+				wants_bps INTEGER NOT NULL DEFAULT 3000,
+				savings_bps INTEGER NOT NULL DEFAULT 2000,
+				advisory_enabled INTEGER NOT NULL DEFAULT 1,
+				updated_at TEXT NOT NULL,
+				PRIMARY KEY (workspace, currency)
+			)`,
+			`CREATE TABLE IF NOT EXISTS budget_allocations (
+				workspace TEXT NOT NULL,
+				currency TEXT NOT NULL,
+				category TEXT NOT NULL COLLATE NOCASE,
+				pillar TEXT NOT NULL,
+				percent_bps INTEGER NOT NULL,
+				notify_at_percent TEXT NOT NULL DEFAULT '',
+				sort_order INTEGER NOT NULL DEFAULT 0,
+				custom INTEGER NOT NULL DEFAULT 0,
+				updated_at TEXT NOT NULL,
+				PRIMARY KEY (workspace, currency, category)
+			)`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and
