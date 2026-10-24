@@ -30,11 +30,11 @@ Telegram, Discord, webhooks, and scheduled backups are disabled in demo mode.
 The seeded dataset includes personal and business accounts, subscriptions with a
 price increase and a dormant Adobe subscription, payroll and client invoices,
 groceries, utilities, restaurants, internal transfers, uncategorized merchants,
-paired and unpaired receipts, budgets, tax shields, reconciliation history, and
-alert history. Use `fiscus demo --dry-run` to seed and inspect without starting
-the server, or `fiscus demo --dir ./demo-data` to keep the demo database and
-attachments on disk. `fiscus serve --demo` starts the same environment using the
-normal serve entrypoint.
+paired and unpaired receipts, budget advisory signals, tax shields,
+reconciliation history, and alert history. Use `fiscus demo --dry-run` to seed
+and inspect without starting the server, or `fiscus demo --dir ./demo-data` to
+keep the demo database and attachments on disk. `fiscus serve --demo` starts the
+same environment using the normal serve entrypoint.
 
 ## Features
 

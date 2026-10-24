@@ -179,7 +179,7 @@ func ComputeAdvisory(transactions []domain.Transaction, activeBudgets []Budget, 
 	out := make([]Advisory, 0, len(currencyList))
 	for _, currency := range currencyList {
 		advisory := computeCurrencyAdvisory(windowTransactions, internalIDs, pairs, budgetByCategory, cfg, currency, taxProvision[currency], windowStart, now)
-		if advisory.Currency == "" {
+		if advisory.Currency == "" || advisory.MonthlyNetIncomeMinor <= 0 {
 			continue
 		}
 		out = append(out, advisory)
