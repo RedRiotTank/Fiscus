@@ -53,7 +53,7 @@
         <a href="/alerts" class="{{if eq .Active "alerts"}}active{{end}}">Alerts</a>
         <a href="/connections" class="{{if eq .Active "connections"}}active{{end}}">Connections</a>
       </nav>
-      <span class="build">v{{.Version}}</span>
+      <span class="build">{{versionLabel .Version}}</span>
     </div>
   </header>
 

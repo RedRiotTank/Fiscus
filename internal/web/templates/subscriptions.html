@@ -7,118 +7,196 @@
   </div>
 </div>
 
-<div class="summary-grid">
-  {{range .MonthlyCosts}}
-    <article class="stat">
-      <span class="stat-label">Monthly subscriptions</span>
-      <strong class="stat-value">{{money .Minor .Currency}}</strong>
-      <span class="stat-meta">{{.Currency}} active run rate</span>
-    </article>
+<div class="subscriptions-page">
+  <div class="summary-grid">
+    {{range .MonthlyCosts}}
+      <article class="stat">
+        <span class="stat-label">Monthly subscriptions</span>
+        <strong class="stat-value">{{money .Minor .Currency}}</strong>
+        <span class="stat-meta">{{.Currency}} active run rate</span>
+      </article>
+    {{end}}
+    {{range .AnnualCosts}}
+      <article class="stat">
+        <span class="stat-label">Annualized subscriptions</span>
+        <strong class="stat-value">{{money .Minor .Currency}}</strong>
+        <span class="stat-meta">{{.Currency}} annual run rate</span>
+      </article>
+    {{end}}
+    {{range .FeeTotals}}
+      <article class="stat subtle">
+        <span class="stat-label">Bank fees</span>
+        <strong class="stat-value">{{money .Minor .Currency}}</strong>
+        <span class="stat-meta">{{.Currency}} detected in the analysis window</span>
+      </article>
+    {{end}}
+  </div>
+
+  <section class="panel subscription-showcase">
+    <header class="panel-head">
+      <div>
+        <h2>Active subscriptions</h2>
+        <p class="panel-sub">Recurring services with a charge inside their expected window</p>
+      </div>
+      <span class="badge muted">{{len .ActiveSubscriptions}} active</span>
+    </header>
+    {{if .ActiveSubscriptions}}
+      <div class="subscription-card-grid">
+        {{range .ActiveSubscriptions}}
+          <article class="subscription-card">
+            <div class="subscription-card-head">
+              <span class="service-avatar {{serviceClass .Counterparty}}" aria-hidden="true">{{serviceInitials .Counterparty}}</span>
+              <div class="subscription-name">
+                <h3>{{.Counterparty}}</h3>
+                <span class="badge category">{{if .Category}}{{.Category}}{{else}}Subscription{{end}}</span>
+              </div>
+              <span class="badge ok">Active</span>
+            </div>
+            <div class="subscription-price">
+              <strong>{{money .AmountMinor .Currency}}</strong>
+              <span>/ {{if eq .Frequency "yearly"}}year{{else}}month{{end}}</span>
+            </div>
+            {{if gt .PriceIncreaseMinor 0}}
+              <p class="price-hike">↑ Previously {{money .PreviousAmountMinor .Currency}}</p>
+            {{end}}
+            <dl class="subscription-meta">
+              <div><dt>Next expected</dt><dd>{{date .NextExpected}}</dd></div>
+              <div><dt>Last charge</dt><dd>{{date .LastCharge}}</dd></div>
+              <div><dt>Account</dt><dd>{{.AccountName}}</dd></div>
+            </dl>
+          </article>
+        {{end}}
+      </div>
+    {{else}}
+      <div class="empty compact"><p>No active subscriptions detected yet. More history improves detection.</p></div>
+    {{end}}
+  </section>
+
+  {{if .InactiveSubscriptions}}
+    <section class="panel subscription-showcase archived">
+      <header class="panel-head">
+        <div>
+          <h2>Dormant / potential ghost</h2>
+          <p class="panel-sub">No charge inside the expected window. Review before keeping or cancelling.</p>
+        </div>
+        <span class="badge pending">{{len .InactiveSubscriptions}} dormant</span>
+      </header>
+      <div class="subscription-card-grid">
+        {{range .InactiveSubscriptions}}
+          <article class="subscription-card">
+            <div class="subscription-card-head">
+              <span class="service-avatar {{serviceClass .Counterparty}}" aria-hidden="true">{{serviceInitials .Counterparty}}</span>
+              <div class="subscription-name">
+                <h3>{{.Counterparty}}</h3>
+                <span class="badge category">{{if .Category}}{{.Category}}{{else}}Subscription{{end}}</span>
+              </div>
+              <span class="badge pending">Potential ghost</span>
+            </div>
+            <div class="subscription-price">
+              <strong>{{money .AmountMinor .Currency}}</strong>
+              <span>/ {{if eq .Frequency "yearly"}}year{{else}}month{{end}}</span>
+            </div>
+            <dl class="subscription-meta">
+              <div><dt>Last charge</dt><dd>{{date .LastCharge}}</dd></div>
+              <div><dt>Account</dt><dd>{{.AccountName}}</dd></div>
+            </dl>
+          </article>
+        {{end}}
+      </div>
+    </section>
   {{end}}
-  {{range .AnnualCosts}}
-    <article class="stat">
-      <span class="stat-label">Annualized subscriptions</span>
-      <strong class="stat-value">{{money .Minor .Currency}}</strong>
-      <span class="stat-meta">{{.Currency}} annual run rate</span>
-    </article>
-  {{end}}
-  {{range .FeeTotals}}
-    <article class="stat subtle">
-      <span class="stat-label">Bank fees</span>
-      <strong class="stat-value">{{money .Minor .Currency}}</strong>
-      <span class="stat-meta">{{.Currency}} detected in the analysis window</span>
-    </article>
-  {{end}}
+
+  <details class="panel subscription-audit">
+    <summary class="panel-head">
+      <div>
+        <h2>Recurring transaction history</h2>
+        <p class="panel-sub">Detailed detection results for auditing</p>
+      </div>
+      <span class="badge muted">{{len .Subscriptions}} detected</span>
+    </summary>
+    {{if .Subscriptions}}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Merchant</th>
+              <th scope="col">Category</th>
+              <th scope="col">Account</th>
+              <th scope="col">Cadence</th>
+              <th scope="col">Last charge</th>
+              <th scope="col">Next expected</th>
+              <th scope="col" class="right">Amount</th>
+              <th scope="col" class="right">Monthly</th>
+              <th scope="col" class="right">Annualized</th>
+              <th scope="col">State</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Subscriptions}}
+              <tr>
+                <td>
+                  <span class="account-name">{{.Counterparty}}</span>
+                  {{if gt .PriceIncreaseMinor 0}}<span class="badge pending">price increase</span>{{end}}
+                </td>
+                <td><span class="badge category">{{if .Category}}{{.Category}}{{else}}Subscription{{end}}</span></td>
+                <td>{{.AccountName}}</td>
+                <td><span class="badge muted">{{.Frequency}} · ~{{.IntervalDays}}d</span></td>
+                <td class="nowrap">{{date .LastCharge}}</td>
+                <td class="nowrap">{{date .NextExpected}}</td>
+                <td class="right amount debit">{{money .AmountMinor .Currency}}</td>
+                <td class="right amount">{{money .MonthlyMinor .Currency}}</td>
+                <td class="right amount">{{money .AnnualMinor .Currency}}</td>
+                <td>{{if .Active}}<span class="badge ok">active</span>{{else}}<span class="badge muted">inactive / potential ghost</span>{{end}}</td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}
+      <div class="empty">
+        <p>No recurring subscriptions detected yet. More history improves detection.</p>
+      </div>
+    {{end}}
+  </details>
+
+  <section class="panel">
+    <header class="panel-head">
+      <div>
+        <h2>Detected bank fees</h2>
+        <p class="panel-sub">Commissions, maintenance charges, overdrafts, and claims</p>
+      </div>
+      <span class="badge muted">{{len .Fees}} charges</span>
+    </header>
+    {{if .Fees}}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Date</th>
+              <th scope="col">Account</th>
+              <th scope="col">Description</th>
+              <th scope="col">Type</th>
+              <th scope="col" class="right">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Fees}}
+              <tr>
+                <td class="nowrap">{{date .BookingDate}}</td>
+                <td>{{.AccountName}}</td>
+                <td class="description">{{if .Description}}{{.Description}}{{else}}{{.Counterparty}}{{end}}</td>
+                <td><span class="badge category">{{.Label}}</span></td>
+                <td class="right amount debit">{{money .AmountMinor .Currency}}</td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}
+      <div class="empty">
+        <p>No bank fees detected in this window.</p>
+      </div>
+    {{end}}
+  </section>
 </div>
-
-<section class="panel">
-  <header class="panel-head">
-    <div>
-      <h2>Recurring subscriptions</h2>
-      <p class="panel-sub">Same creditor, roughly monthly or yearly intervals</p>
-    </div>
-    <span class="badge muted">{{len .Subscriptions}} detected</span>
-  </header>
-  {{if .Subscriptions}}
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">Merchant</th>
-            <th scope="col">Account</th>
-            <th scope="col">Cadence</th>
-            <th scope="col">Last charge</th>
-            <th scope="col">Next expected</th>
-            <th scope="col" class="right">Amount</th>
-            <th scope="col" class="right">Monthly</th>
-            <th scope="col" class="right">Annualized</th>
-            <th scope="col">State</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{range .Subscriptions}}
-            <tr>
-              <td>
-                <span class="account-name">{{.Counterparty}}</span>
-                {{if gt .PriceIncreaseMinor 0}}<span class="badge pending">price increase</span>{{end}}
-              </td>
-              <td>{{.AccountName}}</td>
-              <td><span class="badge muted">{{.Frequency}} · ~{{.IntervalDays}}d</span></td>
-              <td class="nowrap">{{date .LastCharge}}</td>
-              <td class="nowrap">{{date .NextExpected}}</td>
-              <td class="right amount debit">{{money .AmountMinor .Currency}}</td>
-              <td class="right amount">{{money .MonthlyMinor .Currency}}</td>
-              <td class="right amount">{{money .AnnualMinor .Currency}}</td>
-              <td>{{if .Active}}<span class="badge ok">active</span>{{else}}<span class="badge muted">inactive / potential ghost</span>{{end}}</td>
-            </tr>
-          {{end}}
-        </tbody>
-      </table>
-    </div>
-  {{else}}
-    <div class="empty">
-      <p>No recurring subscriptions detected yet. More history improves detection.</p>
-    </div>
-  {{end}}
-</section>
-
-<section class="panel">
-  <header class="panel-head">
-    <div>
-      <h2>Detected bank fees</h2>
-      <p class="panel-sub">Commissions, maintenance charges, overdrafts, and claims</p>
-    </div>
-    <span class="badge muted">{{len .Fees}} charges</span>
-  </header>
-  {{if .Fees}}
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">Date</th>
-            <th scope="col">Account</th>
-            <th scope="col">Description</th>
-            <th scope="col">Type</th>
-            <th scope="col" class="right">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{range .Fees}}
-            <tr>
-              <td class="nowrap">{{date .BookingDate}}</td>
-              <td>{{.AccountName}}</td>
-              <td class="description">{{if .Description}}{{.Description}}{{else}}{{.Counterparty}}{{end}}</td>
-              <td><span class="badge category">{{.Label}}</span></td>
-              <td class="right amount debit">{{money .AmountMinor .Currency}}</td>
-            </tr>
-          {{end}}
-        </tbody>
-      </table>
-    </div>
-  {{else}}
-    <div class="empty">
-      <p>No bank fees detected in this window.</p>
-    </div>
-  {{end}}
-</section>
 {{end}}

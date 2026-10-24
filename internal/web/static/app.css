@@ -373,6 +373,133 @@ a:focus-visible {
   gap: 14px;
 }
 
+.subscriptions-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.subscription-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+  padding: 20px;
+}
+
+.subscription-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  background: linear-gradient(160deg, var(--panel-2), var(--panel));
+}
+
+.subscription-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.subscription-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.subscription-name h3 {
+  margin: 0 0 5px;
+  font-size: 1rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.service-avatar {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #334155;
+  color: #f8fafc;
+  font-size: 0.78rem;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+}
+
+.service-netflix { background: linear-gradient(145deg, #e50914, #7f0007); }
+.service-spotify { background: linear-gradient(145deg, #1db954, #0d6b30); }
+.service-aws { background: linear-gradient(145deg, #ff9900, #9a5b00); color: #1b1200; }
+.service-github { background: linear-gradient(145deg, #64748b, #1e293b); }
+.service-vodafone { background: linear-gradient(145deg, #e60000, #8b0000); }
+.service-cloudflare { background: linear-gradient(145deg, #f48120, #a34c00); }
+.service-jetbrains { background: linear-gradient(145deg, #ff318c, #8e1650); }
+.service-adobe { background: linear-gradient(145deg, #ff0000, #6f0000); }
+.service-default { background: linear-gradient(145deg, #475569, #1e293b); }
+
+.subscription-price {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.subscription-price strong {
+  font-size: 1.45rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.subscription-price span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.price-hike {
+  color: #fbbf24;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.subscription-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.subscription-meta div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.78rem;
+}
+
+.subscription-meta dt {
+  color: var(--muted);
+}
+
+.subscription-meta dd {
+  margin: 0;
+  text-align: right;
+}
+
+.subscription-audit > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.subscription-audit > summary::-webkit-details-marker {
+  display: none;
+}
+
+.subscription-audit[open] > summary {
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.subscription-showcase.archived .subscription-card {
+  opacity: 0.88;
+}
+
 .stat {
   background: linear-gradient(160deg, var(--panel-2), var(--panel));
   border: 1px solid var(--border);

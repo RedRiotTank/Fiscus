@@ -38,6 +38,7 @@ const (
 type Subscription struct {
 	AccountID           string
 	Counterparty        string
+	Category            string
 	Currency            string
 	Frequency           Frequency
 	IntervalDays        int
@@ -45,6 +46,7 @@ type Subscription struct {
 	AmountMinor         int64
 	PreviousAmountMinor int64
 	PriceIncreaseMinor  int64
+	PriceChangedAt      time.Time
 	FirstCharge         time.Time
 	LastCharge          time.Time
 	NextExpected        time.Time
@@ -115,6 +117,9 @@ func Analyze(transactions []domain.Transaction, now time.Time) Snapshot {
 		}
 		if fee, ok := detectFee(tx); ok {
 			fees = append(fees, fee)
+		}
+		if !isSubscriptionCategory(tx.Category) {
+			continue
 		}
 		merchant := transactionMerchant(tx)
 		if merchant == "" {
@@ -212,8 +217,14 @@ func detectSubscription(group []domain.Transaction, now time.Time) (Subscription
 	last := group[len(group)-1]
 	current := -last.AmountMinor
 	previous := current
-	if len(group) > 1 {
-		previous = -group[len(group)-2].AmountMinor
+	priceChangedAt := time.Time{}
+	for i := len(group) - 2; i >= 0; i-- {
+		amount := -group[i].AmountMinor
+		if amount != current {
+			previous = amount
+			priceChangedAt = group[i+1].BookingDate
+			break
+		}
 	}
 	priceIncrease := current - previous
 	ageDays := int(now.Sub(last.BookingDate).Hours() / 24)
@@ -222,6 +233,7 @@ func detectSubscription(group []domain.Transaction, now time.Time) (Subscription
 	return Subscription{
 		AccountID:           last.AccountID,
 		Counterparty:        transactionMerchant(last),
+		Category:            strings.TrimSpace(last.Category),
 		Currency:            strings.ToUpper(last.Currency),
 		Frequency:           frequency,
 		IntervalDays:        interval,
@@ -229,6 +241,7 @@ func detectSubscription(group []domain.Transaction, now time.Time) (Subscription
 		AmountMinor:         current,
 		PreviousAmountMinor: previous,
 		PriceIncreaseMinor:  priceIncrease,
+		PriceChangedAt:      priceChangedAt,
 		FirstCharge:         group[0].BookingDate,
 		LastCharge:          last.BookingDate,
 		NextExpected:        next,
@@ -252,6 +265,23 @@ func average(values []int) int {
 		total += value
 	}
 	return (total + len(values)/2) / len(values)
+}
+
+func isSubscriptionCategory(category string) bool {
+	category = strings.ToLower(strings.TrimSpace(category))
+	if category == "" {
+		// Imported or legacy rows may not carry a category; keep detecting
+		// them as before.
+		return true
+	}
+	switch category {
+	case "uncategorized", "groceries", "restaurants", "dining", "shopping",
+		"rent", "housing", "transfer", "transfers", "bank fees", "payroll",
+		"meals", "travel", "hardware", "office", "taxes", "tax":
+		return false
+	default:
+		return true
+	}
 }
 
 func transactionMerchant(tx domain.Transaction) string {

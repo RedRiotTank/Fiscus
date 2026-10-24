@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/RedRiotTank/Fiscus/internal/analysis"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"github.com/RedRiotTank/Fiscus/internal/treasury"
@@ -32,8 +33,26 @@ func TestSeedPopulatesCoherentDataset(t *testing.T) {
 	if got := len(dataset.Transactions); got < 150 || got > 200 {
 		t.Fatalf("transactions = %d, want 150..200", got)
 	}
-	if len(dataset.Connections) != 3 || len(dataset.Accounts) != 5 {
+	if len(dataset.Connections) != 4 || len(dataset.Accounts) != 5 {
 		t.Fatalf("connections/accounts = %d/%d", len(dataset.Connections), len(dataset.Accounts))
+	}
+	connectionIDs := make(map[string]int64, len(dataset.Connections))
+	for _, connection := range dataset.Connections {
+		connectionIDs[connection.RequisitionID] = connection.ID
+	}
+	savings, err := store.GetAccount(ctx, accountSavings)
+	if err != nil {
+		t.Fatalf("GetAccount savings: %v", err)
+	}
+	if savings.ConnectionID != connectionIDs[demoConnectionRevolut] {
+		t.Fatalf("savings connection = %d, want Revolut %d", savings.ConnectionID, connectionIDs[demoConnectionRevolut])
+	}
+	santander, err := store.GetAccount(ctx, accountSantander)
+	if err != nil {
+		t.Fatalf("GetAccount santander: %v", err)
+	}
+	if santander.ConnectionID != connectionIDs[demoConnectionSantander] {
+		t.Fatalf("santander connection = %d, want Santander %d", santander.ConnectionID, connectionIDs[demoConnectionSantander])
 	}
 	if len(dataset.Alerts) < 6 || len(dataset.Attachments) != 4 {
 		t.Fatalf("alerts/attachments = %d/%d", len(dataset.Alerts), len(dataset.Attachments))
@@ -122,6 +141,33 @@ func TestSeedPopulatesCoherentDataset(t *testing.T) {
 	pairs := treasury.PairTransfers(dataset.Transactions, 3)
 	if len(pairs) != 6 {
 		t.Fatalf("internal transfer pairs = %d, want 6", len(pairs))
+	}
+
+	snapshot := analysis.Analyze(dataset.Transactions, now)
+	subscriptions := make(map[string]analysis.Subscription, len(snapshot.Subscriptions))
+	for _, subscription := range snapshot.Subscriptions {
+		subscriptions[subscription.Counterparty] = subscription
+		if subscription.Category == "Restaurants" || subscription.Category == "Groceries" ||
+			subscription.Category == "Rent" || subscription.Category == "Shopping" {
+			t.Errorf("non-subscription category detected: %+v", subscription)
+		}
+	}
+	for _, merchant := range []string{
+		"Spotify", "Netflix", "Amazon Web Services", "GitHub Copilot", "Cloudflare",
+		"JetBrains", "Vodafone", "Gestoría Fiscal", "Adobe",
+	} {
+		if _, ok := subscriptions[merchant]; !ok {
+			t.Errorf("expected subscription %q, got %+v", merchant, snapshot.Subscriptions)
+		}
+	}
+	if adobe := subscriptions["Adobe"]; adobe.Active {
+		t.Errorf("Adobe should be a dormant ghost: %+v", adobe)
+	}
+	if vodafone := subscriptions["Vodafone"]; vodafone.AmountMinor != 4_990 {
+		t.Errorf("Vodafone amount = %d, want 4990", vodafone.AmountMinor)
+	}
+	if gestoria := subscriptions["Gestoría Fiscal"]; gestoria.AmountMinor != 6_000 {
+		t.Errorf("Gestoría amount = %d, want 6000", gestoria.AmountMinor)
 	}
 	bazar := 0
 	spotify := make([]domain.Transaction, 0)

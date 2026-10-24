@@ -22,6 +22,7 @@ import (
 
 const (
 	demoConnectionSantander = "demo-santander"
+	demoConnectionRevolut   = "demo-revolut"
 	demoConnectionBBVA      = "demo-bbva"
 	demoConnectionWise      = "demo-wise"
 
@@ -30,6 +31,28 @@ const (
 	accountBusiness  = "demo-bbva-business"
 	accountWiseUSD   = "demo-wise-usd"
 	accountWiseGBP   = "demo-wise-gbp"
+)
+
+var (
+	restaurantNames = []string{
+		"La Taberna del Puerto", "Sushi Nikkei", "Café Central", "Pizzería Roma",
+		"El Mercado", "Casa Lucio", "La Musa", "Tapa Tapa",
+		"Vermut & Co", "Bistró Norte", "La Pérgola", "Rincón de Sevilla",
+		"Tandoor House", "Miso Ramen", "El Huerto", "La Marina",
+		"Bodega Andaluza", "Terraza del Sol", "The Green Fork", "La Cuchara",
+		"Barrio Soho", "Osteria Nera", "El Faro", "Mercado de San Antón",
+	}
+	groceryNames = []string{
+		"Mercadona", "Carrefour", "Lidl", "Aldi", "Dia", "Eroski",
+		"Alcampo", "Consum", "Spar", "Hipercor", "BM", "Ahorramás",
+		"Masymas", "Gadis", "Froiz", "Caprabo", "Bonpreu", "Supercor",
+	}
+	electricityNames = []string{
+		"Iberdrola", "Endesa", "Naturgy", "Repsol", "Holaluz", "Lucera",
+	}
+	gasNames = []string{
+		"Naturgy", "Repsol", "Iberdrola", "Endesa", "Lucera", "Holaluz",
+	}
 )
 
 // Dataset summarizes the rows and presentation hints created by Seed.
@@ -123,10 +146,18 @@ func (b *builder) seedAccounts() ([]domain.Connection, []domain.Account, error) 
 		{
 			RequisitionID:   demoConnectionSantander,
 			InstitutionID:   "DEMO_SANTANDER",
-			InstitutionName: "Santander",
+			InstitutionName: "Banco Santander",
 			Status:          "LN",
 			Reference:       "demo",
 			AgreementID:     "demo-agreement-santander",
+		},
+		{
+			RequisitionID:   demoConnectionRevolut,
+			InstitutionID:   "DEMO_REVOLUT",
+			InstitutionName: "Revolut Ltd",
+			Status:          "LN",
+			Reference:       "demo",
+			AgreementID:     "demo-agreement-revolut",
 		},
 		{
 			RequisitionID:   demoConnectionBBVA,
@@ -162,11 +193,11 @@ func (b *builder) seedAccounts() ([]domain.Connection, []domain.Account, error) 
 	accountSpecs := []accountSpec{
 		{
 			id: accountSantander, connection: demoConnectionSantander,
-			name: "Santander Smart - Personal Account", iban: "ES9121000418450200051332",
+			name: "Santander Smart - Personal Checking", iban: "ES9121000418450200051332",
 			currency: "EUR", accountTyp: domain.AccountTypePersonal, balance: 345_000,
 		},
 		{
-			id: accountSavings, connection: demoConnectionSantander,
+			id: accountSavings, connection: demoConnectionRevolut,
 			name: "Revolut Vault - Emergency Fund", iban: "ES7620770024003102575766",
 			currency: "EUR", accountTyp: domain.AccountTypePersonal, balance: 1_250_000,
 		},
@@ -238,8 +269,6 @@ func (b *builder) seedPersonalMonth(month time.Time, monthKey string, monthIndex
 	}
 	b.add("spotify-"+monthKey, accountSantander, b.date(month, 5), spotifyAmount, "EUR",
 		"Spotify", "Spotify Premium", "Subscriptions", domain.TransactionStatusBooked, "")
-	b.add("gym-"+monthKey, accountSantander, b.date(month, 8), -3_990, "EUR",
-		"Basic Fit", "Gym membership", "Health & Fitness", domain.TransactionStatusBooked, "")
 	b.add("payroll-"+monthKey, accountSantander, b.date(month, 28), 280_000, "EUR",
 		"ACME Studio S.L.", "Monthly payroll", "Payroll", domain.TransactionStatusBooked, "")
 	b.add("rent-"+monthKey, accountSantander, b.date(month, 1), -120_000, "EUR",
@@ -253,32 +282,26 @@ func (b *builder) seedPersonalMonth(month time.Time, monthKey string, monthIndex
 			"Revolut", "Savings interest", "Interest", domain.TransactionStatusBooked, "")
 	}
 
-	b.add("groceries-1-"+monthKey, accountSantander, b.date(month, 3), -b.amount(4_200, 9_800), "EUR",
-		"Mercadona", "Weekly groceries", "Groceries", domain.TransactionStatusBooked, "")
-	b.add("groceries-2-"+monthKey, accountSantander, b.date(month, 10), -b.amount(3_800, 8_500), "EUR",
-		"Carrefour", "Weekly groceries", "Groceries", domain.TransactionStatusBooked, "")
-	b.add("groceries-3-"+monthKey, accountSantander, b.date(month, 17), -b.amount(4_000, 9_200), "EUR",
-		"Lidl", "Weekly groceries", "Groceries", domain.TransactionStatusBooked, "")
+	groceryDays := []int{3, 10, 17}
+	for i, day := range groceryDays {
+		name := groceryNames[monthIndex*len(groceryDays)+i]
+		b.add(fmt.Sprintf("groceries-%d-%s", i, monthKey), accountSantander, b.date(month, day),
+			-b.amount(4_000, 9_800), "EUR", name, "Weekly groceries", "Groceries",
+			domain.TransactionStatusBooked, "")
+	}
 
 	b.add("utilities-1-"+monthKey, accountSantander, b.date(month, 5), -b.amount(5_500, 8_500), "EUR",
-		"Iberdrola", "Electricity bill", "Utilities", domain.TransactionStatusBooked, "")
+		electricityNames[monthIndex], "Electricity bill", "Utilities", domain.TransactionStatusBooked, "")
 	b.add("utilities-2-"+monthKey, accountSantander, b.date(month, 12), -b.amount(3_800, 6_200), "EUR",
-		"Endesa", "Gas bill", "Utilities", domain.TransactionStatusBooked, "")
-	b.add("utilities-3-"+monthKey, accountSantander, b.date(month, 20), -3_990, "EUR",
-		"Vodafone", "Mobile and fiber", "Utilities", domain.TransactionStatusBooked, "")
+		gasNames[monthIndex], "Gas bill", "Utilities", domain.TransactionStatusBooked, "")
+	b.add("utilities-3-"+monthKey, accountSantander, b.date(month, 20), -4_990, "EUR",
+		"Vodafone", "Fibra + Móvil", "Utilities", domain.TransactionStatusBooked, "")
 
-	restaurants := []struct {
-		name string
-		day  int
-	}{
-		{name: "La Taberna", day: 4},
-		{name: "Sushi Nikkei", day: 9},
-		{name: "Café Central", day: 14},
-		{name: "Pizzería Roma", day: 19},
-	}
-	for i, restaurant := range restaurants {
-		b.add(fmt.Sprintf("restaurant-%d-%s", i, monthKey), accountSantander, b.date(month, restaurant.day),
-			-b.amount(1_800, 6_500), "EUR", restaurant.name, "Dining out", "Restaurants",
+	restaurantDays := []int{4, 9, 14, 19}
+	for i, day := range restaurantDays {
+		name := restaurantNames[monthIndex*len(restaurantDays)+i]
+		b.add(fmt.Sprintf("restaurant-%d-%s", i, monthKey), accountSantander, b.date(month, day),
+			-b.amount(1_800, 6_500), "EUR", name, "Dining out", "Restaurants",
 			domain.TransactionStatusBooked, "")
 	}
 	b.add("shopping-"+monthKey, accountSantander, b.date(month, 16), -b.amount(2_500, 11_500), "EUR",
@@ -294,7 +317,7 @@ func (b *builder) seedPersonalMonth(month time.Time, monthKey string, monthIndex
 	}
 
 	b.add("copilot-"+monthKey, accountWiseUSD, b.date(month, 7), -1_000, "USD",
-		"GitHub", "GitHub Copilot", "Subscriptions", domain.TransactionStatusBooked, "")
+		"GitHub Copilot", "GitHub Copilot", "Subscriptions", domain.TransactionStatusBooked, "")
 	if monthIndex%2 == 0 {
 		b.add("figma-"+monthKey, accountWiseGBP, b.date(month, 14), -1_200, "GBP",
 			"Figma", "Figma professional", "Subscriptions", domain.TransactionStatusBooked, "")
@@ -320,10 +343,10 @@ func (b *builder) seedBusinessMonth(month time.Time, monthKey string, monthIndex
 		"Cloudflare", "Cloudflare Pro", "Software", domain.TransactionStatusBooked, "")
 	b.add("apple-"+monthKey, accountBusiness, b.date(month, 15), -9_900, "EUR",
 		"Apple", "Apple Developer Program", "Software", domain.TransactionStatusBooked, "")
-	b.add("coworking-"+monthKey, accountBusiness, b.date(month, 1), -95_000, "EUR",
+	b.add("coworking-"+monthKey, accountBusiness, b.date(month, 1), -119_000, "EUR",
 		"Impact Hub", "Coworking rent", "Rent", domain.TransactionStatusBooked, "")
-	b.add("accountant-"+monthKey, accountBusiness, b.date(month, 10), -30_000, "EUR",
-		"Gestoría Pérez", "Accounting services", "Professional Services", domain.TransactionStatusBooked, "")
+	b.add("accountant-"+monthKey, accountBusiness, b.date(month, 10), -6_000, "EUR",
+		"Gestoría Fiscal", "Asesoría fiscal", "Professional Services", domain.TransactionStatusBooked, "")
 	b.add("travel-"+monthKey, accountBusiness, b.date(month, 17), -40_000, "EUR",
 		"Iberia", "Client visit flight", "Travel", domain.TransactionStatusBooked, "")
 	b.add("meals-"+monthKey, accountBusiness, b.date(month, 20), -15_000, "EUR",
@@ -334,7 +357,11 @@ func (b *builder) seedBusinessMonth(month time.Time, monthKey string, monthIndex
 func (b *builder) seedOneOffTransactions() {
 	b.add("jetbrains", accountBusiness, b.now.AddDate(0, 0, -120), -28_900, "EUR",
 		"JetBrains", "All Products Pack yearly license", "Software", domain.TransactionStatusBooked, "Annual renewal")
+	b.add("jetbrains-previous", accountBusiness, b.now.AddDate(0, 0, -480), -28_900, "EUR",
+		"JetBrains", "All Products Pack yearly license", "Software", domain.TransactionStatusBooked, "Annual renewal")
 	b.add("domain", accountSantander, b.now.AddDate(0, 0, -150), -1_450, "EUR",
+		"Namecheap", "Domain registration", "Subscriptions", domain.TransactionStatusBooked, "")
+	b.add("domain-previous", accountSantander, b.now.AddDate(0, 0, -510), -1_450, "EUR",
 		"Namecheap", "Domain registration", "Subscriptions", domain.TransactionStatusBooked, "")
 	b.add("hardware", accountBusiness, b.now.AddDate(0, 0, -120), -199_900, "EUR",
 		"Apple Store", "MacBook Pro hardware purchase", "Hardware", domain.TransactionStatusBooked, "Work laptop")
@@ -398,7 +425,7 @@ func (b *builder) seedReconciliations(accounts []domain.Account) error {
 
 func (b *builder) seedAlerts() ([]domain.Alert, error) {
 	hardwareID := b.transactionID("hardware")
-	santander := "Santander Smart - Personal Account"
+	santander := "Santander Smart - Personal Checking"
 	business := "BBVA Empresas - Freelance Operating"
 	specs := []domain.Alert{
 		{

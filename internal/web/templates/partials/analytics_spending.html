@@ -6,7 +6,7 @@
       <h2>Where the money goes</h2>
       <p class="subtitle">Category shares, six-month momentum, and this month's cash-flow bridge. Internal transfers are excluded.</p>
     </div>
-    <a class="link" href="/analytics">Open analytics workspace →</a>
+    {{if ne .Active "analytics"}}<a class="link" href="/analytics">Open analytics workspace →</a>{{end}}
   </div>
   <div class="chart-grid chart-grid-3">
     <article class="panel chart-card">

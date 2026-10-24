@@ -180,6 +180,9 @@ func (s *Server) templateFuncs() template.FuncMap {
 		"externalURL":         externalURL,
 		"reconciliationLabel": reconciliationLabel,
 		"reconciliationClass": reconciliationClass,
+		"versionLabel":        formatVersionLabel,
+		"serviceInitials":     serviceInitials,
+		"serviceClass":        serviceClass,
 	}
 }
 
@@ -285,7 +288,8 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Security-Policy",
 			"default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; "+
-				"img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'")
+				"img-src 'self' data:; style-src 'self' 'unsafe-inline'; "+
+				"script-src 'self' 'unsafe-inline'; connect-src 'self'")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "same-origin")
@@ -438,6 +442,85 @@ func (s *Server) renderError(w http.ResponseWriter, status int, message string) 
 func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	s.logger.Error("dashboard request failed", "path", r.URL.Path, "error", err)
 	s.renderError(w, http.StatusInternalServerError, "Fiscus could not load this data. Check the daemon logs for details.")
+}
+
+func serviceInitials(name string) string {
+	normalized := strings.ToLower(strings.TrimSpace(name))
+	switch {
+	case strings.Contains(normalized, "netflix"):
+		return "N"
+	case strings.Contains(normalized, "spotify"):
+		return "S"
+	case strings.Contains(normalized, "amazon web services") || strings.Contains(normalized, "aws"):
+		return "AWS"
+	case strings.Contains(normalized, "github"):
+		return "GH"
+	case strings.Contains(normalized, "vodafone"):
+		return "V"
+	case strings.Contains(normalized, "cloudflare"):
+		return "CF"
+	case strings.Contains(normalized, "jetbrains"):
+		return "JB"
+	case strings.Contains(normalized, "adobe"):
+		return "A"
+	case strings.Contains(normalized, "stripe"):
+		return "S"
+	case strings.Contains(normalized, "apple"):
+		return "A"
+	case strings.Contains(normalized, "namecheap"):
+		return "NC"
+	case strings.Contains(normalized, "figma"):
+		return "F"
+	}
+	words := strings.Fields(name)
+	initials := make([]rune, 0, 2)
+	for _, word := range words {
+		runes := []rune(word)
+		if len(runes) == 0 {
+			continue
+		}
+		initials = append(initials, runes[0])
+		if len(initials) == 2 {
+			break
+		}
+	}
+	if len(initials) == 0 {
+		return "?"
+	}
+	return strings.ToUpper(string(initials))
+}
+
+func serviceClass(name string) string {
+	normalized := strings.ToLower(strings.TrimSpace(name))
+	switch {
+	case strings.Contains(normalized, "netflix"):
+		return "service-netflix"
+	case strings.Contains(normalized, "spotify"):
+		return "service-spotify"
+	case strings.Contains(normalized, "amazon web services") || strings.Contains(normalized, "aws"):
+		return "service-aws"
+	case strings.Contains(normalized, "github"):
+		return "service-github"
+	case strings.Contains(normalized, "vodafone"):
+		return "service-vodafone"
+	case strings.Contains(normalized, "cloudflare"):
+		return "service-cloudflare"
+	case strings.Contains(normalized, "jetbrains"):
+		return "service-jetbrains"
+	case strings.Contains(normalized, "adobe"):
+		return "service-adobe"
+	default:
+		return "service-default"
+	}
+}
+
+func formatVersionLabel(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.TrimLeft(value, "vV")
+	if value == "" {
+		return "dev"
+	}
+	return "v" + value
 }
 
 func formatMoney(minor int64, currency string) string {

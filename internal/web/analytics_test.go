@@ -29,6 +29,9 @@ func TestAnalyticsPageAndSpendingAPI(t *testing.T) {
 	if !strings.Contains(body, `<a href="/analytics" class="active">Analytics</a>`) {
 		t.Error("analytics navigation is not active")
 	}
+	if strings.Contains(body, "Open analytics workspace") {
+		t.Error("redundant analytics workspace link is visible on the analytics page")
+	}
 
 	unauth := f.request(t, http.MethodGet, "/api/analytics/spending", false, nil)
 	if unauth.Code != http.StatusUnauthorized {

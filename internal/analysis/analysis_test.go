@@ -65,6 +65,54 @@ func TestAnalyzeSubscriptionsAndCosts(t *testing.T) {
 	}
 }
 
+func TestAnalyzeDetectsHistoricalPriceIncrease(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	transactions := []domain.Transaction{
+		booked("acc-1", "Streaming", "EUR", -999, "2026-01-05"),
+		booked("acc-1", "Streaming", "EUR", -1099, "2026-02-05"),
+		booked("acc-1", "Streaming", "EUR", -1099, "2026-03-05"),
+	}
+	snapshot := Analyze(transactions, now)
+	if len(snapshot.Subscriptions) != 1 {
+		t.Fatalf("subscriptions = %+v", snapshot.Subscriptions)
+	}
+	subscription := snapshot.Subscriptions[0]
+	if subscription.PriceIncreaseMinor != 100 || subscription.PreviousAmountMinor != 999 {
+		t.Fatalf("price increase = %+v", subscription)
+	}
+	if subscription.PriceChangedAt.Format("2006-01-02") != "2026-02-05" {
+		t.Fatalf("price changed at = %v", subscription.PriceChangedAt)
+	}
+}
+
+func TestAnalyzeIgnoresNonSubscriptionCategories(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	makeTx := func(merchant, category, date string) domain.Transaction {
+		tx := booked("acc-1", merchant, "EUR", -2500, date)
+		tx.Category = category
+		return tx
+	}
+	transactions := []domain.Transaction{
+		makeTx("Taverna", "Restaurants", "2026-01-05"),
+		makeTx("Taverna", "Restaurants", "2026-02-05"),
+		makeTx("Mercadona", "Groceries", "2026-01-08"),
+		makeTx("Mercadona", "Groceries", "2026-02-08"),
+		makeTx("Landlord", "Rent", "2026-01-01"),
+		makeTx("Landlord", "Rent", "2026-02-01"),
+		makeTx("Streaming", "Subscriptions", "2026-01-10"),
+		makeTx("Streaming", "Subscriptions", "2026-02-10"),
+	}
+	snapshot := Analyze(transactions, now)
+	if len(snapshot.Subscriptions) != 1 || snapshot.Subscriptions[0].Counterparty != "Streaming" {
+		t.Fatalf("subscriptions = %+v", snapshot.Subscriptions)
+	}
+	if snapshot.Subscriptions[0].Category != "Subscriptions" {
+		t.Fatalf("category = %q", snapshot.Subscriptions[0].Category)
+	}
+}
+
 func TestAnalyzeIgnoresIrregularAndInactiveForCosts(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
