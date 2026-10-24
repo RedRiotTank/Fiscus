@@ -406,7 +406,8 @@ func runSync(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	defer sink.Wait()
-	engine, err := buildEngine(cfg, store, logger, nil, sink, nil)
+	budgetManager := buildBudgetManager(cfg, store)
+	engine, err := buildEngine(cfg, store, logger, nil, sink, nil, budgetManager)
 	if err != nil {
 		return err
 	}

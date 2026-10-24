@@ -77,6 +77,15 @@ func (f *fakeStore) UpdateTransactionNotes(_ context.Context, id int64, notes st
 	return nil
 }
 
+type fakeAdvisories struct {
+	results []budgets.Advisory
+	err     error
+}
+
+func (f *fakeAdvisories) Advisories(context.Context) ([]budgets.Advisory, error) {
+	return f.results, f.err
+}
+
 type fakeSyncer struct {
 	err   error
 	calls int
@@ -621,6 +630,36 @@ func TestRunwayCommand(t *testing.T) {
 	for _, want := range []string{"Autonomía financiera", "liquidez 3,000.00", "consumo mensual 300.00", "10.0 meses"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("runway missing %q: %q", want, text)
+		}
+	}
+}
+
+func TestRecomendarPresupuestosCommand(t *testing.T) {
+	t.Parallel()
+	api, server := newFakeAPI(t)
+	bot := newTestBot(t, api, server, &fakeStore{}, nil)
+	bot.advisories = &fakeAdvisories{results: []budgets.Advisory{{
+		Currency:              "EUR",
+		MonthlyNetIncomeMinor: 280_000,
+		NeedsCapacityMinor:    140_000,
+		WantsCapacityMinor:    84_000,
+		SavingsCapacityMinor:  56_000,
+		UnallocatedWantsMinor: 18_000,
+		Categories: []budgets.CategoryAdvisory{
+			{Category: "Restaurants", Status: budgets.StatusOverAllocated, CurrentBudgetMinor: 45_000, RecommendedMinor: 28_000, DeviationPercent: 60},
+			{Category: "Groceries", Status: budgets.StatusBalanced, CurrentBudgetMinor: 24_000, RecommendedMinor: 22_000},
+		},
+	}}}
+	bot.handleUpdate(context.Background(), messageUpdate(42, 7, "/recomendar_presupuestos"))
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if len(api.sent) != 1 {
+		t.Fatalf("replies = %+v", api.sent)
+	}
+	reply := api.sent[0].Text
+	for _, want := range []string{"Asesor de presupuestos", "2,800.00", "50/30/20", "Restaurants", "180.00"} {
+		if !strings.Contains(reply, want) {
+			t.Errorf("reply missing %q: %s", want, reply)
 		}
 	}
 }

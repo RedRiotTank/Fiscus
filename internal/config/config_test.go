@@ -216,9 +216,61 @@ budgets:
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if len(cfg.Budgets) != 1 || cfg.Budgets[0].Category != "Restaurants" ||
-		cfg.Budgets[0].Limit != 30000 || len(cfg.Budgets[0].NotifyAtPercent) != 2 {
+	if len(cfg.Budgets.Items) != 1 || cfg.Budgets.Items[0].Category != "Restaurants" ||
+		cfg.Budgets.Items[0].Limit != 30000 || len(cfg.Budgets.Items[0].NotifyAtPercent) != 2 {
 		t.Fatalf("budgets = %+v", cfg.Budgets)
+	}
+	if !cfg.Budgets.Advisory.Enabled || cfg.Budgets.Advisory.Model != "hybrid" {
+		t.Fatalf("advisory defaults = %+v", cfg.Budgets.Advisory)
+	}
+}
+
+func TestLoadBudgetAdvisory(t *testing.T) {
+	path := writeConfig(t, `
+budgets:
+  items:
+    - category: Restaurants
+      limit: 45000
+  advisory:
+    enabled: true
+    model: heuristic
+    normative_split:
+      needs_percent: 50
+      wants_percent: 30
+      savings_percent: 20
+    heuristic_window_months: 6
+    overbudget_warning_threshold: 0.15
+    underbudget_notice_threshold: 0.30
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Budgets.Items) != 1 || cfg.Budgets.Items[0].Category != "Restaurants" {
+		t.Fatalf("budget items = %+v", cfg.Budgets.Items)
+	}
+	advisory := cfg.Budgets.Advisory
+	if !advisory.Enabled || advisory.Model != "heuristic" ||
+		advisory.NormativeSplit.NeedsPercent != 50 ||
+		advisory.HeuristicWindowMonths != 6 ||
+		advisory.OverbudgetWarningThreshold != 0.15 ||
+		advisory.UnderbudgetNoticeThreshold != 0.30 {
+		t.Fatalf("advisory = %+v", advisory)
+	}
+}
+
+func TestBudgetAdvisoryPartialConfigKeepsDefaults(t *testing.T) {
+	cfg, err := Load(writeConfig(t, "budgets:\n  advisory:\n    enabled: false\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	advisory := cfg.Budgets.Advisory
+	if advisory.Enabled || advisory.Model != "hybrid" ||
+		advisory.NormativeSplit.NeedsPercent != 50 ||
+		advisory.HeuristicWindowMonths != 6 ||
+		advisory.OverbudgetWarningThreshold != 0.15 ||
+		advisory.UnderbudgetNoticeThreshold != 0.30 {
+		t.Fatalf("partial advisory = %+v", advisory)
 	}
 }
 
@@ -230,6 +282,9 @@ func TestInvalidBudgetsRejected(t *testing.T) {
 		{name: "missing category", yaml: "budgets:\n  - limit: 100\n"},
 		{name: "non-positive limit", yaml: "budgets:\n  - category: Dining\n    limit: 0\n"},
 		{name: "invalid threshold", yaml: "budgets:\n  - category: Dining\n    limit: 100\n    notify_at_percent: [0]\n"},
+		{name: "invalid advisory model", yaml: "budgets:\n  advisory:\n    enabled: true\n    model: magic\n"},
+		{name: "invalid advisory split", yaml: "budgets:\n  advisory:\n    enabled: true\n    normative_split:\n      needs_percent: 50\n      wants_percent: 30\n      savings_percent: 10\n"},
+		{name: "invalid advisory window", yaml: "budgets:\n  advisory:\n    enabled: true\n    heuristic_window_months: 1\n"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

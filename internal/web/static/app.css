@@ -805,6 +805,161 @@ td.description {
   background: var(--red);
 }
 
+.budget-advisor {
+  display: flex;
+  flex-direction: column;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.toggle input {
+  accent-color: var(--accent);
+  width: 17px;
+  height: 17px;
+}
+
+.advisor-currency {
+  padding: 18px 20px 20px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.advisor-currency:first-of-type {
+  border-top: 0;
+}
+
+.advisor-income {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.advisor-income > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.advisor-income .stat-value {
+  font-size: 1.55rem;
+}
+
+.advisor-buckets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.advisor-bucket {
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  padding: 13px 14px;
+  background: var(--panel-2);
+}
+
+.advisor-bucket-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 8px;
+  font-size: 0.8rem;
+  color: var(--text-soft);
+}
+
+.advisor-bucket-head strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.advisor-bucket progress {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 7px;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--panel);
+}
+
+.advisor-bucket progress::-webkit-progress-bar {
+  background: var(--panel);
+}
+
+.advisor-bucket progress::-webkit-progress-value {
+  background: var(--accent);
+}
+
+.advisor-bucket progress::-moz-progress-bar {
+  background: var(--accent);
+}
+
+.advisor-bucket.needs progress::-webkit-progress-value,
+.advisor-bucket.needs progress::-moz-progress-bar {
+  background: #38bdf8;
+}
+
+.advisor-bucket.wants progress::-webkit-progress-value,
+.advisor-bucket.wants progress::-moz-progress-bar {
+  background: #fbbf24;
+}
+
+.advisor-bucket.savings progress::-webkit-progress-value,
+.advisor-bucket.savings progress::-moz-progress-bar {
+  background: #34d399;
+}
+
+.advisor-bucket p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.advisor-warning,
+.advisor-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.advisor-warning {
+  background: var(--amber-dim);
+  border: 1px solid rgba(251, 191, 36, 0.26);
+  color: #fde68a;
+}
+
+.advisor-notice {
+  background: var(--blue-dim);
+  border: 1px solid rgba(56, 189, 248, 0.24);
+  color: #bae6fd;
+}
+
+.advisor-table {
+  font-size: 0.82rem;
+}
+
+.advisor-table th,
+.advisor-table td {
+  padding: 9px 12px;
+}
+
 .category-spending {
   list-style: none;
   margin: 0;

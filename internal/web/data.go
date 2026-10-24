@@ -25,6 +25,9 @@ type PageData struct {
 	CategorySpending      []CategorySpendingView
 	SpendingMonth         string
 	Budgets               []budgets.Status
+	BudgetAdvisories      []budgets.Advisory
+	BudgetAdvisoryEnabled bool
+	BudgetAdvisoryModel   string
 	Subscriptions         []SubscriptionView
 	ActiveSubscriptions   []SubscriptionView
 	InactiveSubscriptions []SubscriptionView
@@ -273,6 +276,20 @@ func runwayLabel(runway treasury.Runway) string {
 	return fmt.Sprintf("%d.%d months", runway.RunwayTenths/10, runway.RunwayTenths%10)
 }
 
+func (s *Server) activeBudgets(ctx context.Context) ([]budgets.Budget, error) {
+	if s.budgetManager != nil {
+		return s.budgetManager.Active(ctx)
+	}
+	return s.budgets, nil
+}
+
+func (s *Server) advisoryConfig(ctx context.Context) (budgets.AdvisoryConfig, error) {
+	if s.budgetManager != nil {
+		return s.budgetManager.Advisory(ctx)
+	}
+	return budgets.NormalizeAdvisoryConfig(s.budgetAdvisory), nil
+}
+
 func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 	accounts, err := s.workspaceAccounts(ctx, data.Workspace.View)
 	if err != nil {
@@ -296,7 +313,11 @@ func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 			Category: item.Category, Currency: item.Currency, Minor: item.Minor,
 		})
 	}
-	data.Budgets = budgets.Compute(spending, s.budgets, now)
+	activeBudgets, err := s.activeBudgets(ctx)
+	if err != nil {
+		return err
+	}
+	data.Budgets = budgets.Compute(spending, activeBudgets, now)
 	windowStart := now.Add(-time.Duration(treasury.DefaultBurnWindowDays) * 24 * time.Hour)
 	windowTransactions, err := s.store.ListTransactionsBetween(ctx, windowStart, now.Add(24*time.Hour))
 	if err != nil {
@@ -323,7 +344,42 @@ func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 	if err := s.loadTaxShields(ctx, data); err != nil {
 		return err
 	}
+	if err := s.loadBudgetAdvisory(ctx, data); err != nil {
+		return err
+	}
 	return s.loadReconciliations(ctx, data)
+}
+
+func (s *Server) loadBudgetAdvisory(ctx context.Context, data *PageData) error {
+	cfg, err := s.advisoryConfig(ctx)
+	if err != nil {
+		return err
+	}
+	data.BudgetAdvisoryEnabled = cfg.Enabled
+	data.BudgetAdvisoryModel = cfg.Model
+	if !cfg.Enabled {
+		return nil
+	}
+	active, err := s.activeBudgets(ctx)
+	if err != nil {
+		return err
+	}
+	now := s.now().UTC()
+	windowStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).
+		AddDate(0, -(budgets.NormalizeAdvisoryConfig(cfg).HeuristicWindowMonths - 1), 0)
+	transactions, err := s.store.ListTransactionsBetween(ctx, windowStart, now.Add(24*time.Hour))
+	if err != nil {
+		return err
+	}
+	transactions = filterTransactions(transactions, allowedAccountIDs(data.Accounts, data.Workspace.View), data.Workspace.View)
+	taxProvision := make(map[string]int64)
+	if !data.Workspace.Personal {
+		for _, shield := range data.TaxShields {
+			taxProvision[shield.Currency] += shield.TaxReserveMinor / 3
+		}
+	}
+	data.BudgetAdvisories = budgets.ComputeAdvisory(transactions, active, cfg, taxProvision, now)
+	return nil
 }
 
 func (s *Server) loadConnections(ctx context.Context, data *PageData) error {

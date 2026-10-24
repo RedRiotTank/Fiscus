@@ -20,11 +20,18 @@ type Spender interface {
 	SpendingByCategory(ctx context.Context, from, to time.Time) ([]storage.CategorySpending, error)
 }
 
+// BudgetProvider supplies the effective budgets, including persisted
+// overrides.
+type BudgetProvider interface {
+	Active(ctx context.Context) ([]Budget, error)
+}
+
 // Rule evaluates configured monthly category caps.
 type Rule struct {
-	store   Spender
-	budgets []Budget
-	now     func() time.Time
+	store    Spender
+	budgets  []Budget
+	provider BudgetProvider
+	now      func() time.Time
 }
 
 // NewRule constructs a budget pacing rule. Empty budget lists yield a rule that
@@ -43,12 +50,35 @@ func NewRule(store Spender, budgets []Budget, now func() time.Time) (*Rule, erro
 	return &Rule{store: store, budgets: normalized, now: now}, nil
 }
 
+// NewRuleWithProvider constructs a budget pacing rule that reads the effective
+// budgets (including SQLite overrides) on every evaluation.
+func NewRuleWithProvider(store Spender, provider BudgetProvider, now func() time.Time) (*Rule, error) {
+	if store == nil {
+		return nil, errors.New("budgets: spender is required")
+	}
+	if provider == nil {
+		return nil, errors.New("budgets: budget provider is required")
+	}
+	if now == nil {
+		now = time.Now
+	}
+	return &Rule{store: store, provider: provider, now: now}, nil
+}
+
 // Name implements alerts.AnalysisRule.
 func (r *Rule) Name() string { return RuleBudgetThreshold }
 
 // Evaluate implements alerts.AnalysisRule.
 func (r *Rule) Evaluate(ctx context.Context) ([]domain.Alert, error) {
-	if len(r.budgets) == 0 {
+	active := r.budgets
+	if r.provider != nil {
+		var err error
+		active, err = r.provider.Active(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("budgets: load effective budgets: %w", err)
+		}
+	}
+	if len(active) == 0 {
 		return nil, nil
 	}
 	now := r.now().UTC()
@@ -57,10 +87,10 @@ func (r *Rule) Evaluate(ctx context.Context) ([]domain.Alert, error) {
 	if err != nil {
 		return nil, fmt.Errorf("budgets: load month-to-date spending: %w", err)
 	}
-	statuses := Compute(spending, r.budgets, now)
+	statuses := Compute(spending, active, now)
 	out := make([]domain.Alert, 0, len(statuses))
 	for i, status := range statuses {
-		threshold, exceeded := highestCrossedThreshold(status.Percent, r.budgets[i].NotifyAtPercent)
+		threshold, exceeded := highestCrossedThreshold(status.Percent, active[i].NotifyAtPercent)
 		if !exceeded {
 			continue
 		}
