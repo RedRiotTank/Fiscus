@@ -3,6 +3,70 @@
 All notable changes to Fiscus are documented here. Versions use semantic
 versioning and annotated Git tags.
 
+## v1.3.0 - 2026-10-24
+
+Intelligent budget advisory release.
+
+### Added
+
+- Budget Advisory Engine:
+  - 50/30/20 normative model, historical heuristic model, and hybrid mode.
+  - Rolling net operational inflow baseline from confirmed booked credits,
+    excluding internal transfers and loans.
+  - Estimated tax reserve provisions are deducted in business and hybrid
+    profiles.
+  - Category mapping into Needs, Wants, Savings, and Unallocated buckets.
+  - Historical monthly mean and standard deviation per category.
+  - Conservative, realistic, normative, and recommended category ceilings.
+  - Over-allocation warnings and under-budget surplus notices.
+- Budgets workspace:
+  - Dedicated `/budgets` page and Budget Advisor card with 50/30/20 bars.
+  - Active/paused toggle persisted in SQLite.
+  - One-click **Apply Recommended Budgets** action for existing category caps.
+  - Per-category current budget, historical average, recommendation, and status.
+- CLI:
+  - `fiscus budgets recommend`
+  - `fiscus budgets recommend --model=normative|heuristic|hybrid`
+  - `fiscus budgets recommend --apply`
+- Telegram:
+  - `/recomendar_presupuestos` executive advisory summary with net income,
+    50/30/20 capacities, over-allocation warnings, and surplus notices.
+- Config:
+  - `budgets.items` and `budgets.advisory` mapping.
+  - Legacy plain-list budget configurations remain supported.
+  - Advisory settings for model, split percentages, window, and thresholds.
+- Persistence:
+  - SQLite `budget_overrides` and `app_settings` tables.
+  - Latest schema version is 12.
+- Demo data:
+  - Restaurants budget 450.00 EUR vs a 280.00 EUR recommendation.
+  - Groceries kept in a healthy balance.
+  - Personal advisory shows an approximately 180.00 EUR Wants surplus.
+  - Dedicated `/budgets` view populated with advisory signals.
+
+### Changed
+
+- Budget threshold alerts read the effective budgets, including SQLite
+  overrides.
+- Telegram `/presupuesto` reads effective budgets from the same manager.
+- Subscription-style icon/card styling and budget advisor cards share the
+  refreshed dashboard visual language.
+- README and configuration examples cover the advisory models, CLI, API, and
+  Telegram command.
+
+### Verification
+
+- `go test -v -race ./...`
+- `golangci-lint run ./...`
+- `CGO_ENABLED=0 go build -v ./cmd/fiscus`
+- Demo smoke test verified:
+  - `/budgets` renders the advisor card.
+  - Personal advisory reports 2,800 EUR income, 280 EUR Restaurants
+    recommendation, over-allocation warning, healthy Groceries, and ~180 EUR
+    Wants surplus.
+  - Toggle and apply endpoints persist settings and overrides.
+  - CLI recommend and apply flows work against the demo database.
+
 ## v1.2.2 - 2026-10-24
 
 Demo UI polish, analytics reliability, and subscription experience release.
