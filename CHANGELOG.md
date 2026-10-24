@@ -3,6 +3,58 @@
 All notable changes to Fiscus are documented here. Versions use semantic
 versioning and annotated Git tags.
 
+## v1.2.2 - 2026-10-24
+
+Demo UI polish, analytics reliability, and subscription experience release.
+
+### Fixed
+
+- Version labels are normalized before rendering, so the dashboard shows
+  `v1.2.2` rather than `vv1.2.2`.
+- Analytics charts no longer remain stuck on loading:
+  - Analytics initializers now wait for `DOMContentLoaded`, after every deferred
+    analytics module has registered.
+  - Late-registered initializers run immediately.
+  - Fetch and Chart.js failures are logged and replace loading placeholders
+    with clear unavailable/error messages.
+  - Chart.js load failures are surfaced instead of leaving the page waiting.
+- The redundant "Open analytics workspace" link is hidden on the Analytics page.
+- The demo seeder now associates the Revolut emergency fund with a separate
+  Revolut Ltd connection instead of Santander.
+- Demo subscription data excludes recurring groceries, restaurants, rent,
+  shopping, travel, meals, and other non-subscription categories.
+- Demo merchant names no longer create accidental recurring “subscriptions”
+  from taverns, cafes, or grocery stores.
+- Price-increase detection now finds the most recent actual price change even
+  after several months at the new price, and the alert de-duplicates against the
+  change date rather than the latest charge date.
+- Subscription view spacing now separates summary cards, subscription cards,
+  the audit table, and bank fees consistently.
+
+### Added
+
+- Modern active-subscription cards with brand-colored service avatars,
+  category badges, price and cadence, price-hike indicators, status pills, and
+  next/last charge dates.
+- A separate dormant / potential-ghost card section.
+- A collapsible recurring-transaction audit table.
+- Seeded demo subscriptions now include Spotify, Netflix, GitHub Copilot, AWS,
+  JetBrains, Cloudflare, Vodafone, Gestoría Fiscal, and dormant Adobe.
+
+### Changed
+
+- Content-Security-Policy now permits inline scripts/styles and data-image URIs
+  while keeping scripts, styles, and fetch/XHR restricted to the same origin.
+
+### Verification
+
+- `go test -v -race ./...`
+- `golangci-lint run ./...`
+- `CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X 'main.version=v1.2.2'" ./cmd/fiscus`
+- Demo smoke test verified version rendering, analytics APIs, subscriptions
+  cards, ghost-state cards, CSP headers, and removal of non-subscription
+  merchants.
+
 ## v1.2.1 - 2026-10-24
 
 Interactive demo and zero-configuration evaluation release.
