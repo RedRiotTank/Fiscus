@@ -206,6 +206,24 @@ var migrations = []migration{
 			`ALTER TABLE accounts ADD COLUMN type_manual INTEGER NOT NULL DEFAULT 0`,
 		},
 	},
+	{
+		version: 12,
+		statements: []string{
+			`CREATE TABLE IF NOT EXISTS budget_overrides (
+				category TEXT NOT NULL COLLATE NOCASE,
+				currency TEXT NOT NULL DEFAULT 'EUR',
+				limit_minor INTEGER NOT NULL,
+				notify_at_percent TEXT NOT NULL DEFAULT '',
+				updated_at TEXT NOT NULL,
+				PRIMARY KEY (category, currency)
+			)`,
+			`CREATE TABLE IF NOT EXISTS app_settings (
+				key TEXT PRIMARY KEY,
+				value TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			)`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and

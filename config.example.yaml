@@ -147,10 +147,25 @@ logging:
 # crosses a threshold, an alert is emitted at most once per threshold, category,
 # and calendar month; 100% always produces a critical alert.
 budgets:
-  - category: "Restaurants"
-    limit: 30000
-    currency: "EUR"
-    notify_at_percent: [80, 100]
+  items:
+    - category: "Restaurants"
+      limit: 45000
+      currency: "EUR"
+      notify_at_percent: [80, 100]
+    - category: "Groceries"
+      limit: 24000
+      currency: "EUR"
+      notify_at_percent: [80, 100]
+  advisory:
+    enabled: true
+    model: "hybrid"                # normative, heuristic, or hybrid
+    normative_split:
+      needs_percent: 50
+      wants_percent: 30
+      savings_percent: 20
+    heuristic_window_months: 6
+    overbudget_warning_threshold: 0.15
+    underbudget_notice_threshold: 0.30
 
 # Optional expected monthly credits. When a matching booked credit of at least
 # amount_min (integer minor units) does not arrive inside expected_days plus the

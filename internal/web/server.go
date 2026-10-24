@@ -82,6 +82,8 @@ type Config struct {
 	AuthHandler    AuthorizationCallback
 	Classifier     Classifier
 	Budgets        []budgets.Budget
+	BudgetManager  *budgets.Manager
+	BudgetAdvisory budgets.AdvisoryConfig
 	Attachments    *attachments.Service
 	Tax            *tax.Service
 	Search         *search.Service
@@ -104,6 +106,8 @@ type Server struct {
 	authHandler    AuthorizationCallback
 	classifier     Classifier
 	budgets        []budgets.Budget
+	budgetManager  *budgets.Manager
+	budgetAdvisory budgets.AdvisoryConfig
 	attachments    *attachments.Service
 	tax            *tax.Service
 	search         *search.Service
@@ -151,6 +155,8 @@ func New(cfg Config, store Store, trigger SyncTrigger) (*Server, error) {
 		authHandler:    cfg.AuthHandler,
 		classifier:     cfg.Classifier,
 		budgets:        cfg.Budgets,
+		budgetManager:  cfg.BudgetManager,
+		budgetAdvisory: budgets.NormalizeAdvisoryConfig(cfg.BudgetAdvisory),
 		attachments:    cfg.Attachments,
 		tax:            cfg.Tax,
 		search:         cfg.Search,
@@ -188,7 +194,7 @@ func (s *Server) templateFuncs() template.FuncMap {
 
 func (s *Server) parseTemplates() error {
 	s.pages = make(map[string]*template.Template)
-	for _, page := range []string{"dashboard", "transactions", "subscriptions", "alerts", "connections", "analytics", "error"} {
+	for _, page := range []string{"dashboard", "transactions", "budgets", "subscriptions", "alerts", "connections", "analytics", "error"} {
 		tmpl, err := template.New("layout").Funcs(s.templateFuncs()).ParseFS(assets,
 			"templates/layout.html",
 			"templates/partials/*.html",
@@ -212,6 +218,10 @@ func (s *Server) routes() http.Handler {
 	app.HandleFunc("GET /{$}", s.handleDashboard)
 	app.HandleFunc("GET /transactions", s.handleTransactions)
 	app.HandleFunc("GET /transactions/export", s.handleExport)
+	app.HandleFunc("GET /budgets", s.handleBudgets)
+	app.HandleFunc("GET /api/budgets/advisory", s.handleBudgetAdvisoryJSON)
+	app.HandleFunc("POST /api/budgets/advisory/toggle", s.handleBudgetAdvisoryToggle)
+	app.HandleFunc("POST /api/budgets/advisory/apply", s.handleBudgetAdvisoryApply)
 	app.HandleFunc("POST /attachments", s.handleAttachmentUpload)
 	app.HandleFunc("POST /attachments/repair", s.handleAttachmentRepair)
 	app.HandleFunc("POST /attachments/{id}/pair", s.handleAttachmentPair)

@@ -46,8 +46,8 @@ normal serve entrypoint.
   and dormant (“ghost”) subscriptions
 - Regex-based transaction categorization, retroactive rule re-evaluation, and
   YAML rule suggestions for frequent Uncategorized counterparties
-- Monthly category budgets with threshold pacing alerts and dashboard progress
-  bars
+- Monthly category budgets with threshold pacing alerts, dashboard progress
+  bars, and a 50/30/20 + historical budget advisory engine
 - Recurring subscription and bank-fee detection with Inactive / Potential Ghost
   marking when a charge goes quiet
 - Operational burn rate, runway, and internal-transfer-aware accounting exports
@@ -119,6 +119,7 @@ combined SHA-256 checksums.
 | `fiscus institutions` | List banks or institutions for a country |
 | `fiscus sync` | Run one synchronization cycle and exit |
 | `fiscus recategorize` | Preview or apply category rules to historical transactions |
+| `fiscus budgets recommend` | Compare and apply recommended 50/30/20 or heuristic budgets |
 | `fiscus backup` | Write a `.tar.gz` backup with SQLite and attachments |
 | `fiscus export` | Export transactions or a tax summary |
 | `fiscus demo` | Start a seeded, no-bank demo dashboard |
@@ -338,16 +339,66 @@ changing that slider updates both projections and simulated scenarios.
 ## Budgets and expected inflows
 
 Monthly category budgets use integer minor units. Currency defaults to EUR. The
-overview dashboard shows month-to-date consumption and a progress bar for each
-budget; the bar turns warning or critical as thresholds are crossed.
+overview dashboard and the dedicated **Budgets** page show month-to-date
+consumption and a progress bar for each budget; the bar turns warning or
+critical as thresholds are crossed.
+
+The **Budget Advisor** adds proactive 50/30/20 and historical-heuristic
+guidance. It estimates monthly net operational income from confirmed booked
+credits, excludes internal transfers and loans, and deducts estimated tax
+provisions in business and hybrid profiles. It then classifies spending into
+Needs, Wants, and Savings buckets, recommends category ceilings, warns about
+over-allocation, and highlights surplus that could be redirected to savings.
+
+```yaml
+budgets:
+  items:
+    - category: "Restaurants"
+      limit: 45000          # 450.00 EUR
+      currency: "EUR"
+      notify_at_percent: [80, 100]
+    - category: "Groceries"
+      limit: 24000          # 240.00 EUR
+      currency: "EUR"
+      notify_at_percent: [80, 100]
+  advisory:
+    enabled: true
+    model: "hybrid"         # normative, heuristic, or hybrid
+    normative_split:
+      needs_percent: 50
+      wants_percent: 30
+      savings_percent: 20
+    heuristic_window_months: 6
+    overbudget_warning_threshold: 0.15
+    underbudget_notice_threshold: 0.30
+```
+
+The legacy plain-list form remains supported for existing configurations:
 
 ```yaml
 budgets:
   - category: "Restaurants"
-    limit: 30000          # 300.00 EUR
+    limit: 30000
     currency: "EUR"
     notify_at_percent: [80, 100]
 ```
+
+Recommended budgets can be adopted from the UI or CLI and are persisted in
+SQLite. The advisor can be paused from the UI without editing YAML.
+
+```sh
+fiscus budgets recommend
+fiscus budgets recommend --model=normative
+fiscus budgets recommend --apply
+```
+
+The same data is available as authenticated JSON:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/budgets/advisory` | Current 50/30/20 capacities, category recommendations, and deviation statuses |
+| `POST /api/budgets/advisory/apply` | Apply recommendations to existing category caps |
+| `POST /api/budgets/advisory/toggle` | Pause or resume advisory calculations |
 
 `notify_at_percent` is optional. The 100% threshold is always included and is
 critical. Fiscus reports the highest newly crossed threshold in each evaluation,
@@ -679,6 +730,7 @@ for group chats). Supported commands:
 | `/nota <transaction_id> <texto>` | Attach or replace a note on a transaction |
 | `/runway` | Liquid balance, monthly burn, and runway in months per currency |
 | `/presupuesto` | Current-month category budget consumption |
+| `/recomendar_presupuestos` | 50/30/20 advisory, net income, and deviation warnings |
 | `/help` | Show available commands |
 
 When a booked transaction cannot be categorized, Fiscus can send an inline

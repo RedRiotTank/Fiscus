@@ -214,6 +214,15 @@ type ReconciliationTransition struct {
 	PreviousDeltaMinor int64
 }
 
+// BudgetOverride is a user-adopted category budget persisted in SQLite.
+type BudgetOverride struct {
+	Category        string
+	LimitMinor      int64
+	Currency        string
+	NotifyAtPercent []int
+	UpdatedAt       time.Time
+}
+
 // Alert is a persisted notification produced by a rule.
 type Alert struct {
 	ID            int64

@@ -54,6 +54,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runBackup(args[1:], stdout, stderr)
 	case "export":
 		return runExport(args[1:], stdout, stderr)
+	case "budgets":
+		return runBudgets(args[1:], stdout, stderr)
 	case "demo":
 		return runDemo(args[1:], stdout, stderr)
 	case "version", "-version", "--version":
@@ -79,6 +81,7 @@ Usage:
   fiscus recategorize   Re-run category rules over historical transactions
   fiscus backup         Write a .tar.gz backup with SQLite and attachments
   fiscus export         Export transactions or a tax summary
+  fiscus budgets        Recommend or apply category budgets
   fiscus demo           Run a seeded, no-bank demo dashboard
   fiscus version        Print build information
 
@@ -187,6 +190,7 @@ func runServe(args []string, stdout, stderr io.Writer) error {
 		}
 	}
 	searchService := search.New(store)
+	budgetManager := buildBudgetManager(cfg, store)
 
 	metrics := observability.New(version)
 	sink, err := buildEventSink(cfg, logger)
@@ -195,7 +199,7 @@ func runServe(args []string, stdout, stderr io.Writer) error {
 	}
 	defer sink.Wait()
 
-	engine, err := buildEngine(cfg, store, logger, metrics, sink, taxService)
+	engine, err := buildEngine(cfg, store, logger, metrics, sink, taxService, budgetManager)
 	if err != nil {
 		return err
 	}
@@ -221,7 +225,8 @@ func runServe(args []string, stdout, stderr io.Writer) error {
 		logger.Warn("banking credentials are not configured; ingestion is disabled")
 	}
 
-	bot, err := buildTelegramBot(cfg, store, worker, logger, attachmentService, searchService)
+	advisories := buildAdvisoryProvider(cfg, store, budgetManager, taxService)
+	bot, err := buildTelegramBot(cfg, store, worker, logger, attachmentService, searchService, budgetManager, advisories)
 	if err != nil {
 		return err
 	}
@@ -248,7 +253,7 @@ func runServe(args []string, stdout, stderr io.Writer) error {
 	if worker != nil {
 		trigger = worker
 	}
-	server, err := newWebServer(cfg, store, trigger, logger, metrics, authHandler, attachmentService, taxService, searchService)
+	server, err := newWebServer(cfg, store, trigger, logger, metrics, authHandler, attachmentService, taxService, searchService, budgetManager)
 	if err != nil {
 		return err
 	}

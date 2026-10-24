@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/attachments"
+	"github.com/RedRiotTank/Fiscus/internal/budgets"
 	"github.com/RedRiotTank/Fiscus/internal/config"
 	"github.com/RedRiotTank/Fiscus/internal/demo"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
@@ -118,7 +119,7 @@ func runDemoMode(opts demoOptions) error {
 		return nil
 	}
 
-	cfg := demoConfig(opts.Address, databasePath, attachmentsDir, dataset, now)
+	cfg := demoConfig(opts.Address, databasePath, attachmentsDir)
 	logger := newLogger(cfg, opts.Stderr)
 	attachmentService, err := attachments.New(store, attachmentsDir, cfg.Attachments.MaxSizeBytes, nil)
 	if err != nil {
@@ -129,7 +130,8 @@ func runDemoMode(opts demoOptions) error {
 		return fmt.Errorf("demo: tax service: %w", err)
 	}
 	metrics := observability.New(version)
-	server, err := newWebServer(cfg, store, nil, logger, metrics, nil, attachmentService, taxService, search.New(store))
+	budgetManager := budgets.NewManager(store, configuredBudgets(cfg), configuredBudgetAdvisory(cfg), nil)
+	server, err := newWebServer(cfg, store, nil, logger, metrics, nil, attachmentService, taxService, search.New(store), budgetManager)
 	if err != nil {
 		return fmt.Errorf("demo: web server: %w", err)
 	}
@@ -170,7 +172,7 @@ func runDemoMode(opts demoOptions) error {
 	return nil
 }
 
-func demoConfig(address, databasePath, attachmentsDir string, dataset demo.Dataset, now time.Time) *config.Config {
+func demoConfig(address, databasePath, attachmentsDir string) *config.Config {
 	cfg := config.Default()
 	cfg.Profile = domain.WorkspaceHybrid
 	cfg.Server.Address = address
@@ -195,7 +197,15 @@ func demoConfig(address, databasePath, attachmentsDir string, dataset demo.Datas
 		{Name: "Meals", VATRate: 0.10, DeductiblePercent: 0.5},
 		{Name: "Insurance", VATRate: 0, DeductiblePercent: 1},
 	}
-	cfg.Budgets = demoBudgets(dataset, now)
+	cfg.Budgets.Items = demoBudgets()
+	cfg.Budgets.Advisory = config.BudgetAdvisoryConfig{
+		Enabled:                    true,
+		Model:                      "hybrid",
+		NormativeSplit:             config.NormativeSplit{NeedsPercent: 50, WantsPercent: 30, SavingsPercent: 20},
+		HeuristicWindowMonths:      6,
+		OverbudgetWarningThreshold: 0.15,
+		UnderbudgetNoticeThreshold: 0.30,
+	}
 	cfg.Rules = demoRules()
 	cfg.Backups.Enabled = false
 	cfg.Backups.Telegram = false
@@ -205,32 +215,11 @@ func demoConfig(address, databasePath, attachmentsDir string, dataset demo.Datas
 	return cfg
 }
 
-func demoBudgets(dataset demo.Dataset, _ time.Time) []config.BudgetConfig {
-	targets := []struct {
-		category string
-		percent  int64
-	}{
-		{category: "Restaurants", percent: 85},
-		{category: "Groceries", percent: 60},
+func demoBudgets() []config.BudgetConfig {
+	return []config.BudgetConfig{
+		{Category: "Restaurants", Limit: 45_000, Currency: "EUR", NotifyAtPercent: []int{80, 100}},
+		{Category: "Groceries", Limit: 24_000, Currency: "EUR", NotifyAtPercent: []int{80, 100}},
 	}
-	out := make([]config.BudgetConfig, 0, len(targets))
-	for _, target := range targets {
-		spend := dataset.CurrentMonthSpend[target.category]
-		if spend <= 0 {
-			continue
-		}
-		limit := spend * 100 / target.percent
-		if limit < spend {
-			limit = spend
-		}
-		out = append(out, config.BudgetConfig{
-			Category:        target.category,
-			Limit:           limit,
-			Currency:        "EUR",
-			NotifyAtPercent: []int{80, 100},
-		})
-	}
-	return out
 }
 
 func demoRules() []config.CategoryRule {

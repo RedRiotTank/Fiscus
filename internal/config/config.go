@@ -25,7 +25,7 @@ type Config struct {
 	Alerts          AlertsConfig           `yaml:"alerts"`
 	Logging         LoggingConfig          `yaml:"logging"`
 	Rules           []CategoryRule         `yaml:"rules"`
-	Budgets         []BudgetConfig         `yaml:"budgets"`
+	Budgets         BudgetsConfig          `yaml:"budgets"`
 	ExpectedInflows []ExpectedInflowConfig `yaml:"expected_inflows"`
 	Attachments     AttachmentsConfig      `yaml:"attachments"`
 	Tax             TaxConfig              `yaml:"tax"`
@@ -54,6 +54,72 @@ type BudgetConfig struct {
 	Limit           int64  `yaml:"limit"`
 	Currency        string `yaml:"currency"`
 	NotifyAtPercent []int  `yaml:"notify_at_percent"`
+}
+
+// NormativeSplit is the 50/30/20-style allocation used by the budget advisor.
+type NormativeSplit struct {
+	NeedsPercent   int `yaml:"needs_percent"`
+	WantsPercent   int `yaml:"wants_percent"`
+	SavingsPercent int `yaml:"savings_percent"`
+}
+
+// BudgetAdvisoryConfig controls the proactive budget advisor.
+type BudgetAdvisoryConfig struct {
+	Enabled                    bool           `yaml:"enabled"`
+	Model                      string         `yaml:"model"`
+	NormativeSplit             NormativeSplit `yaml:"normative_split"`
+	HeuristicWindowMonths      int            `yaml:"heuristic_window_months"`
+	OverbudgetWarningThreshold float64        `yaml:"overbudget_warning_threshold"`
+	UnderbudgetNoticeThreshold float64        `yaml:"underbudget_notice_threshold"`
+}
+
+// BudgetsConfig supports the modern mapping form and the legacy list form.
+type BudgetsConfig struct {
+	Items    []BudgetConfig       `yaml:"items"`
+	Advisory BudgetAdvisoryConfig `yaml:"advisory"`
+}
+
+// UnmarshalYAML accepts either a plain list of budgets (legacy) or a mapping
+// containing items and advisory settings.
+func (b *BudgetsConfig) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.SequenceNode {
+		var items []BudgetConfig
+		if err := value.Decode(&items); err != nil {
+			return err
+		}
+		b.Items = items
+		return nil
+	}
+	type rawBudgets struct {
+		Items   []BudgetConfig `yaml:"items"`
+		Budgets []BudgetConfig `yaml:"budgets"`
+	}
+	var raw rawBudgets
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	if len(raw.Budgets) > 0 {
+		raw.Items = raw.Budgets
+	}
+	b.Items = raw.Items
+	if advisory := mappingValue(value, "advisory"); advisory != nil {
+		if err := advisory.Decode(&b.Advisory); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func mappingValue(node *yaml.Node, key string) *yaml.Node {
+	if node.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value == key {
+			return node.Content[i+1]
+		}
+	}
+	return nil
 }
 
 // ExpectedInflowConfig describes a recurring credit that should arrive each
@@ -247,6 +313,17 @@ func Default() *Config {
 			MaxSizeBytes:          10 << 20,
 			ReceiptThresholdMinor: 5000,
 			GraceDays:             5,
+		},
+		Budgets: BudgetsConfig{
+			Items: []BudgetConfig{},
+			Advisory: BudgetAdvisoryConfig{
+				Enabled:                    true,
+				Model:                      "hybrid",
+				NormativeSplit:             NormativeSplit{NeedsPercent: 50, WantsPercent: 30, SavingsPercent: 20},
+				HeuristicWindowMonths:      6,
+				OverbudgetWarningThreshold: 0.15,
+				UnderbudgetNoticeThreshold: 0.30,
+			},
 		},
 		Tax: TaxConfig{
 			Enabled:            true,
@@ -536,17 +613,41 @@ func (c *Config) Validate() error {
 			errs = append(errs, fmt.Errorf("expected_inflows[%d].grace_days cannot be negative", i))
 		}
 	}
-	for i, budget := range c.Budgets {
+	for i, budget := range c.Budgets.Items {
 		if strings.TrimSpace(budget.Category) == "" {
-			errs = append(errs, fmt.Errorf("budgets[%d].category is required", i))
+			errs = append(errs, fmt.Errorf("budgets.items[%d].category is required", i))
 		}
 		if budget.Limit <= 0 {
-			errs = append(errs, fmt.Errorf("budgets[%d].limit must be a positive integer minor-unit amount", i))
+			errs = append(errs, fmt.Errorf("budgets.items[%d].limit must be a positive integer minor-unit amount", i))
 		}
 		for j, threshold := range budget.NotifyAtPercent {
 			if threshold <= 0 || threshold > 100 {
-				errs = append(errs, fmt.Errorf("budgets[%d].notify_at_percent[%d] must be between 1 and 100", i, j))
+				errs = append(errs, fmt.Errorf("budgets.items[%d].notify_at_percent[%d] must be between 1 and 100", i, j))
 			}
+		}
+	}
+	if c.Budgets.Advisory.Enabled {
+		model := strings.ToLower(strings.TrimSpace(c.Budgets.Advisory.Model))
+		switch model {
+		case "", "normative", "heuristic", "hybrid":
+		default:
+			errs = append(errs, errors.New("budgets.advisory.model must be normative, heuristic, or hybrid"))
+		}
+		split := c.Budgets.Advisory.NormativeSplit
+		if split.NeedsPercent < 0 || split.WantsPercent < 0 || split.SavingsPercent < 0 {
+			errs = append(errs, errors.New("budgets.advisory.normative_split percentages cannot be negative"))
+		}
+		if split.NeedsPercent+split.WantsPercent+split.SavingsPercent != 100 {
+			errs = append(errs, errors.New("budgets.advisory.normative_split percentages must sum to 100"))
+		}
+		if c.Budgets.Advisory.HeuristicWindowMonths < 3 || c.Budgets.Advisory.HeuristicWindowMonths > 12 {
+			errs = append(errs, errors.New("budgets.advisory.heuristic_window_months must be between 3 and 12"))
+		}
+		if c.Budgets.Advisory.OverbudgetWarningThreshold < 0 || c.Budgets.Advisory.OverbudgetWarningThreshold >= 1 {
+			errs = append(errs, errors.New("budgets.advisory.overbudget_warning_threshold must be between 0 and 1"))
+		}
+		if c.Budgets.Advisory.UnderbudgetNoticeThreshold < 0 || c.Budgets.Advisory.UnderbudgetNoticeThreshold >= 1 {
+			errs = append(errs, errors.New("budgets.advisory.underbudget_notice_threshold must be between 0 and 1"))
 		}
 	}
 	for i, rule := range c.Rules {

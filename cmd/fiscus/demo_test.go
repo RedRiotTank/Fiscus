@@ -6,10 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/RedRiotTank/Fiscus/internal/budgets"
-	"github.com/RedRiotTank/Fiscus/internal/demo"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 )
 
@@ -44,36 +41,17 @@ func TestRunDemoDryRunSeedsDatabase(t *testing.T) {
 	}
 }
 
-func TestDemoBudgetsTargetPercentages(t *testing.T) {
+func TestDemoBudgets(t *testing.T) {
 	t.Parallel()
-	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
-	dataset := demo.Dataset{CurrentMonthSpend: map[string]int64{
-		"Restaurants": 8_500,
-		"Groceries":   6_000,
-	}}
-	configs := demoBudgets(dataset, now)
+	configs := demoBudgets()
 	if len(configs) != 2 {
 		t.Fatalf("budgets = %+v", configs)
 	}
-	configured := make([]budgets.Budget, 0, len(configs))
+	byCategory := make(map[string]int64, len(configs))
 	for _, item := range configs {
-		configured = append(configured, budgets.Budget{
-			Category: item.Category, LimitMinor: item.Limit, Currency: item.Currency,
-			NotifyAtPercent: item.NotifyAtPercent,
-		})
+		byCategory[item.Category] = item.Limit
 	}
-	statuses := budgets.Compute([]storage.CategorySpending{
-		{Category: "Restaurants", Currency: "EUR", Minor: 8_500},
-		{Category: "Groceries", Currency: "EUR", Minor: 6_000},
-	}, configured, now)
-	if len(statuses) != 2 {
-		t.Fatalf("statuses = %+v", statuses)
-	}
-	byCategory := make(map[string]budgets.Status, len(statuses))
-	for _, status := range statuses {
-		byCategory[status.Category] = status
-	}
-	if byCategory["Restaurants"].Percent != 85 || byCategory["Groceries"].Percent != 60 {
-		t.Fatalf("budget percentages = %+v", byCategory)
+	if byCategory["Restaurants"] != 45_000 || byCategory["Groceries"] != 24_000 {
+		t.Fatalf("demo budgets = %+v", byCategory)
 	}
 }

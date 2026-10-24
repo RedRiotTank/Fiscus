@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/alerts"
 	"github.com/RedRiotTank/Fiscus/internal/analysis"
@@ -133,7 +134,7 @@ func buildNotifiers(cfg *config.Config) ([]alerts.Notifier, error) {
 	return notifiers, nil
 }
 
-func buildTelegramBot(cfg *config.Config, store *storage.Store, worker *ingest.Worker, logger *slog.Logger, attachmentService *attachments.Service, searchService *search.Service) (*telegram.Bot, error) {
+func buildTelegramBot(cfg *config.Config, store *storage.Store, worker *ingest.Worker, logger *slog.Logger, attachmentService *attachments.Service, searchService *search.Service, budgetManager *budgets.Manager, advisories telegram.AdvisoryProvider) (*telegram.Bot, error) {
 	if !cfg.TelegramConfigured() {
 		return nil, nil
 	}
@@ -150,20 +151,26 @@ func buildTelegramBot(cfg *config.Config, store *storage.Store, worker *ingest.W
 		searcher = searchService
 	}
 	return telegram.New(telegram.Config{
-		BotToken:    cfg.Alerts.Telegram.BotToken,
-		ChatID:      cfg.Alerts.Telegram.ChatID,
-		UserID:      cfg.Alerts.Telegram.UserID,
-		Logger:      logger,
-		Store:       store,
-		Syncer:      syncer,
-		Attachments: ingestor,
-		Search:      searcher,
-		Categories:  configuredCategories(cfg),
-		Budgets:     configuredBudgets(cfg),
+		BotToken:      cfg.Alerts.Telegram.BotToken,
+		ChatID:        cfg.Alerts.Telegram.ChatID,
+		UserID:        cfg.Alerts.Telegram.UserID,
+		Logger:        logger,
+		Store:         store,
+		Syncer:        syncer,
+		Attachments:   ingestor,
+		Search:        searcher,
+		Categories:    configuredCategories(cfg),
+		Budgets:       configuredBudgets(cfg),
+		BudgetManager: budgetManager,
+		Advisories:    advisories,
 	})
 }
 
-func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, metrics *observability.Metrics, sink events.Sink, taxService *tax.Service) (*alerts.Engine, error) {
+func buildBudgetManager(cfg *config.Config, store *storage.Store) *budgets.Manager {
+	return budgets.NewManager(store, configuredBudgets(cfg), configuredBudgetAdvisory(cfg), nil)
+}
+
+func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, metrics *observability.Metrics, sink events.Sink, taxService *tax.Service, budgetManager *budgets.Manager) (*alerts.Engine, error) {
 	thresholds, err := cfg.LiquidityThresholdsMinor()
 	if err != nil {
 		return nil, err
@@ -193,7 +200,7 @@ func buildEngine(cfg *config.Config, store *storage.Store, logger *slog.Logger, 
 	if err != nil {
 		return nil, err
 	}
-	budgetRule, err := budgets.NewRule(store, configuredBudgets(cfg), nil)
+	budgetRule, err := budgets.NewRuleWithProvider(store, budgetManager, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -280,8 +287,8 @@ func buildCategoryClassifier(cfg *config.Config) (*categories.Classifier, error)
 }
 
 func configuredBudgets(cfg *config.Config) []budgets.Budget {
-	out := make([]budgets.Budget, 0, len(cfg.Budgets))
-	for _, item := range cfg.Budgets {
+	out := make([]budgets.Budget, 0, len(cfg.Budgets.Items))
+	for _, item := range cfg.Budgets.Items {
 		out = append(out, budgets.Budget{
 			Category:        item.Category,
 			LimitMinor:      item.Limit,
@@ -307,6 +314,91 @@ func configuredTaxConfig(cfg *config.Config) tax.Config {
 		QuarterStartMonths: cfg.Tax.QuarterStartMonths,
 		Categories:         categories,
 	}
+}
+
+func configuredBudgetAdvisory(cfg *config.Config) budgets.AdvisoryConfig {
+	advisory := cfg.Budgets.Advisory
+	return budgets.AdvisoryConfig{
+		Enabled:                    advisory.Enabled,
+		Model:                      advisory.Model,
+		NeedsPercent:               advisory.NormativeSplit.NeedsPercent,
+		WantsPercent:               advisory.NormativeSplit.WantsPercent,
+		SavingsPercent:             advisory.NormativeSplit.SavingsPercent,
+		HeuristicWindowMonths:      advisory.HeuristicWindowMonths,
+		OverbudgetWarningThreshold: advisory.OverbudgetWarningThreshold,
+		UnderbudgetNoticeThreshold: advisory.UnderbudgetNoticeThreshold,
+	}
+}
+
+type advisoryProviderFunc func(context.Context) ([]budgets.Advisory, error)
+
+func (f advisoryProviderFunc) Advisories(ctx context.Context) ([]budgets.Advisory, error) {
+	return f(ctx)
+}
+
+func buildAdvisoryProvider(cfg *config.Config, store *storage.Store, manager *budgets.Manager, taxService *tax.Service) telegram.AdvisoryProvider {
+	return advisoryProviderFunc(func(ctx context.Context) ([]budgets.Advisory, error) {
+		return computeBudgetAdvisoriesWithModel(ctx, cfg, store, manager, taxService, time.Now().UTC(), "")
+	})
+}
+
+func computeBudgetAdvisoriesWithModel(ctx context.Context, cfg *config.Config, store *storage.Store, manager *budgets.Manager, taxService *tax.Service, now time.Time, modelOverride string) ([]budgets.Advisory, error) {
+	if manager == nil {
+		return nil, nil
+	}
+	advisoryConfig, err := manager.Advisory(ctx)
+	if err != nil || !advisoryConfig.Enabled {
+		return nil, err
+	}
+	if strings.TrimSpace(modelOverride) != "" {
+		advisoryConfig.Model = strings.ToLower(strings.TrimSpace(modelOverride))
+	}
+	active, err := manager.Active(ctx)
+	if err != nil {
+		return nil, err
+	}
+	accounts, err := store.ListAccounts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	profile := cfg.WorkspaceProfile()
+	allowed := make(map[string]struct{}, len(accounts))
+	for _, account := range accounts {
+		switch profile {
+		case domain.WorkspacePersonal:
+			if domain.NormalizeAccountType(account.Type) != domain.AccountTypePersonal {
+				continue
+			}
+		case domain.WorkspaceBusiness:
+			if domain.NormalizeAccountType(account.Type) != domain.AccountTypeBusiness {
+				continue
+			}
+		}
+		allowed[account.ID] = struct{}{}
+	}
+	windowStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).
+		AddDate(0, -(budgets.NormalizeAdvisoryConfig(advisoryConfig).HeuristicWindowMonths - 1), 0)
+	transactions, err := store.ListTransactionsBetween(ctx, windowStart, now.Add(24*time.Hour))
+	if err != nil {
+		return nil, err
+	}
+	filtered := make([]domain.Transaction, 0, len(transactions))
+	for _, tx := range transactions {
+		if _, ok := allowed[tx.AccountID]; ok {
+			filtered = append(filtered, tx)
+		}
+	}
+	taxProvision := make(map[string]int64)
+	if profile != domain.WorkspacePersonal && taxService != nil {
+		shields, err := taxService.Shields(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, shield := range shields {
+			taxProvision[shield.Currency] += shield.TaxReserveMinor / 3
+		}
+	}
+	return budgets.ComputeAdvisory(filtered, active, advisoryConfig, taxProvision, now), nil
 }
 
 func configuredInflows(cfg *config.Config) []monitoring.Inflow {
@@ -382,7 +474,7 @@ func buildWorker(cfg *config.Config, store *storage.Store, engine *alerts.Engine
 	return worker, nil
 }
 
-func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger, logger *slog.Logger, metrics *observability.Metrics, authHandler web.AuthorizationCallback, attachmentService *attachments.Service, taxService *tax.Service, searchService *search.Service) (*web.Server, error) {
+func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger, logger *slog.Logger, metrics *observability.Metrics, authHandler web.AuthorizationCallback, attachmentService *attachments.Service, taxService *tax.Service, searchService *search.Service, budgetManager *budgets.Manager) (*web.Server, error) {
 	classifier, err := buildCategoryClassifier(cfg)
 	if err != nil {
 		return nil, err
@@ -398,6 +490,8 @@ func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger,
 		AuthHandler:    authHandler,
 		Classifier:     classifier,
 		Budgets:        configuredBudgets(cfg),
+		BudgetManager:  budgetManager,
+		BudgetAdvisory: configuredBudgetAdvisory(cfg),
 		Attachments:    attachmentService,
 		Tax:            taxService,
 		Search:         searchService,

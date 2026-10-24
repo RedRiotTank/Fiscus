@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/analysis"
+	"github.com/RedRiotTank/Fiscus/internal/budgets"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"github.com/RedRiotTank/Fiscus/internal/treasury"
@@ -199,6 +200,60 @@ func TestSeedPopulatesCoherentDataset(t *testing.T) {
 	}
 	if !adobeLast.Before(now.AddDate(0, 0, -45)) {
 		t.Fatalf("Adobe last charge = %v, want stale", adobeLast)
+	}
+}
+
+func TestDemoBudgetAdvisorySignals(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store, err := storage.Open(ctx, filepath.Join(t.TempDir(), "demo.db"))
+	if err != nil {
+		t.Fatalf("storage.Open: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	dataset, err := Seed(ctx, store, filepath.Join(t.TempDir(), "attachments"), now)
+	if err != nil {
+		t.Fatalf("Seed: %v", err)
+	}
+	personal := make([]domain.Transaction, 0, len(dataset.Transactions))
+	for _, tx := range dataset.Transactions {
+		if tx.AccountID == accountSantander || tx.AccountID == accountSavings {
+			personal = append(personal, tx)
+		}
+	}
+	advisories := budgets.ComputeAdvisory(personal, []budgets.Budget{
+		{Category: "Restaurants", LimitMinor: 45_000, Currency: "EUR", NotifyAtPercent: []int{80, 100}},
+		{Category: "Groceries", LimitMinor: 24_000, Currency: "EUR", NotifyAtPercent: []int{80, 100}},
+	}, budgets.AdvisoryConfig{
+		Enabled: true, Model: budgets.AdvisoryModelHybrid,
+		NeedsPercent: 50, WantsPercent: 30, SavingsPercent: 20,
+		HeuristicWindowMonths: 6, OverbudgetWarningThreshold: 0.15, UnderbudgetNoticeThreshold: 0.30,
+	}, nil, now)
+	if len(advisories) != 1 {
+		t.Fatalf("advisories = %+v", advisories)
+	}
+	advisory := advisories[0]
+	if advisory.MonthlyNetIncomeMinor < 280_000 || advisory.MonthlyNetIncomeMinor > 281_000 {
+		t.Fatalf("demo income = %+v", advisory)
+	}
+	if advisory.UnallocatedWantsMinor < 17_000 || advisory.UnallocatedWantsMinor > 19_000 {
+		t.Fatalf("demo wants surplus = %d", advisory.UnallocatedWantsMinor)
+	}
+	byCategory := make(map[string]budgets.CategoryAdvisory, len(advisory.Categories))
+	for _, category := range advisory.Categories {
+		byCategory[category.Category] = category
+	}
+	restaurants := byCategory["Restaurants"]
+	if restaurants.Status != budgets.StatusOverAllocated || restaurants.RecommendedMinor < 27_000 ||
+		restaurants.RecommendedMinor > 29_000 || restaurants.DeviationPercent < 55 {
+		t.Fatalf("restaurants advisory = %+v", restaurants)
+	}
+	if groceries := byCategory["Groceries"]; groceries.Status != budgets.StatusBalanced {
+		t.Fatalf("groceries advisory = %+v", groceries)
 	}
 }
 

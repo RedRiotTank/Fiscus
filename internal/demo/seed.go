@@ -269,9 +269,9 @@ func (b *builder) seedPersonalMonth(month time.Time, monthKey string, monthIndex
 	}
 	b.add("spotify-"+monthKey, accountSantander, b.date(month, 5), spotifyAmount, "EUR",
 		"Spotify", "Spotify Premium", "Subscriptions", domain.TransactionStatusBooked, "")
-	b.add("payroll-"+monthKey, accountSantander, b.date(month, 28), 280_000, "EUR",
+	b.add("payroll-"+monthKey, accountSantander, b.date(month, 22), 280_000, "EUR",
 		"ACME Studio S.L.", "Monthly payroll", "Payroll", domain.TransactionStatusBooked, "")
-	b.add("rent-"+monthKey, accountSantander, b.date(month, 1), -120_000, "EUR",
+	b.add("rent-"+monthKey, accountSantander, b.date(month, 1), -100_000, "EUR",
 		"Inmobiliaria Centro", "Monthly rent", "Rent", domain.TransactionStatusBooked, "")
 	b.add("transfer-out-"+monthKey, accountSantander, b.date(month, 2), -30_000, "EUR",
 		"Revolut Vault", "Monthly emergency-fund transfer", "Transfer", domain.TransactionStatusBooked, "")
@@ -301,10 +301,10 @@ func (b *builder) seedPersonalMonth(month time.Time, monthKey string, monthIndex
 	for i, day := range restaurantDays {
 		name := restaurantNames[monthIndex*len(restaurantDays)+i]
 		b.add(fmt.Sprintf("restaurant-%d-%s", i, monthKey), accountSantander, b.date(month, day),
-			-b.amount(1_800, 6_500), "EUR", name, "Dining out", "Restaurants",
+			-b.amount(10_000, 13_000), "EUR", name, "Dining out", "Restaurants",
 			domain.TransactionStatusBooked, "")
 	}
-	b.add("shopping-"+monthKey, accountSantander, b.date(month, 16), -b.amount(2_500, 11_500), "EUR",
+	b.add("shopping-"+monthKey, accountSantander, b.date(month, 16), -b.amount(11_000, 15_000), "EUR",
 		"Amazon", "Household shopping", "Shopping", domain.TransactionStatusBooked, "")
 
 	if monthIndex == 1 || monthIndex == 4 {

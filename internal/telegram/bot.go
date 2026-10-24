@@ -64,41 +64,56 @@ type Searcher interface {
 	Search(ctx context.Context, query string, limit int) ([]domain.Transaction, error)
 }
 
+// BudgetManager supplies effective budgets and advisory settings.
+type BudgetManager interface {
+	Active(ctx context.Context) ([]budgets.Budget, error)
+	Advisory(ctx context.Context) (budgets.AdvisoryConfig, error)
+}
+
+// AdvisoryProvider supplies precomputed budget advisories.
+type AdvisoryProvider interface {
+	Advisories(ctx context.Context) ([]budgets.Advisory, error)
+}
+
 // Config configures the interactive bot.
 type Config struct {
-	BotToken    string
-	ChatID      string
-	UserID      string
-	BaseURL     string
-	HTTPClient  *http.Client
-	Logger      *slog.Logger
-	Store       Store
-	Syncer      Syncer
-	Attachments AttachmentIngestor
-	Search      Searcher
-	Categories  []string
-	Budgets     []budgets.Budget
-	Now         func() time.Time
+	BotToken      string
+	ChatID        string
+	UserID        string
+	BaseURL       string
+	HTTPClient    *http.Client
+	Logger        *slog.Logger
+	Store         Store
+	Syncer        Syncer
+	Attachments   AttachmentIngestor
+	Search        Searcher
+	Categories    []string
+	Budgets       []budgets.Budget
+	BudgetManager BudgetManager
+	Advisories    AdvisoryProvider
+	Now           func() time.Time
 }
 
 // Bot polls Telegram for commands and replies to authorized users.
 type Bot struct {
-	token       string
-	chatID      string
-	userID      string
-	apiBase     string
-	httpClient  *http.Client
-	logger      *slog.Logger
-	store       Store
-	syncer      Syncer
-	attachments AttachmentIngestor
-	search      Searcher
-	categories  []string
-	budgets     []budgets.Budget
-	now         func() time.Time
-	poll        time.Duration
-	retryDelay  time.Duration
-	offset      int64
+	token         string
+	chatID        string
+	userID        string
+	apiBase       string
+	httpClient    *http.Client
+	logger        *slog.Logger
+	store         Store
+	syncer        Syncer
+	attachments   AttachmentIngestor
+	search        Searcher
+	categories    []string
+	budgets       []budgets.Budget
+	budgetManager BudgetManager
+	advisories    AdvisoryProvider
+	now           func() time.Time
+	poll          time.Duration
+	retryDelay    time.Duration
+	offset        int64
 }
 
 // New validates configuration and constructs a Bot.
@@ -152,21 +167,23 @@ func New(cfg Config) (*Bot, error) {
 		now = time.Now
 	}
 	return &Bot{
-		token:       token,
-		chatID:      chatID,
-		userID:      userID,
-		apiBase:     strings.TrimRight(base, "/") + "/bot" + token,
-		httpClient:  httpClient,
-		logger:      logger,
-		store:       cfg.Store,
-		syncer:      cfg.Syncer,
-		attachments: cfg.Attachments,
-		search:      cfg.Search,
-		categories:  normalizeCategories(cfg.Categories),
-		budgets:     cfg.Budgets,
-		now:         now,
-		poll:        defaultPollTimeout,
-		retryDelay:  defaultRetryDelay,
+		token:         token,
+		chatID:        chatID,
+		userID:        userID,
+		apiBase:       strings.TrimRight(base, "/") + "/bot" + token,
+		httpClient:    httpClient,
+		logger:        logger,
+		store:         cfg.Store,
+		syncer:        cfg.Syncer,
+		attachments:   cfg.Attachments,
+		search:        cfg.Search,
+		categories:    normalizeCategories(cfg.Categories),
+		budgets:       cfg.Budgets,
+		budgetManager: cfg.BudgetManager,
+		advisories:    cfg.Advisories,
+		now:           now,
+		poll:          defaultPollTimeout,
+		retryDelay:    defaultRetryDelay,
 	}, nil
 }
 
@@ -466,6 +483,8 @@ func (b *Bot) command(ctx context.Context, command string, args []string) string
 		return b.runway(ctx)
 	case "/presupuesto":
 		return b.budget(ctx)
+	case "/recomendar_presupuestos":
+		return b.recommendBudgets(ctx)
 	case "/help", "/start":
 		return helpText()
 	default:
@@ -665,7 +684,15 @@ func (b *Bot) runway(ctx context.Context) string {
 }
 
 func (b *Bot) budget(ctx context.Context) string {
-	if len(b.budgets) == 0 {
+	active := b.budgets
+	if b.budgetManager != nil {
+		var err error
+		active, err = b.budgetManager.Active(ctx)
+		if err != nil {
+			return "No se pudo cargar el presupuesto."
+		}
+	}
+	if len(active) == 0 {
 		return "No hay presupuestos configurados."
 	}
 	now := b.now().UTC()
@@ -674,7 +701,7 @@ func (b *Bot) budget(ctx context.Context) string {
 	if err != nil {
 		return "No se pudo cargar el presupuesto."
 	}
-	statuses := budgets.Compute(spending, b.budgets, now)
+	statuses := budgets.Compute(spending, active, now)
 	if len(statuses) == 0 {
 		return "No hay presupuestos configurados."
 	}
@@ -693,6 +720,53 @@ func (b *Bot) budget(ctx context.Context) string {
 	return truncate(out.String())
 }
 
+func (b *Bot) recommendBudgets(ctx context.Context) string {
+	if b.advisories == nil {
+		return "El asesor de presupuestos no está configurado."
+	}
+	advisories, err := b.advisories.Advisories(ctx)
+	if err != nil {
+		return "No se pudo generar el asesor de presupuestos."
+	}
+	if len(advisories) == 0 {
+		return "No hay ingresos confirmados suficientes para generar recomendaciones."
+	}
+	var out strings.Builder
+	out.WriteString("Asesor de presupuestos\n")
+	for _, advisory := range advisories {
+		fmt.Fprintf(&out, "\n%s · ingreso neto mensual %s %s\n",
+			advisory.Currency,
+			money.FormatGrouped(advisory.MonthlyNetIncomeMinor, advisory.Currency),
+			advisory.Currency,
+		)
+		fmt.Fprintf(&out, "50/30/20 · necesidades %s · deseos %s · ahorro %s\n",
+			money.FormatGrouped(advisory.NeedsCapacityMinor, advisory.Currency),
+			money.FormatGrouped(advisory.WantsCapacityMinor, advisory.Currency),
+			money.FormatGrouped(advisory.SavingsCapacityMinor, advisory.Currency),
+		)
+		if advisory.UnallocatedWantsMinor > 0 {
+			fmt.Fprintf(&out, "Superávit en deseos: %s/mes\n", money.FormatGrouped(advisory.UnallocatedWantsMinor, advisory.Currency))
+		}
+		for _, category := range advisory.Categories {
+			switch category.Status {
+			case budgets.StatusOverAllocated:
+				fmt.Fprintf(&out, "⚠ %s: presupuesto %s > recomendado %s (%d%%)\n",
+					category.Category,
+					money.FormatGrouped(category.CurrentBudgetMinor, advisory.Currency),
+					money.FormatGrouped(category.RecommendedMinor, advisory.Currency),
+					category.DeviationPercent,
+				)
+			case budgets.StatusUnderBudget:
+				fmt.Fprintf(&out, "ℹ %s: %s/mes por debajo del límite recomendado\n",
+					category.Category,
+					money.FormatGrouped(category.SurplusMinor, advisory.Currency),
+				)
+			}
+		}
+	}
+	return truncate(out.String())
+}
+
 func helpText() string {
 	return strings.Join([]string{
 		"Instrucciones de Fiscus:",
@@ -703,6 +777,7 @@ func helpText() string {
 		"/nota <id> <texto> - Añadir una nota a un movimiento",
 		"/runway - Liquidez, consumo mensual y autonomía",
 		"/presupuesto - Consumo del presupuesto del mes actual",
+		"/recomendar_presupuestos - Asesor 50/30/20 y avisos de desviación",
 		"/help - Mostrar esta ayuda",
 	}, "\n")
 }
