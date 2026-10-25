@@ -3,6 +3,51 @@
 All notable changes to Fiscus are documented here. Versions use semantic
 versioning and annotated Git tags.
 
+## v1.4.4 - 2026-10-25
+
+Dual budget views, recurring shared-bill detection, and instant transaction
+filters.
+
+### Added
+
+- Clean single-ring macro budget donut:
+  - Replaced the concentric dual-ring chart with one ring showing Needs, Wants,
+    and Savings allocation.
+  - The centre reports the percentage of net income committed, the allocated
+    amount, and the unallocated liquid surplus.
+- Budget view switcher:
+  - A top-right SVG swap button toggles between the macro donut and a grouped
+    Plan vs Actual bar chart.
+  - The grouped chart pairs translucent planned caps with solid actual spend,
+    highlights overspent categories in red, and draws a dashed day-of-month
+    pace marker.
+  - The chosen view persists in `localStorage` (and honours `?budget_view=`).
+- Recurring shared-bill engine in `pkg/recurring`:
+  - Detects repeating monthly debits near month start/end (three-day variance)
+    with stable amounts and the same counterparty.
+  - Excludes housing, SaaS subscriptions, savings transfers, bank fees, and
+    payroll from candidate prompts.
+  - Adds a confirmation wizard on Budgets and Transactions with category,
+    Needs/Wants/Savings pillar, solo expense, split-by-N, or custom personal
+    share.
+  - Persists confirmed rules in SQLite `recurring_bill_rules` (schema 16),
+    recategorizes matching history, and installs learned rules for future syncs.
+- Recurring bill budget netting:
+  - Confirmed shared bills count the user's personal share against the target
+    category instead of the gross transfer. For example, a €16.00 Bizum split
+    three ways reports €5.33 under Utilities & Telecom.
+- Transaction history quick filters and compact search:
+  - HTMX filter chips for All, Money In, Money Out, Transfers / P2P, Needs, and
+    Wants.
+  - The search field collapses into a magnifying-glass icon and expands with a
+    200 ms transition; Escape or an outside click collapses it while empty.
+
+### Verification
+
+- `go test -v -race ./...`
+- `golangci-lint run ./...`
+- `CGO_ENABLED=0 go build -v ./cmd/fiscus`
+
 ## v1.4.3 - 2026-10-25
 
 Interactive housing setup and shared-rent engine release.

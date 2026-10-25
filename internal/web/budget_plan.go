@@ -80,10 +80,10 @@ func (s *Server) loadBudgetPlan(ctx context.Context, data *PageData, spending []
 		return nil
 	}
 	now := s.now().UTC()
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
 	cfg := budgets.NormalizeAdvisoryConfig(s.budgetAdvisory)
 	cfg.Enabled = true
-	windowStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).
-		AddDate(0, -(cfg.HeuristicWindowMonths - 1), 0)
+	windowStart := monthStart.AddDate(0, -(cfg.HeuristicWindowMonths - 1), 0)
 	transactions, err := s.store.ListTransactionsBetween(ctx, windowStart, now.Add(24*time.Hour))
 	if err != nil {
 		return err
@@ -91,6 +91,18 @@ func (s *Server) loadBudgetPlan(ctx context.Context, data *PageData, spending []
 	transactions = filterTransactions(transactions, allowedAccountIDs(data.Accounts, workspace), workspace)
 	if err := s.loadHousingSetup(ctx, data, workspace, currency, transactions, now); err != nil {
 		return err
+	}
+	if err := s.loadRecurringBills(ctx, data, workspace, currency, transactions, now); err != nil {
+		return err
+	}
+	if data.Recurring != nil && len(data.Recurring.Rules) > 0 {
+		monthTransactions := transactions[:0]
+		for _, tx := range transactions {
+			if !tx.BookingDate.Before(monthStart) && tx.BookingDate.Before(monthStart.AddDate(0, 1, 0)) {
+				monthTransactions = append(monthTransactions, tx)
+			}
+		}
+		spending = budgets.NetRecurringBillSpending(spending, monthTransactions, data.Recurring.Rules)
 	}
 	taxProvision := make(map[string]int64)
 	if workspace == domain.WorkspaceBusiness {
@@ -154,7 +166,7 @@ func (s *Server) loadBudgetPlan(ctx context.Context, data *PageData, spending []
 		view.BaselineLabel = "Total net monthly income"
 		view.BaselineSubtitle = "Confirmed recurring inflows, net of transfers and internal movements"
 	}
-	view.Donut = buildBudgetDonut(plan)
+	view.Donut = buildBudgetDonutAt(plan, now)
 	data.BudgetPlan = view
 	return nil
 }

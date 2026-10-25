@@ -1,0 +1,102 @@
+{{define "transactions_history"}}
+<section class="panel transactions-history" id="transactions-history">
+  <header class="panel-head">
+    <div>
+      <h2>Transaction history</h2>
+      <p class="panel-sub">Page {{.Page}} · {{.Limit}} per page</p>
+    </div>
+    <div class="export-actions">
+      <form hx-post="/recategorize" hx-target="#recategorize-status" hx-swap="innerHTML">
+        <button class="button ghost small" type="submit">Re-run Rules</button>
+      </form>
+      <span class="muted small">Export</span>
+      <a class="button ghost small" href="/transactions/export?format=csv{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}">CSV</a>
+      <a class="button ghost small" href="/transactions/export?format=hledger{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}">Journal</a>
+      <a class="button ghost small" href="/transactions/export?format=beancount{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}">Beancount</a>
+      {{if .TaxEnabled}}<a class="button ghost small" href="/transactions/export?format=tax-summary">Tax summary</a>{{end}}
+    </div>
+  </header>
+  <div class="transaction-quick-filters" role="group" aria-label="Quick transaction filters">
+    {{range .QuickFilters}}
+      <a class="filter-chip {{if .Active}}active{{end}}" href="{{.Href}}"
+        hx-get="{{.Href}}" hx-target="#transactions-history" hx-swap="outerHTML" hx-push-url="true"
+        {{if .Active}}aria-current="true"{{end}}>{{.Label}}</a>
+    {{end}}
+  </div>
+  {{if .Transactions}}
+    <div class="table-wrap transactions-table-wrap">
+      <table class="transactions-table">
+        <colgroup>
+          <col class="tx-col-booked">
+          <col class="tx-col-account">
+          <col class="tx-col-transaction">
+          <col class="tx-col-category">
+          <col class="tx-col-notes">
+          <col class="tx-col-workspace">
+          <col class="tx-col-receipt">
+          <col class="tx-col-status">
+          <col class="tx-col-amount">
+        </colgroup>
+        <thead>
+          <tr>
+            <th scope="col">Booked</th>
+            <th scope="col">Account</th>
+            <th scope="col">Transaction</th>
+            <th scope="col">Category</th>
+            <th scope="col">Notes</th>
+            <th scope="col">Workspace</th>
+            <th scope="col">Receipt</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Transactions}}
+            <tr id="tx-{{.ID}}">
+              <td class="nowrap">{{date .BookingDate}}</td>
+              <td class="tx-account" title="{{.AccountName}}">{{.AccountName}}</td>
+              <td class="description" title="{{if .Description}}{{.Description}}{{else}}{{.Counterparty}}{{end}}">
+                <span class="tx-description">{{if .Description}}{{.Description}}{{else}}<span class="muted">—</span>{{end}}</span>
+                {{if .Counterparty}}<span class="tx-counterparty" title="{{.Counterparty}}">{{.Counterparty}}</span>{{end}}
+              </td>
+              <td class="tx-category">
+                {{template "transaction_category" (categoryEditor . $.Categories)}}
+                {{if isBizum .Counterparty .Description}}<span class="badge bizum">Bizum</span>{{end}}
+              </td>
+              <td class="notes">{{template "transaction_notes" .}}</td>
+              <td><span class="badge workspace {{if eq .AccountType "business"}}business{{else}}personal{{end}}">{{if eq .AccountType "business"}}Business{{else}}Personal{{end}}</span></td>
+              {{$attachmentID := index $.AttachmentIDs .ID}}
+              <td>
+                {{if $attachmentID}}
+                  <a class="receipt-chip" href="/attachments/{{$attachmentID}}" target="_blank" rel="noopener">Attached</a>
+                {{else if $.AttachmentsEnabled}}
+                  <button class="receipt-chip" type="button" data-receipt-open data-transaction-id="{{.ID}}">Attach</button>
+                {{else}}
+                  <span class="muted">—</span>
+                {{end}}
+              </td>
+              <td><span class="badge {{if eq .Status "booked"}}ok{{else}}pending{{end}}">{{.Status}}</span></td>
+              <td class="right amount {{if lt .AmountMinor 0}}debit{{else}}credit{{end}}">{{money .AmountMinor .Currency}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    <nav class="pagination" aria-label="Transaction pages">
+      {{if gt .Page 1}}
+        <a class="button ghost small" href="/transactions?page={{.PrevPage}}&limit={{.Limit}}{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}{{if .SearchQuery}}&q={{urlquery .SearchQuery}}{{end}}{{if ne .QuickFilter "all"}}&filter={{.QuickFilter}}{{end}}">← Previous</a>
+      {{else}}
+        <span></span>
+      {{end}}
+      {{if .HasNext}}
+        <a class="button ghost small" href="/transactions?page={{.NextPage}}&limit={{.Limit}}{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}{{if .SearchQuery}}&q={{urlquery .SearchQuery}}{{end}}{{if ne .QuickFilter "all"}}&filter={{.QuickFilter}}{{end}}">Next →</a>
+      {{end}}
+    </nav>
+  {{else}}
+    <div class="empty">
+      <p>No transactions match this view.</p>
+      {{if or .FilterAccount .SearchQuery (ne .QuickFilter "all")}}<a class="button ghost" href="/transactions">Clear filters</a>{{end}}
+    </div>
+  {{end}}
+</section>
+{{end}}

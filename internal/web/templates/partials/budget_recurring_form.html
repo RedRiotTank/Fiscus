@@ -1,0 +1,74 @@
+{{define "budget_recurring_form"}}
+<div class="budget-dialog-inner recurring-dialog-inner">
+  <header class="budget-dialog-head">
+    <div>
+      <p class="eyebrow">Recurring shared bill</p>
+      <h2 id="budget-recurring-title">Confirm recurring expense</h2>
+      <p>Decide whether this repeating debit is yours alone or a shared bill. Fiscus records your personal share against the budget category.</p>
+    </div>
+    <button class="icon-button" type="button" data-budget-customize-close aria-label="Close">×</button>
+  </header>
+  {{if .Error}}<p class="notice error" role="alert">{{.Error}}</p>{{end}}
+  {{if .Detected}}
+    <p class="housing-detected-note">
+      <span class="badge severity-info">Detected</span>
+      {{.Occurrences}} monthly payment(s) found, typically around day {{.TypicalDay}}.
+    </p>
+  {{end}}
+  <form hx-post="/api/budgets/recurring/setup" hx-target="#budget-customize-content" hx-swap="innerHTML">
+    <input type="hidden" name="workspace" value="{{.Workspace}}">
+    <input type="hidden" name="currency" value="{{.Currency}}">
+    <input type="hidden" name="counterparty" value="{{.Counterparty}}">
+    <fieldset class="housing-fieldset">
+      <legend>Recurring payment</legend>
+      <label>Counterparty
+        <input name="counterparty_display" type="text" value="{{.Counterparty}}" readonly>
+      </label>
+      <p class="housing-hint">Gross payment: <strong>{{money .GrossMinor .Currency}}</strong> each month.</p>
+    </fieldset>
+    <fieldset class="housing-fieldset">
+      <legend>Budget category</legend>
+      <div class="housing-share-row">
+        <label>Category
+          <input name="category" type="text" maxlength="120" required value="{{.Category}}" placeholder="Utilities &amp; Telecom">
+        </label>
+        <label>Pillar
+          <select name="pillar" aria-label="Budget pillar">
+            <option value="needs" {{if eq .Pillar "needs"}}selected{{end}}>Needs</option>
+            <option value="wants" {{if eq .Pillar "wants"}}selected{{end}}>Wants</option>
+            <option value="savings" {{if eq .Pillar "savings"}}selected{{end}}>Savings &amp; Investment</option>
+          </select>
+        </label>
+      </div>
+    </fieldset>
+    <fieldset class="housing-fieldset">
+      <legend>Split / sharing mode</legend>
+      <div class="recurring-split-row">
+        <label class="recurring-radio">
+          <input type="radio" name="split_mode" value="solo" {{if eq .SplitMode "solo"}}checked{{end}} data-recurring-split-mode>
+          <span>Solo Expense <small>full {{money .GrossMinor .Currency}}</small></span>
+        </label>
+        <label class="recurring-radio">
+          <input type="radio" name="split_mode" value="shared" {{if eq .SplitMode "shared"}}checked{{end}} data-recurring-split-mode>
+          <span>Shared Bill <small>only your share counts</small></span>
+        </label>
+      </div>
+      <div class="recurring-shared-fields" data-recurring-shared-fields {{if ne .SplitMode "shared"}}hidden{{end}}>
+        <div class="housing-share-row">
+          <label>Split by people
+            <input name="split_people" type="number" min="2" max="100" step="1" value="{{.SplitPeople}}">
+          </label>
+          <label>Or fixed personal share ({{.Currency}})
+            <input name="personal_share" type="number" min="0" step="0.01" {{if gt .PersonalShareMinor 0}}value="{{moneyInput .PersonalShareMinor .Currency}}"{{end}} placeholder="e.g. 5.33">
+          </label>
+        </div>
+        <p class="housing-hint">Leave the fixed share blank to divide the gross payment automatically. A €16.00 bill split 3 ways records €5.33 as your effective spend.</p>
+      </div>
+    </fieldset>
+    <footer class="budget-dialog-foot">
+      <button class="button ghost" type="button" data-budget-customize-close>Dismiss</button>
+      <button class="button" type="submit">Save Recurring Rule</button>
+    </footer>
+  </form>
+</div>
+{{end}}

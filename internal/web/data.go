@@ -14,6 +14,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"github.com/RedRiotTank/Fiscus/internal/treasury"
 	"github.com/RedRiotTank/Fiscus/pkg/housing"
+	"github.com/RedRiotTank/Fiscus/pkg/recurring"
 )
 
 // PageData is the common view model for all templates.
@@ -42,6 +43,9 @@ type PageData struct {
 	Transactions            []TransactionView
 	Categories              []string
 	Housing                 *HousingSetupView
+	Recurring               *RecurringBillsView
+	QuickFilter             string
+	QuickFilters            []QuickFilterView
 	Alerts                  []AlertView
 	Connections             []ConnectionView
 	Reconciliations         map[string]domain.Reconciliation
@@ -105,6 +109,40 @@ type HousingEditorView struct {
 	Flatmates             []HousingFlatmateView
 	Detected              bool
 	Error                 string
+}
+
+// RecurringBillsView supplies recurring-bill prompts, confirmed rules, and the
+// split wizard state.
+type RecurringBillsView struct {
+	Workspace  string
+	Currency   string
+	Candidates []recurring.Candidate
+	Rules      []domain.RecurringBillRule
+}
+
+// RecurringBillEditorView is the interactive recurring split modal model.
+type RecurringBillEditorView struct {
+	Workspace          string
+	Currency           string
+	Counterparty       string
+	Category           string
+	Pillar             string
+	SplitMode          string
+	SplitPeople        int
+	GrossMinor         int64
+	PersonalShareMinor int64
+	Occurrences        int
+	TypicalDay         int
+	Detected           bool
+	Error              string
+}
+
+// QuickFilterView is one instant transaction-history chip.
+type QuickFilterView struct {
+	Label  string
+	Value  string
+	Href   string
+	Active bool
 }
 
 // CategorySpendingView is a category total rendered on the overview.

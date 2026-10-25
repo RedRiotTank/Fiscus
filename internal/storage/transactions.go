@@ -14,12 +14,103 @@ import (
 const transactionColumns = `id, account_id, external_id, amount_minor, currency, booking_date,
 	value_date, counterparty, description, category, notes, status, created_at, updated_at`
 
+// QuickFilter is an instant transaction-history chip.
+type QuickFilter string
+
+const (
+	// QuickFilterAll applies no amount or category predicate.
+	QuickFilterAll QuickFilter = "all"
+	// QuickFilterInflows keeps positive amounts.
+	QuickFilterInflows QuickFilter = "inflows"
+	// QuickFilterOutflows keeps negative amounts.
+	QuickFilterOutflows QuickFilter = "outflows"
+	// QuickFilterP2P keeps Bizum and peer-to-peer transfers.
+	QuickFilterP2P QuickFilter = "p2p"
+	// QuickFilterNeeds keeps categories allocated to the Needs pillar.
+	QuickFilterNeeds QuickFilter = "needs"
+	// QuickFilterWants keeps categories allocated to the Wants pillar.
+	QuickFilterWants QuickFilter = "wants"
+)
+
+// NormalizeQuickFilter validates a quick-filter query parameter.
+func NormalizeQuickFilter(raw string) QuickFilter {
+	switch QuickFilter(strings.ToLower(strings.TrimSpace(raw))) {
+	case QuickFilterInflows:
+		return QuickFilterInflows
+	case QuickFilterOutflows:
+		return QuickFilterOutflows
+	case QuickFilterP2P:
+		return QuickFilterP2P
+	case QuickFilterNeeds:
+		return QuickFilterNeeds
+	case QuickFilterWants:
+		return QuickFilterWants
+	default:
+		return QuickFilterAll
+	}
+}
+
 // TransactionFilter controls transaction listing.
 type TransactionFilter struct {
-	AccountID  string
-	AccountIDs []string
-	Limit      int
-	Offset     int
+	AccountID   string
+	AccountIDs  []string
+	QuickFilter QuickFilter
+	Categories  []string
+	Limit       int
+	Offset      int
+}
+
+func transactionWhere(filter TransactionFilter) ([]string, []any) {
+	var (
+		where []string
+		args  []any
+	)
+	if filter.AccountID != "" {
+		where = append(where, "account_id = ?")
+		args = append(args, filter.AccountID)
+	} else if clause, clauseArgs := accountIDsClause(filter.AccountIDs); clause != "" {
+		where = append(where, clause)
+		args = append(args, clauseArgs...)
+	}
+	switch NormalizeQuickFilter(string(filter.QuickFilter)) {
+	case QuickFilterInflows:
+		where = append(where, "amount_minor > 0")
+	case QuickFilterOutflows:
+		where = append(where, "amount_minor < 0")
+	case QuickFilterP2P:
+		where = append(where, "LOWER(TRIM(category)) IN (?, ?, ?)")
+		args = append(args, "transfers / p2p", "bizum", "transfers / bizum")
+	case QuickFilterNeeds, QuickFilterWants:
+		categories := canonicalQuickFilterCategories(filter.Categories)
+		if len(categories) == 0 {
+			where = append(where, "1 = 0")
+			break
+		}
+		placeholders := make([]string, len(categories))
+		for i, category := range categories {
+			placeholders[i] = "?"
+			args = append(args, strings.ToLower(strings.TrimSpace(category)))
+		}
+		where = append(where, "LOWER(TRIM(category)) IN ("+strings.Join(placeholders, ",")+")")
+	}
+	return where, args
+}
+
+func canonicalQuickFilterCategories(categories []string) []string {
+	seen := make(map[string]struct{}, len(categories))
+	out := make([]string, 0, len(categories))
+	for _, category := range categories {
+		category = strings.ToLower(strings.TrimSpace(category))
+		if category == "" {
+			continue
+		}
+		if _, exists := seen[category]; exists {
+			continue
+		}
+		seen[category] = struct{}{}
+		out = append(out, category)
+	}
+	return out
 }
 
 // accountIDsClause returns an "account_id IN (...)" predicate and its
@@ -241,17 +332,7 @@ func (s *Store) UpdateTransactionNotes(ctx context.Context, id int64, notes stri
 
 // ListTransactions returns transactions matching the filter, newest first.
 func (s *Store) ListTransactions(ctx context.Context, filter TransactionFilter) ([]domain.Transaction, error) {
-	var (
-		where []string
-		args  []any
-	)
-	if filter.AccountID != "" {
-		where = append(where, "account_id = ?")
-		args = append(args, filter.AccountID)
-	} else if clause, clauseArgs := accountIDsClause(filter.AccountIDs); clause != "" {
-		where = append(where, clause)
-		args = append(args, clauseArgs...)
-	}
+	where, args := transactionWhere(filter)
 	query := `SELECT ` + transactionColumns + ` FROM transactions`
 	if len(where) > 0 {
 		// #nosec G202 -- where contains only static, developer-defined predicates.
@@ -401,6 +482,22 @@ func (s *Store) CountTransactionsFiltered(ctx context.Context, accountIDs []stri
 	var n int
 	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&n); err != nil {
 		return 0, fmt.Errorf("storage: count filtered transactions: %w", err)
+	}
+	return n, nil
+}
+
+// CountTransactionsMatching returns the number of transactions matching the
+// account and quick-filter predicates.
+func (s *Store) CountTransactionsMatching(ctx context.Context, filter TransactionFilter) (int, error) {
+	where, args := transactionWhere(filter)
+	query := `SELECT COUNT(*) FROM transactions`
+	if len(where) > 0 {
+		// #nosec G202 -- where contains only static, developer-defined predicates.
+		query += " WHERE " + strings.Join(where, " AND ")
+	}
+	var n int
+	if err := s.db.QueryRowContext(ctx, query, args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("storage: count matching transactions: %w", err)
 	}
 	return n, nil
 }

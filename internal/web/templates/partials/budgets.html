@@ -82,6 +82,48 @@
       </div>
     {{end}}
 
+    {{if and .Recurring .Recurring.Candidates}}
+      <div class="budget-messages recurring-prompts">
+        {{range .Recurring.Candidates}}
+          <article class="budget-message info">
+            <span class="badge severity-info">Recurring payment detected</span>
+            <div>
+              <strong>Recurring payment detected: {{money .AmountMinor .Currency}} to {{.Counterparty}}.</strong>
+              <p>
+                Is this a shared bill or recurring expense? Seen {{.Occurrences}} times,
+                typically around day {{.TypicalDay}} of the month.
+              </p>
+              <button class="button small"
+                hx-get="/api/budgets/recurring/setup?workspace={{$.Recurring.Workspace}}&currency={{$.Recurring.Currency}}&counterparty={{urlquery .Counterparty}}"
+                hx-target="#budget-customize-content" hx-swap="innerHTML"
+                data-budget-customize-open>Review &amp; confirm</button>
+            </div>
+          </article>
+        {{end}}
+      </div>
+    {{end}}
+
+    {{if and .Recurring .Recurring.Rules}}
+      <div class="budget-messages">
+        <article class="budget-message success">
+          <span class="badge ok">Recurring splits active</span>
+          <div>
+            <strong>{{len .Recurring.Rules}} recurring bill rule(s) use your personal share.</strong>
+            <p class="recurring-rule-list">
+              {{range .Recurring.Rules}}
+                <span>{{.Counterparty}} · {{money .PersonalShareMinor .Currency}} of {{money .GrossMinor .Currency}}
+                  <button class="link-button"
+                    hx-get="/api/budgets/recurring/setup?workspace={{$.Recurring.Workspace}}&currency={{$.Recurring.Currency}}&counterparty={{urlquery .Counterparty}}"
+                    hx-target="#budget-customize-content" hx-swap="innerHTML"
+                    data-budget-customize-open>edit</button>
+                </span>
+              {{end}}
+            </p>
+          </div>
+        </article>
+      </div>
+    {{end}}
+
     {{if .BudgetPlan.Nominal}}
       <div class="budget-messages">
         <article class="budget-message info">
@@ -113,22 +155,37 @@
     <div class="budget-overview-grid">
       <div class="budget-donut-area">
         {{if .BudgetPlan.Donut}}
-          <div class="budget-donut-wrap">
-            <canvas id="budget-donut" data-budget-donut="{{.BudgetPlan.Donut.Data}}" role="img" aria-label="Planned income allocation and month-to-date spending by category"></canvas>
-            <div class="budget-donut-center" aria-hidden="true">
-              <strong>{{.BudgetPlan.AllocatedPercent}}%</strong>
-              <span>allocated</span>
-              <small>{{money .BudgetPlan.AllocatedMinor .BudgetPlan.Currency}} of {{money .BudgetPlan.BaselineMinor .BudgetPlan.Currency}}</small>
-              {{if gt .BudgetPlan.UnallocatedMinor 0}}
-                <small class="budget-donut-buffer">{{money .BudgetPlan.UnallocatedMinor .BudgetPlan.Currency}} unallocated</small>
-              {{else if lt .BudgetPlan.UnallocatedMinor 0}}
-                <small class="budget-donut-over">{{money .BudgetPlan.UnallocatedMinor .BudgetPlan.Currency}} over-allocated</small>
-              {{end}}
+          <div class="budget-visual-card" data-budget-chart="{{.BudgetPlan.Donut.Data}}" data-budget-view="donut">
+            <div class="budget-visual-head">
+              <span class="eyebrow">Plan vs actual</span>
+              <button class="icon-button budget-view-toggle" type="button" data-budget-view-toggle
+                aria-label="Switch between macro donut and grouped bar chart" aria-pressed="false"
+                title="Switch chart view">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+                  <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 8h13m0 0-3-3m3 3-3 3M20 16H7m0 0 3-3m-3 3 3 3"/>
+                </svg>
+              </button>
             </div>
-          </div>
-          <div class="budget-donut-ring-key">
-            <span><i class="ring-key ring-outer"></i>Planned allocation</span>
-            <span><i class="ring-key ring-inner"></i>Actual spend</span>
+            <div class="budget-chart-stage">
+              <div class="budget-donut-wrap" data-budget-view-panel="donut">
+                <canvas id="budget-donut" data-budget-donut="{{.BudgetPlan.Donut.Data}}" role="img" aria-label="Macro income allocation across Needs, Wants, and Savings"></canvas>
+                <div class="budget-donut-center" aria-hidden="true">
+                  <strong>{{.BudgetPlan.AllocatedPercent}}%</strong>
+                  <span>of net income committed</span>
+                  <small>{{money .BudgetPlan.AllocatedMinor .BudgetPlan.Currency}} of {{money .BudgetPlan.BaselineMinor .BudgetPlan.Currency}}</small>
+                  {{if gt .BudgetPlan.UnallocatedMinor 0}}
+                    <small class="budget-donut-buffer">{{money .BudgetPlan.UnallocatedMinor .BudgetPlan.Currency}} unallocated surplus</small>
+                  {{else if lt .BudgetPlan.UnallocatedMinor 0}}
+                    <small class="budget-donut-over">{{money .BudgetPlan.UnallocatedMinor .BudgetPlan.Currency}} over-allocated</small>
+                  {{end}}
+                </div>
+              </div>
+              <div class="budget-bars-wrap" data-budget-view-panel="bars" hidden>
+                <canvas id="budget-bars" role="img" aria-label="Grouped bar chart comparing planned budget and actual spend by category"></canvas>
+                <p class="budget-pace-note">Dashed marker shows elapsed monthly pace · day {{.Now.Day}}</p>
+              </div>
+            </div>
+            <div class="budget-macro-legend" data-budget-macro-legend aria-label="Macro allocation legend"></div>
           </div>
         {{else}}
           <div class="budget-empty-donut">

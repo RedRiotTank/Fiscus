@@ -1,15 +1,18 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"html"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/analysis"
+	"github.com/RedRiotTank/Fiscus/internal/budgets"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"github.com/RedRiotTank/Fiscus/internal/tax"
@@ -68,6 +71,7 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 	data.SearchQuery = strings.TrimSpace(r.URL.Query().Get("q"))
 	data.Page = parsePage(r.URL.Query().Get("page"))
 	data.Limit = parseLimit(r.URL.Query().Get("limit"))
+	data.QuickFilter = string(storage.NormalizeQuickFilter(r.URL.Query().Get("filter")))
 	data.TaxEnabled = s.tax != nil
 
 	ctx := r.Context()
@@ -83,6 +87,16 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 	if data.FilterAccount != "" {
 		if _, ok := allowed[data.FilterAccount]; !ok {
 			filterBlocked = true
+		}
+	}
+
+	currency := budgetCurrency(accounts)
+	var quickCategories []string
+	if data.QuickFilter == string(storage.QuickFilterNeeds) || data.QuickFilter == string(storage.QuickFilterWants) {
+		quickCategories, err = s.quickFilterCategories(ctx, data.Workspace.View, currency, data.QuickFilter)
+		if err != nil {
+			s.fail(w, r, err)
+			return
 		}
 	}
 
@@ -107,9 +121,21 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 					}
 					transactions = filtered
 				}
+				if data.QuickFilter != string(storage.QuickFilterAll) {
+					filtered := transactions[:0]
+					for _, tx := range transactions {
+						if matchesTransactionQuickFilter(tx, data.QuickFilter, quickCategories) {
+							filtered = append(filtered, tx)
+						}
+					}
+					transactions = filtered
+				}
 			}
 		} else {
-			transactions, err = s.store.ListTransactions(ctx, transactionFilter(data.FilterAccount, accountIDs, data.Page, data.Limit))
+			filter := transactionFilter(data.FilterAccount, accountIDs, data.Page, data.Limit)
+			filter.QuickFilter = storage.NormalizeQuickFilter(data.QuickFilter)
+			filter.Categories = quickCategories
+			transactions, err = s.store.ListTransactions(ctx, filter)
 			if err != nil {
 				s.fail(w, r, err)
 				return
@@ -127,23 +153,149 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 	data.NextPage = data.Page + 1
 	var total int
 	if !restrictedEmpty {
-		if searchMode {
+		switch {
+		case searchMode:
 			total = len(transactions)
-		} else {
+			err = nil
+		case data.QuickFilter == string(storage.QuickFilterAll):
 			total, err = s.store.CountTransactionsFiltered(ctx, accountIDs)
-			if err != nil {
-				s.fail(w, r, err)
-				return
-			}
+		default:
+			total, err = s.store.CountTransactionsMatching(ctx, storage.TransactionFilter{
+				AccountID: data.FilterAccount, AccountIDs: accountIDs,
+				QuickFilter: storage.NormalizeQuickFilter(data.QuickFilter), Categories: quickCategories,
+			})
+		}
+		if err != nil {
+			s.fail(w, r, err)
+			return
 		}
 	}
 	data.TotalTransactions = total
+	data.QuickFilters = buildQuickFilterViews(data.FilterAccount, data.SearchQuery, data.Limit, data.QuickFilter)
 	data.AttachmentNotice = attachmentNotice(r.URL.Query().Get("attachment"))
 	if err := s.loadAttachmentData(ctx, &data); err != nil {
 		s.fail(w, r, err)
 		return
 	}
+	if data.Workspace.View != domain.WorkspaceAll {
+		if err := s.loadRecurringBills(ctx, &data, data.Workspace.View, currency, nil, s.now().UTC()); err != nil {
+			s.fail(w, r, err)
+			return
+		}
+	}
+	if r.Header.Get("HX-Request") == "true" {
+		s.renderPartial(w, "transactions_history", data)
+		return
+	}
 	s.render(w, "transactions", data)
+}
+
+func buildQuickFilterViews(account, query string, limit int, selected string) []QuickFilterView {
+	specs := []struct {
+		label string
+		value storage.QuickFilter
+	}{
+		{label: "All", value: storage.QuickFilterAll},
+		{label: "Money In", value: storage.QuickFilterInflows},
+		{label: "Money Out", value: storage.QuickFilterOutflows},
+		{label: "Transfers / P2P", value: storage.QuickFilterP2P},
+		{label: "Needs", value: storage.QuickFilterNeeds},
+		{label: "Wants", value: storage.QuickFilterWants},
+	}
+	selected = string(storage.NormalizeQuickFilter(selected))
+	out := make([]QuickFilterView, 0, len(specs))
+	for _, spec := range specs {
+		href := transactionListURL(account, query, string(spec.value), 1, limit)
+		out = append(out, QuickFilterView{
+			Label: spec.label, Value: string(spec.value), Href: href,
+			Active: string(spec.value) == selected,
+		})
+	}
+	return out
+}
+
+func transactionListURL(account, query, filter string, page, limit int) string {
+	values := make([]string, 0, 5)
+	if page > 1 {
+		values = append(values, "page="+strconv.Itoa(page))
+	}
+	values = append(values, "limit="+strconv.Itoa(limit))
+	if account != "" {
+		values = append(values, "account="+url.QueryEscape(account))
+	}
+	if query != "" {
+		values = append(values, "q="+url.QueryEscape(query))
+	}
+	if filter != "" && filter != string(storage.QuickFilterAll) {
+		values = append(values, "filter="+url.QueryEscape(filter))
+	}
+	return "/transactions?" + strings.Join(values, "&")
+}
+
+func matchesTransactionQuickFilter(tx domain.Transaction, filter string, categories []string) bool {
+	switch storage.NormalizeQuickFilter(filter) {
+	case storage.QuickFilterInflows:
+		return tx.AmountMinor > 0
+	case storage.QuickFilterOutflows:
+		return tx.AmountMinor < 0
+	case storage.QuickFilterP2P:
+		switch strings.ToLower(strings.TrimSpace(tx.Category)) {
+		case "transfers / p2p", "bizum", "transfers / bizum":
+			return true
+		}
+		return false
+	case storage.QuickFilterNeeds, storage.QuickFilterWants:
+		category := strings.ToLower(strings.TrimSpace(tx.Category))
+		for _, allowed := range categories {
+			if strings.EqualFold(category, strings.TrimSpace(allowed)) {
+				return true
+			}
+		}
+		return false
+	default:
+		return true
+	}
+}
+
+func (s *Server) quickFilterCategories(ctx context.Context, workspace, currency, dataFilter string) ([]string, error) {
+	pillar := budgets.PillarNeeds
+	if storage.NormalizeQuickFilter(dataFilter) == storage.QuickFilterWants {
+		pillar = budgets.PillarWants
+	}
+	var allocations []budgets.Allocation
+	if workspace != domain.WorkspaceAll && s.budgetPlanner != nil {
+		stored, err := s.budgetPlanner.Load(ctx, workspace, currency)
+		if err != nil {
+			return nil, err
+		}
+		if stored.Exists && len(stored.Allocations) > 0 {
+			allocations = stored.Allocations
+		}
+	}
+	if len(allocations) == 0 {
+		allocations = budgets.DefaultAllocations(workspace)
+		if workspace == domain.WorkspaceAll {
+			allocations = append(allocations, budgets.DefaultAllocations(domain.WorkspaceBusiness)...)
+		}
+	}
+	seen := make(map[string]struct{}, len(allocations))
+	out := make([]string, 0, len(allocations))
+	for _, allocation := range allocations {
+		if allocation.Pillar != pillar {
+			continue
+		}
+		category := strings.TrimSpace(allocation.Category)
+		if category == "" {
+			continue
+		}
+		key := strings.ToLower(category)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, category)
+	}
+	return out, nil
 }
 
 const maxNoteRunes = 2000
