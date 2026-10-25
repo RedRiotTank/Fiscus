@@ -95,7 +95,7 @@ func TestBudgetCustomizeEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("allocations after delete: %v", err)
 	}
-	if len(allocations) != 7 {
+	if len(allocations) != 8 {
 		t.Fatalf("deleting all categories should restore defaults, got %+v", allocations)
 	}
 	emptyPage := f.request(t, http.MethodGet, "/budgets?workspace=personal", true, nil)
@@ -217,7 +217,7 @@ func TestDefaultBudgetTemplateAutoSeed(t *testing.T) {
 		t.Fatalf("budgets status = %d", page.Code)
 	}
 	body := page.Body.String()
-	for _, want := range []string{"Housing / Rent", "Groceries", "Utilities &amp; Telecom", "Restaurants &amp; Delivery", "Subscriptions", "Leisure &amp; Shopping", "Emergency Fund"} {
+	for _, want := range []string{"Housing / Rent", "Groceries", "Utilities &amp; Telecom", "Restaurants &amp; Delivery", "Subscriptions", "Cash / ATM", "Leisure &amp; Shopping", "Emergency Fund"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("default budget page missing %q", want)
 		}
@@ -240,7 +240,7 @@ func TestDefaultBudgetTemplateAutoSeed(t *testing.T) {
 	for _, allocation := range allocations {
 		total += allocation.PercentBPS
 	}
-	if len(allocations) != 7 || total != 10000 {
+	if len(allocations) != 8 || total != 10000 {
 		t.Fatalf("allocations = %+v total=%d", allocations, total)
 	}
 
@@ -311,7 +311,7 @@ func TestBudgetSaveWithoutCategoriesInjectsDefaults(t *testing.T) {
 	for _, allocation := range allocations {
 		total += allocation.PercentBPS
 	}
-	if len(allocations) != 7 || total != 10000 {
+	if len(allocations) != 8 || total != 10000 {
 		t.Fatalf("default injection = %+v total=%d", allocations, total)
 	}
 	page := f.request(t, http.MethodGet, "/budgets?workspace=personal", true, nil)

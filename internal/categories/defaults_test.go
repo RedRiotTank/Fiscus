@@ -24,6 +24,10 @@ func TestDefaultRulesCategorizeSpanishMerchants(t *testing.T) {
 		"Amazon Marketplace purchase":   "Leisure & Shopping",
 		"Comisión mantenimiento cuenta": "Bank Fees",
 		"BIZUM Juan Pérez":              "Transfers / Bizum",
+		"Cash at La Caixa 6277":         "Cash / ATM",
+		"Cash at 121006277":             "Cash / ATM",
+		"Cajero Santander":              "Cash / ATM",
+		"Reintegro efectivo":            "Cash / ATM",
 		"Netflix.com":                   "Subscriptions",
 		"Coviran":                       "Groceries",
 		"Coviran S.C.A.":                "Groceries",
@@ -54,6 +58,7 @@ func TestCategoriesIncludesDefaults(t *testing.T) {
 		"Leisure & Shopping": false, "Restaurants & Delivery": false,
 		"Transport": false, "Utilities & Telecom": false, "Bank Fees": false,
 		"Transfers / Bizum": false, CategoryHousing: false, CategoryP2P: false,
+		"Cash / ATM": false,
 	}
 	for _, category := range categories {
 		if _, ok := want[category]; ok {

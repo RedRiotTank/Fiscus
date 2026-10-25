@@ -31,6 +31,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/web"
 	"github.com/RedRiotTank/Fiscus/internal/webhooks"
 	"github.com/RedRiotTank/Fiscus/pkg/housing"
+	"github.com/RedRiotTank/Fiscus/pkg/recurring"
 )
 
 type syncTrigger = web.SyncTrigger
@@ -59,6 +60,10 @@ func openStore(ctx context.Context, cfg *config.Config) (*storage.Store, error) 
 			_ = store.Close()
 			return nil, fmt.Errorf("repair legacy housing categories: %w", err)
 		}
+	}
+	if err := repairRecurringBillCategories(ctx, store); err != nil {
+		_ = store.Close()
+		return nil, fmt.Errorf("repair recurring bill categories: %w", err)
 	}
 	for id, accountType := range cfg.AccountTypes() {
 		if err := store.ApplyConfigAccountType(ctx, id, accountType); err != nil && !errors.Is(err, storage.ErrNotFound) {
@@ -179,6 +184,60 @@ func repairLegacyHousingCategories(ctx context.Context, store *storage.Store) er
 			}
 		}
 		return categories.CategoryP2P
+	}, true)
+	return err
+}
+
+// repairRecurringBillCategories re-applies every confirmed recurring rule to
+// historical and future transactions. This prevents a fixed bill such as
+// Alberto's utilities share from lingering in the Subscriptions budget.
+func repairRecurringBillCategories(ctx context.Context, store *storage.Store) error {
+	rules, err := store.ListAllRecurringBillRules(ctx)
+	if err != nil {
+		return err
+	}
+	if len(rules) == 0 {
+		return nil
+	}
+	accounts, err := store.ListAccounts(ctx)
+	if err != nil {
+		return err
+	}
+	accountWorkspace := make(map[string]string, len(accounts))
+	for _, account := range accounts {
+		accountWorkspace[account.ID] = domain.NormalizeAccountType(account.Type)
+	}
+	for _, rule := range rules {
+		counterparty := strings.TrimSpace(rule.Counterparty)
+		if len([]rune(counterparty)) < 3 {
+			continue
+		}
+		source := "recurring:" + strings.ToLower(strings.TrimSpace(rule.Workspace))
+		if _, err := store.UpsertLearnedRule(ctx, categories.LearnedPattern(counterparty), rule.Category, source); err != nil {
+			return err
+		}
+	}
+	_, err = store.Recategorize(ctx, func(tx domain.Transaction) string {
+		if tx.AmountMinor >= 0 {
+			return ""
+		}
+		workspace := accountWorkspace[tx.AccountID]
+		currency := strings.ToUpper(strings.TrimSpace(tx.Currency))
+		if currency == "" {
+			currency = "EUR"
+		}
+		for _, rule := range rules {
+			if !strings.EqualFold(workspace, strings.ToLower(strings.TrimSpace(rule.Workspace))) ||
+				!strings.EqualFold(currency, strings.ToUpper(strings.TrimSpace(rule.Currency))) ||
+				!recurring.MatchesCounterparty(tx, rule.Counterparty) {
+				continue
+			}
+			if !strings.EqualFold(strings.TrimSpace(tx.Category), rule.Category) {
+				return rule.Category
+			}
+			return ""
+		}
+		return ""
 	}, true)
 	return err
 }

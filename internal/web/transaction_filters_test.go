@@ -37,6 +37,11 @@ func TestTransactionsFacetedFiltersAndHTMXSwap(t *testing.T) {
 			BookingDate: bookedAt, Counterparty: "Vodafone", Description: "Fibra",
 			Category: "Utilities & Telecom", Status: domain.TransactionStatusBooked,
 		},
+		{
+			AccountID: "acc-1", ExternalID: "cash-filter", AmountMinor: -6000, Currency: "EUR",
+			BookingDate: bookedAt, Counterparty: "Cash at La Caixa 6277", Description: "Cash at La Caixa 6277",
+			Category: "Cash / ATM", Status: domain.TransactionStatusBooked,
+		},
 	}
 	for i := range transactions {
 		if _, _, err := f.store.UpsertTransaction(ctx, &transactions[i]); err != nil {
@@ -50,8 +55,8 @@ func TestTransactionsFacetedFiltersAndHTMXSwap(t *testing.T) {
 	}
 	body := page.Body.String()
 	for _, want := range []string{
-		`transaction-facet-bar my-6 space-y-4`, `Flow`, `Category`, `All Flow`, `Money In`, `Money Out`,
-		`All Categories`, `Transfers / P2P`, `Housing / Rent`, `Utilities &amp; Telecom`,
+		`transaction-facet-bar my-6 space-y-4`, `transaction-facet-divider h-6 w-px bg-zinc-700/50`, `Flow`, `Category`, `All Flow`, `Money In`, `Money Out`,
+		`All Categories`, `Transfers / P2P`, `Housing / Rent`, `Utilities &amp; Telecom`, `Cash / ATM`,
 		`flow=inflows`, `facet=needs`, `data-search-toggle`, `transition-all duration-200`,
 		`id="transactions-history"`,
 	} {
@@ -73,6 +78,7 @@ func TestTransactionsFacetedFiltersAndHTMXSwap(t *testing.T) {
 		{name: "outflows housing", query: "flow=outflows&facet=housing", want: []string{"Inmobiliaria Centro"}, absent: []string{"Coffee Shop", "Bizum Alberto", "Employer"}},
 		{name: "inflows p2p", query: "flow=inflows&facet=p2p", want: []string{"Bizum Ana"}, absent: []string{"Bizum Alberto", "Coffee Shop", "Employer"}},
 		{name: "outflows utilities", query: "flow=outflows&facet=utilities", want: []string{"Vodafone"}, absent: []string{"Coffee Shop", "Inmobiliaria Centro", "Employer"}},
+		{name: "cash", query: "facet=cash", want: []string{"Cash at La Caixa 6277"}, absent: []string{"Coffee Shop", "Inmobiliaria Centro", "Employer"}},
 	}
 	for _, test := range tests {
 		response := f.request(t, http.MethodGet, "/transactions?workspace=personal&"+test.query, true, map[string]string{"HX-Request": "true"})

@@ -147,8 +147,9 @@ func DefaultAllocations(workspace string) []Allocation {
 		{Category: "Utilities & Telecom", Pillar: PillarNeeds, PercentBPS: 800, NotifyAtPercent: []int{80, 100}, SortOrder: 2},
 		{Category: "Restaurants & Delivery", Pillar: PillarWants, PercentBPS: 1200, NotifyAtPercent: []int{80, 100}, SortOrder: 3},
 		{Category: "Subscriptions", Pillar: PillarWants, PercentBPS: 500, NotifyAtPercent: []int{80, 100}, SortOrder: 4},
-		{Category: "Leisure & Shopping", Pillar: PillarWants, PercentBPS: 1300, NotifyAtPercent: []int{80, 100}, SortOrder: 5},
-		{Category: "Emergency Fund", Pillar: PillarSavings, PercentBPS: 2000, NotifyAtPercent: []int{80, 100}, SortOrder: 6},
+		{Category: "Cash / ATM", Pillar: PillarWants, PercentBPS: 300, NotifyAtPercent: []int{80, 100}, SortOrder: 5},
+		{Category: "Leisure & Shopping", Pillar: PillarWants, PercentBPS: 1000, NotifyAtPercent: []int{80, 100}, SortOrder: 6},
+		{Category: "Emergency Fund", Pillar: PillarSavings, PercentBPS: 2000, NotifyAtPercent: []int{80, 100}, SortOrder: 7},
 	}
 }
 

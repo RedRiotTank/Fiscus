@@ -88,6 +88,49 @@ func TestInlineCategoryLearningPropagates(t *testing.T) {
 	}
 }
 
+func TestInlineCategorySingleTransactionModeDoesNotLearn(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	ctx := context.Background()
+	now := f.server.now().UTC()
+	tx := domain.Transaction{
+		AccountID: "acc-1", ExternalID: "variable-utility",
+		AmountMinor: -1515, Currency: "EUR", BookingDate: now,
+		Counterparty: "Bizum Jose", Description: "Luz octubre | To Jose",
+		Category: "Transfers / P2P", Status: domain.TransactionStatusBooked,
+	}
+	if _, _, err := f.store.UpsertTransaction(ctx, &tx); err != nil {
+		t.Fatalf("UpsertTransaction: %v", err)
+	}
+	form := url.Values{
+		"category": {"Utilities & Telecom"},
+		"remember": {"0"},
+	}
+	req := httptest.NewRequest(http.MethodPatch, "/api/transactions/"+strconv.FormatInt(tx.ID, 10)+"/category", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set(syncRequestHeader, "1")
+	req.SetBasicAuth("admin", "secret")
+	rec := httptest.NewRecorder()
+	f.handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("category PATCH = %d %s", rec.Code, rec.Body.String())
+	}
+	loaded, err := f.store.GetTransaction(ctx, tx.ID)
+	if err != nil {
+		t.Fatalf("GetTransaction: %v", err)
+	}
+	if loaded.Category != "Utilities & Telecom" {
+		t.Fatalf("category = %q", loaded.Category)
+	}
+	rules, err := f.store.ListLearnedRules(ctx)
+	if err != nil {
+		t.Fatalf("ListLearnedRules: %v", err)
+	}
+	if len(rules) != 0 {
+		t.Fatalf("single-transaction edit created learned rules: %+v", rules)
+	}
+}
+
 func TestTransactionsPageRendersBizumBadge(t *testing.T) {
 	t.Parallel()
 	f := newWebFixture(t)
@@ -106,7 +149,7 @@ func TestTransactionsPageRendersBizumBadge(t *testing.T) {
 		t.Fatalf("transactions status = %d", page.Code)
 	}
 	body := page.Body.String()
-	for _, want := range []string{"badge bizum", "Transfers / Bizum", "category-select"} {
+	for _, want := range []string{"badge bizum", "Transfers / Bizum", "category-select", "Remember for all transfers to this person"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("transaction page missing %q", want)
 		}

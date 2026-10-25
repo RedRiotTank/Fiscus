@@ -197,8 +197,17 @@ func hasMessage(messages []AdvisoryMessage, contains string) bool {
 func TestDefaultAllocations(t *testing.T) {
 	t.Parallel()
 	personal := DefaultAllocations("personal")
-	if len(personal) != 7 {
+	if len(personal) != 8 {
 		t.Fatalf("personal defaults = %+v", personal)
+	}
+	foundCash := false
+	for _, allocation := range personal {
+		if allocation.Category == "Cash / ATM" && allocation.Pillar == PillarWants {
+			foundCash = true
+		}
+	}
+	if !foundCash {
+		t.Fatalf("personal defaults missing Cash / ATM wants category: %+v", personal)
 	}
 	if personal[0].Category != housing.Category {
 		t.Fatalf("personal housing category = %q, want %q", personal[0].Category, housing.Category)

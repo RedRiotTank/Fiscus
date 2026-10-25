@@ -88,6 +88,7 @@ func (s *Server) handleTransactionCategory(w http.ResponseWriter, r *http.Reques
 	if category == "" {
 		category = categories.DefaultCategory
 	}
+	remember := !strings.EqualFold(strings.TrimSpace(r.FormValue("remember")), "0")
 	tx, err := s.store.GetTransaction(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -107,7 +108,7 @@ func (s *Server) handleTransactionCategory(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Could not update category", http.StatusInternalServerError)
 		return
 	}
-	if !strings.EqualFold(category, categories.DefaultCategory) {
+	if remember && !strings.EqualFold(category, categories.DefaultCategory) {
 		s.learnCategoryRule(r.Context(), tx, category)
 	}
 	tx.Category = category

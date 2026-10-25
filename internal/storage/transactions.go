@@ -44,6 +44,8 @@ const (
 	CategoryFacetGroceries CategoryFacet = "groceries"
 	// CategoryFacetP2P keeps Bizum and peer-to-peer transfers.
 	CategoryFacetP2P CategoryFacet = "p2p"
+	// CategoryFacetCash keeps cash and ATM withdrawals.
+	CategoryFacetCash CategoryFacet = "cash"
 )
 
 // NormalizeFlowFacet validates a direction filter query parameter.
@@ -73,6 +75,8 @@ func NormalizeCategoryFacet(raw string) CategoryFacet {
 		return CategoryFacetGroceries
 	case CategoryFacetP2P:
 		return CategoryFacetP2P
+	case CategoryFacetCash:
+		return CategoryFacetCash
 	default:
 		return CategoryFacetAll
 	}
@@ -122,6 +126,9 @@ var (
 	p2pFacetCategories = []string{
 		"transfers / p2p", "bizum", "transfers / bizum", "p2p",
 	}
+	cashFacetCategories = []string{
+		"cash / atm", "cash", "atm", "cajero", "reintegro",
+	}
 )
 
 func transactionWhere(filter TransactionFilter) ([]string, []any) {
@@ -155,6 +162,8 @@ func transactionWhere(filter TransactionFilter) ([]string, []any) {
 		categories = groceriesFacetCategories
 	case CategoryFacetP2P:
 		categories = p2pFacetCategories
+	case CategoryFacetCash:
+		categories = cashFacetCategories
 	}
 	if categoryFacet != CategoryFacetAll {
 		if len(categories) == 0 {

@@ -5,6 +5,7 @@ package categories
 func DefaultRules() []Rule {
 	return []Rule{
 		{Category: "Transfers / Bizum", Pattern: `(?i)\bbizum\b`},
+		{Category: "Cash / ATM", Pattern: `(?i)(?:cash at\s|cajero|reintegro|atm withdrawal)`},
 		{Category: "Subscriptions", Pattern: `(?i)(?:amazon prime|amazon web services|\baws\b|netflix|spotify|\bgoogle\b|apple|cloudflare|openai|chatgpt|github|jetbrains|youtube|disney|hbo|\bmax\b|dazn|playstation|xbox|steam)`},
 		{Category: "Leisure & Shopping", Pattern: `(?i)(?:amazon|aliexpress|shein|temu|wallapop|el corte ingl[eé]s|decathlon|zara|pull\s*&?\s*bear|bershka|stradivarius|mango|primark|ikea|leroy merlin|mediamarkt|pc\s*c[o]mponentes)`},
 		{Category: "Restaurants & Delivery", Pattern: `(?i)(?:glovo|uber eats|just eat|burger king|mcdonald'?s|\bkfc\b|telepizza|starbucks)`},

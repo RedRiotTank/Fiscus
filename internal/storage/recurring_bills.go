@@ -124,6 +124,33 @@ func (s *Store) ListRecurringBillRules(ctx context.Context, workspace, currency 
 	return out, nil
 }
 
+// ListAllRecurringBillRules returns every active recurring bill rule across
+// workspaces and currencies.
+func (s *Store) ListAllRecurringBillRules(ctx context.Context) ([]domain.RecurringBillRule, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+recurringBillColumns+`
+		FROM recurring_bill_rules
+		WHERE active = 1
+		ORDER BY workspace ASC, currency ASC, counterparty ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("storage: list all recurring bill rules: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.RecurringBillRule
+	for rows.Next() {
+		rule, scanErr := scanRecurringBillRule(rows)
+		if scanErr != nil {
+			return nil, fmt.Errorf("storage: scan recurring bill rule: %w", scanErr)
+		}
+		out = append(out, rule)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("storage: iterate recurring bill rules: %w", err)
+	}
+	return out, nil
+}
+
 // GetRecurringBillRule returns one confirmed rule for a counterparty.
 func (s *Store) GetRecurringBillRule(ctx context.Context, workspace, currency, counterparty string) (domain.RecurringBillRule, bool, error) {
 	workspace = strings.ToLower(strings.TrimSpace(workspace))

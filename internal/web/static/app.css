@@ -853,6 +853,7 @@ td.description {
 .badge.category.cat-travel { --cat-bg: rgba(251, 146, 60, 0.13); --cat-fg: #fdba74; --cat-border: rgba(251, 146, 60, 0.3); }
 .badge.category.cat-insurance { --cat-bg: rgba(45, 212, 191, 0.13); --cat-fg: #5eead4; --cat-border: rgba(45, 212, 191, 0.3); }
 .badge.category.cat-fees { --cat-bg: rgba(248, 113, 113, 0.12); --cat-fg: #fca5a5; --cat-border: rgba(248, 113, 113, 0.3); }
+.badge.category.cat-cash { --cat-bg: rgba(245, 158, 11, 0.14); --cat-fg: #fcd34d; --cat-border: rgba(245, 158, 11, 0.32); }
 .badge.category.cat-income { --cat-bg: rgba(74, 222, 128, 0.12); --cat-fg: #86efac; --cat-border: rgba(74, 222, 128, 0.3); }
 .badge.category.cat-services { --cat-bg: rgba(129, 140, 248, 0.14); --cat-fg: #a5b4fc; --cat-border: rgba(129, 140, 248, 0.32); }
 .badge.category.cat-entertainment { --cat-bg: rgba(232, 121, 249, 0.13); --cat-fg: #f0abfc; --cat-border: rgba(232, 121, 249, 0.3); }
@@ -2415,7 +2416,25 @@ select {
 
 .category-quick {
   display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
   margin: 0;
+}
+
+.category-remember {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  max-width: 160px;
+  color: var(--muted);
+  font-size: 0.6rem;
+  line-height: 1.25;
+}
+
+.category-remember input {
+  width: auto;
+  margin: 1px 0 0;
 }
 
 .category-quick-badge {
@@ -2787,8 +2806,10 @@ select {
 /* Faceted transaction filters and household-bill separation */
 .transaction-facet-bar {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
   margin: 24px 0;
   padding: 16px 20px;
   border-top: 1px solid var(--border-soft);
@@ -2798,15 +2819,15 @@ select {
 
 .transaction-facet-group {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
 }
 
 .transaction-facet-label {
-  min-width: 64px;
-  margin-bottom: 0;
+  min-width: 0;
+  margin: 0 4px 0 0;
   color: var(--muted);
   font-size: 0.68rem;
   font-weight: 600;
@@ -2814,14 +2835,25 @@ select {
   text-transform: uppercase;
 }
 
+.transaction-facet-divider {
+  display: inline-block;
+  width: 1px;
+  height: 24px;
+  background: rgba(63, 63, 70, 0.5);
+}
+
 .transaction-facet-bar + .table-wrap {
   margin-top: 8px;
 }
 
-.recurring-prompts,
-.recurring-rules-card {
+.recurring-prompts {
   margin-top: 24px;
   margin-bottom: 24px;
+}
+
+.recurring-rules-card {
+  margin-top: 24px;
+  margin-bottom: 16px;
 }
 
 .recurring-prompts.space-y-4,
@@ -2844,11 +2876,11 @@ select {
 }
 
 @media (max-width: 720px) {
-  .transaction-facet-label {
-    min-width: 100%;
-  }
-
   .transaction-facet-bar {
     padding: 12px 14px;
+  }
+
+  .transaction-facet-divider {
+    display: none;
   }
 }

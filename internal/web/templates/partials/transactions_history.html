@@ -25,6 +25,7 @@
           {{if .Active}}aria-current="true"{{end}}>{{.Label}}</a>
       {{end}}
     </div>
+    <span class="transaction-facet-divider h-6 w-px bg-zinc-700/50" aria-hidden="true"></span>
     <div class="transaction-facet-group" role="group" aria-label="Category and pillar filter">
       <span class="transaction-facet-label">Category</span>
       {{range .CategoryFilters}}

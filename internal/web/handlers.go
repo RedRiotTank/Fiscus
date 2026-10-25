@@ -237,6 +237,7 @@ func buildCategoryFacetViews(account, query string, limit int, flow, selectedCat
 		{label: "Utilities & Telecom", value: storage.CategoryFacetUtilities},
 		{label: "Groceries", value: storage.CategoryFacetGroceries},
 		{label: "Transfers / P2P", value: storage.CategoryFacetP2P},
+		{label: "Cash / ATM", value: storage.CategoryFacetCash},
 	}
 	selectedCategory = string(storage.NormalizeCategoryFacet(selectedCategory))
 	out := make([]FacetView, 0, len(specs))
@@ -291,6 +292,8 @@ func matchesTransactionFacets(tx domain.Transaction, flow, category string, cate
 		return transactionCategoryIn(tx.Category, []string{"utilities & telecom", "utilities", "utility", "telecom", "telecomunicaciones"})
 	case storage.CategoryFacetGroceries:
 		return transactionCategoryIn(tx.Category, []string{"groceries", "grocery", "supermarket", "supermercado"})
+	case storage.CategoryFacetCash:
+		return transactionCategoryIn(tx.Category, []string{"cash / atm", "cash", "atm", "cajero", "reintegro"})
 	case storage.CategoryFacetNeeds, storage.CategoryFacetWants:
 		return transactionCategoryIn(tx.Category, categories)
 	default:

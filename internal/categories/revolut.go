@@ -21,6 +21,10 @@ var p2pConceptRules = []struct {
 	pattern  *regexp.Regexp
 }{
 	{
+		category: "Utilities & Telecom",
+		pattern:  regexp.MustCompile(`(?i)\b(?:luz|agua|gas|electricidad|endesa|iberdrola|naturgy)\b`),
+	},
+	{
 		category: CategoryHousing,
 		pattern:  regexp.MustCompile(`(?i)(?:\bpiso\b|\balquiler\b|\brenta\b|\bhipoteca\b|\bmortgage\b|\brent\b|\blandlord\b)`),
 	},
