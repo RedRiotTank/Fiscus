@@ -3,6 +3,47 @@
 All notable changes to Fiscus are documented here. Versions use semantic
 versioning and annotated Git tags.
 
+## v1.4.2 - 2026-10-25
+
+Housing netting, Revolut P2P, and zero-config budget release.
+
+### Added
+
+- Housing and subscription disambiguation:
+  - Rent, mortgage, `alquiler`, `renta`, and `piso` outflows are excluded from
+    subscription detection, so the Subscriptions dashboard only shows recurring
+    consumer and SaaS services.
+  - Shared-flat reimbursements are netted against gross rent for month-to-date
+    budget spending. €1,050 gross rent minus two €350 flatmate transfers yields
+    €350 of Housing / Rent spending.
+  - Flatmate reimbursements are excluded from net income and payroll, preventing
+    savings ratios from being artificially inflated.
+- Revolut P2P parsing:
+  - Recognizes `From …`, `To …`, `| From …`, and `| To …` bank descriptions and
+    categorizes them as `Transfers / P2P` with the violet transfer badge family.
+  - Extracts prepended concepts: `Piso octubre | From …` becomes
+    `Housing / Rent`, `Uber Eats | To …` becomes `Restaurants & Delivery`, and
+    `Coviran | To …` becomes `Groceries`.
+  - Explicit custom and learned rules still take precedence over the P2P fallback.
+- Merchant defaults:
+  - Added Coviran, Coviran S.C.A., and Supermercados Coviran to the Groceries
+    fallback catalog.
+  - Housing aliases (`Rent`, `Housing`, `Housing / Rent`) resolve to one budget
+    category.
+- Budget initialization:
+  - Saving a 50/30/20 profile without custom categories now injects the full
+    default mapping instead of creating an empty allocation list.
+  - Opening a workspace with a missing or empty budget repairs it automatically.
+  - Personal defaults are Housing / Rent 30%, Groceries 12%, Utilities 8%,
+    Restaurants & Delivery 12%, Subscriptions 5%, Leisure & Shopping 13%, and
+    Emergency Fund 20%; Business keeps operating and tax-reserve categories only.
+
+### Verification
+
+- `go test -v -race ./...`
+- `golangci-lint run ./...`
+- `CGO_ENABLED=0 go build -v ./cmd/fiscus`
+
 ## v1.4.1 - 2026-10-25
 
 Real-world ingestion, auto-learning, and default-budget release.

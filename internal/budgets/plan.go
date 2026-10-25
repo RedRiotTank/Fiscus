@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/RedRiotTank/Fiscus/internal/housing"
 	"github.com/RedRiotTank/Fiscus/internal/money"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 )
@@ -141,7 +142,7 @@ func DefaultAllocations(workspace string) []Allocation {
 		}
 	}
 	return []Allocation{
-		{Category: "Rent", Pillar: PillarNeeds, PercentBPS: 3000, NotifyAtPercent: []int{80, 100}, SortOrder: 0},
+		{Category: housing.Category, Pillar: PillarNeeds, PercentBPS: 3000, NotifyAtPercent: []int{80, 100}, SortOrder: 0},
 		{Category: "Groceries", Pillar: PillarNeeds, PercentBPS: 1200, NotifyAtPercent: []int{80, 100}, SortOrder: 1},
 		{Category: "Utilities & Telecom", Pillar: PillarNeeds, PercentBPS: 800, NotifyAtPercent: []int{80, 100}, SortOrder: 2},
 		{Category: "Restaurants & Delivery", Pillar: PillarWants, PercentBPS: 1200, NotifyAtPercent: []int{80, 100}, SortOrder: 3},
@@ -226,7 +227,7 @@ func BuildPlan(profile Profile, allocations []Allocation, spending []storage.Cat
 	}
 	byCategory := make(map[string]int64, len(spending))
 	for _, item := range spending {
-		category := strings.ToLower(strings.TrimSpace(item.Category))
+		category := strings.ToLower(canonicalSpendingCategory(item.Category))
 		currency := strings.ToUpper(strings.TrimSpace(item.Currency))
 		if currency == "" {
 			currency = "EUR"
@@ -241,7 +242,7 @@ func BuildPlan(profile Profile, allocations []Allocation, spending []storage.Cat
 	}
 	for _, allocation := range allocations {
 		limit := roundBudgetMinor(baseline * int64(allocation.PercentBPS) / 10000)
-		spent := byCategory[strings.ToLower(allocation.Category)]
+		spent := byCategory[strings.ToLower(canonicalSpendingCategory(allocation.Category))]
 		percent := int64(0)
 		if limit > 0 {
 			percent = spent * 100 / limit

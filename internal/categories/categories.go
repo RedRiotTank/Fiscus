@@ -63,7 +63,9 @@ func MustNew(rules []Rule) *Classifier {
 
 // Classify returns the category of the first matching rule, or DefaultCategory.
 // Rules are tested against the counterparty and description separately, so a
-// pattern never accidentally spans both fields.
+// pattern never accidentally spans both fields. Explicit rules always win over
+// the built-in Revolut P2P fallback so learned merchant categories take
+// precedence.
 func (c *Classifier) Classify(tx domain.Transaction) string {
 	if c == nil {
 		return DefaultCategory
@@ -72,6 +74,9 @@ func (c *Classifier) Classify(tx domain.Transaction) string {
 		if rule.pattern.MatchString(tx.Counterparty) || rule.pattern.MatchString(tx.Description) {
 			return rule.category
 		}
+	}
+	if transfer, ok := hasRevolutP2P(tx.Counterparty, tx.Description); ok {
+		return transfer.Category()
 	}
 	return DefaultCategory
 }
@@ -86,7 +91,7 @@ func (c *Classifier) RuleCount() int {
 
 // Categories returns the unique categories covered by the compiled rules.
 func (c *Classifier) Categories() []string {
-	seen := map[string]struct{}{DefaultCategory: {}}
+	seen := map[string]struct{}{DefaultCategory: {}, CategoryHousing: {}, CategoryP2P: {}}
 	if c != nil {
 		for _, rule := range c.rules {
 			seen[rule.category] = struct{}{}

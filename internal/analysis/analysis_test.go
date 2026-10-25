@@ -309,3 +309,28 @@ func TestAnalyzeFallbackRequiresStableAmount(t *testing.T) {
 		t.Fatalf("uncategorized price change should not be a fallback subscription: %+v", snapshot.Subscriptions)
 	}
 }
+
+func TestAnalyzeIgnoresHousingAndRentTransfers(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	makeTx := func(merchant, description, category, date string) domain.Transaction {
+		tx := booked("acc-1", merchant, "EUR", -105_000, date)
+		tx.Description = description
+		tx.Category = category
+		return tx
+	}
+	transactions := []domain.Transaction{
+		makeTx("Landlord", "Monthly rent", "", "2026-01-01"),
+		makeTx("Landlord", "Monthly rent", "", "2026-02-01"),
+		makeTx("Inmobiliaria Centro", "Alquiler piso", "Housing / Rent", "2026-01-02"),
+		makeTx("Inmobiliaria Centro", "Alquiler piso", "Housing / Rent", "2026-02-02"),
+		makeTx("Transferencia", "Piso marzo", "Transfers", "2026-01-03"),
+		makeTx("Transferencia", "Piso abril", "Transfers", "2026-02-03"),
+		makeTx("Streaming", "Netflix", "Subscriptions", "2026-01-10"),
+		makeTx("Streaming", "Netflix", "Subscriptions", "2026-02-10"),
+	}
+	snapshot := Analyze(transactions, now)
+	if len(snapshot.Subscriptions) != 1 || snapshot.Subscriptions[0].Counterparty != "Streaming" {
+		t.Fatalf("rent leaked into subscriptions: %+v", snapshot.Subscriptions)
+	}
+}

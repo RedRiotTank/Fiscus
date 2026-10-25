@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/analysis"
+	"github.com/RedRiotTank/Fiscus/internal/budgets"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"github.com/RedRiotTank/Fiscus/internal/treasury"
@@ -293,6 +294,12 @@ func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 		if err != nil {
 			return err
 		}
+		monthTransactions, err := s.store.ListTransactionsBetween(ctx, monthStart, monthStart.AddDate(0, 1, 0))
+		if err != nil {
+			return err
+		}
+		monthTransactions = filterTransactions(monthTransactions, allowedAccountIDs(accounts, data.Workspace.View), data.Workspace.View)
+		spending = budgets.NetHousingSpending(spending, monthTransactions)
 	}
 	for _, item := range spending {
 		data.CategorySpending = append(data.CategorySpending, CategorySpendingView{

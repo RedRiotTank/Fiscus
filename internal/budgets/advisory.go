@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/domain"
+	"github.com/RedRiotTank/Fiscus/internal/housing"
 	"github.com/RedRiotTank/Fiscus/internal/treasury"
 )
 
@@ -216,6 +217,9 @@ func computeCurrencyAdvisory(
 		if _, internal := internalIDs[tx.ID]; internal {
 			continue
 		}
+		if housing.IsReimbursement(tx) {
+			continue
+		}
 		if excludedIncomeCategory(tx.Category) {
 			continue
 		}
@@ -267,6 +271,7 @@ func computeCurrencyAdvisory(
 			categoryDisplay[key] = display
 		}
 	}
+	netHousingReimbursements(seriesByCategory, currencyTransactions, currency, firstMonth, months)
 
 	var monthlySpendByBucket = map[string]int64{
 		BucketNeeds:       0,
@@ -394,6 +399,31 @@ func computeCurrencyAdvisory(
 	return advisory
 }
 
+// netHousingReimbursements offsets flatmate transfers against the housing
+// series without treating them as income. The series is floored at zero so an
+// over-refunded month cannot create negative spending.
+func netHousingReimbursements(seriesByCategory map[string][]int64, transactions []domain.Transaction, currency string, firstMonth time.Time, months int) {
+	key := strings.ToLower(housing.Category)
+	series, ok := seriesByCategory[key]
+	if !ok {
+		return
+	}
+	for _, tx := range transactions {
+		if currencyOf(tx.Currency) != currency || !housing.IsReimbursement(tx) {
+			continue
+		}
+		index := monthIndex(firstMonth, tx.BookingDate)
+		if index < 0 || index >= months {
+			continue
+		}
+		series[index] -= tx.AmountMinor
+		if series[index] < 0 {
+			series[index] = 0
+		}
+	}
+	seriesByCategory[key] = series
+}
+
 func observedMonths(transactions []domain.Transaction, windowStart, now time.Time, maximum int) int {
 	first := firstObservedMonth(transactions, windowStart)
 	months := (now.Year()-first.Year())*12 + int(now.Month()-first.Month()) + 1
@@ -504,7 +534,7 @@ func normativeRecommendation(category string, income, bucketCapacity, mu, bucket
 }
 
 var normativeCaps = map[string]int64{
-	"rent": 35, "mortgage": 35, "housing": 35,
+	"rent": 35, "mortgage": 35, "housing": 35, "housing / rent": 35,
 	"groceries": 15, "utilities": 10, "electricity": 10, "gas": 10, "water": 10,
 	"insurance": 5, "telecom": 5, "phone": 5, "internet": 5,
 	"restaurants": 10, "dining": 10, "entertainment": 10, "ocio": 10,
@@ -517,7 +547,7 @@ var normativeCaps = map[string]int64{
 func BucketForCategory(category string) string {
 	key := strings.ToLower(strings.TrimSpace(category))
 	switch key {
-	case "rent", "mortgage", "housing", "utilities", "electricity", "gas",
+	case "rent", "mortgage", "housing", "housing / rent", "utilities", "electricity", "gas",
 		"water", "internet", "telecom", "phone", "groceries", "insurance",
 		"health", "healthcare", "medical", "transport", "software",
 		"professional services", "office", "hardware":
@@ -548,7 +578,8 @@ func bucketOrder(bucket string) int {
 
 func excludedIncomeCategory(category string) bool {
 	switch strings.ToLower(strings.TrimSpace(category)) {
-	case "transfer", "transfers", "loan", "loans", "financing", "tax", "taxes", "vat", "irpf":
+	case "transfer", "transfers", "transfers / p2p", "p2p", "housing", "housing / rent", "rent",
+		"mortgage", "alquiler", "renta", "loan", "loans", "financing", "tax", "taxes", "vat", "irpf":
 		return true
 	default:
 		return false
@@ -557,7 +588,8 @@ func excludedIncomeCategory(category string) bool {
 
 func excludedSpendingCategory(category string) bool {
 	switch strings.ToLower(strings.TrimSpace(category)) {
-	case "transfer", "transfers", "loan", "loans", "financing", "tax", "taxes", "vat", "irpf":
+	case "transfer", "transfers", "transfers / p2p", "p2p", "loan", "loans", "financing",
+		"tax", "taxes", "vat", "irpf":
 		return true
 	default:
 		return false
@@ -566,6 +598,9 @@ func excludedSpendingCategory(category string) bool {
 
 func displayCategory(category string) string {
 	category = strings.TrimSpace(category)
+	if housing.IsCategory(category) {
+		return housing.Category
+	}
 	if category == "" {
 		return "Uncategorized"
 	}

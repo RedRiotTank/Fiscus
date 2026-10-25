@@ -25,6 +25,9 @@ func TestDefaultRulesCategorizeSpanishMerchants(t *testing.T) {
 		"Comisión mantenimiento cuenta": "Bank Fees",
 		"BIZUM Juan Pérez":              "Transfers / Bizum",
 		"Netflix.com":                   "Subscriptions",
+		"Coviran":                       "Groceries",
+		"Coviran S.C.A.":                "Groceries",
+		"Supermercados Coviran":         "Groceries",
 	}
 	for merchant, want := range tests {
 		tx := domain.Transaction{Counterparty: merchant, Description: merchant}
@@ -50,7 +53,7 @@ func TestCategoriesIncludesDefaults(t *testing.T) {
 		DefaultCategory: false, "Groceries": false, "Subscriptions": false,
 		"Leisure & Shopping": false, "Restaurants & Delivery": false,
 		"Transport": false, "Utilities & Telecom": false, "Bank Fees": false,
-		"Transfers / Bizum": false,
+		"Transfers / Bizum": false, CategoryHousing: false, CategoryP2P: false,
 	}
 	for _, category := range categories {
 		if _, ok := want[category]; ok {

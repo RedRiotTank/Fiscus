@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/budgets"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
@@ -94,12 +95,15 @@ func TestBudgetCustomizeEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("allocations after delete: %v", err)
 	}
-	if len(allocations) != 0 {
-		t.Fatalf("allocations after delete = %+v", allocations)
+	if len(allocations) != 7 {
+		t.Fatalf("deleting all categories should restore defaults, got %+v", allocations)
 	}
 	emptyPage := f.request(t, http.MethodGet, "/budgets?workspace=personal", true, nil)
-	if !strings.Contains(emptyPage.Body.String(), "No budget configured for this workspace") {
-		t.Fatal("deleting all categories should show the empty state")
+	if strings.Contains(emptyPage.Body.String(), "No budget configured for this workspace") {
+		t.Fatal("deleting all categories should leave an active default budget")
+	}
+	if !strings.Contains(emptyPage.Body.String(), "Housing / Rent") {
+		t.Fatal("default budget should render the housing category")
 	}
 }
 
@@ -168,11 +172,17 @@ func TestBudgetWorkspaceIsolationAndEmptyState(t *testing.T) {
 		t.Fatalf("empty plan: %v", err)
 	}
 	empty := emptyFixture.request(t, http.MethodGet, "/budgets?workspace=business", true, nil)
-	if !strings.Contains(empty.Body.String(), "No budget configured for this workspace") {
-		t.Fatal("empty workspace state missing")
+	if strings.Contains(empty.Body.String(), "No budget configured for this workspace") {
+		t.Fatal("empty stored plan should be repaired with default categories")
 	}
-	if strings.Contains(empty.Body.String(), `id="budget-donut"`) {
-		t.Fatal("empty workspace rendered a donut")
+	for _, want := range []string{"Software &amp; Cloud", "Tax Reserve", "Nominal operating revenue"} {
+		if !strings.Contains(empty.Body.String(), want) {
+			t.Errorf("repaired business budget missing %q", want)
+		}
+	}
+	repaired, err := emptyFixture.store.ListBudgetAllocations(context.Background(), "business", "EUR")
+	if err != nil || len(repaired) != 5 {
+		t.Fatalf("repaired allocations = %+v err=%v", repaired, err)
 	}
 	all := emptyFixture.request(t, http.MethodGet, "/budgets", true, nil)
 	if !strings.Contains(all.Body.String(), "Choose Personal or Business") {
@@ -207,7 +217,7 @@ func TestDefaultBudgetTemplateAutoSeed(t *testing.T) {
 		t.Fatalf("budgets status = %d", page.Code)
 	}
 	body := page.Body.String()
-	for _, want := range []string{"Rent", "Groceries", "Utilities &amp; Telecom", "Restaurants &amp; Delivery", "Subscriptions", "Leisure &amp; Shopping", "Emergency Fund"} {
+	for _, want := range []string{"Housing / Rent", "Groceries", "Utilities &amp; Telecom", "Restaurants &amp; Delivery", "Subscriptions", "Leisure &amp; Shopping", "Emergency Fund"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("default budget page missing %q", want)
 		}
@@ -263,5 +273,96 @@ func TestNominalBudgetBaseline(t *testing.T) {
 	}
 	if baseline, nominal := nominalBudgetBaseline(280_000); baseline != 280_000 || nominal {
 		t.Fatalf("income baseline = %d/%v", baseline, nominal)
+	}
+}
+
+func TestBudgetSaveWithoutCategoriesInjectsDefaults(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	f.server.budgetPlanner = budgets.NewPlanner(f.store, f.server.now)
+	form := url.Values{
+		"workspace":       {"personal"},
+		"currency":        {"EUR"},
+		"needs_percent":   {"50"},
+		"wants_percent":   {"30"},
+		"savings_percent": {"20"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/budgets/customize", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set(syncRequestHeader, "1")
+	req.SetBasicAuth("admin", "secret")
+	rec := httptest.NewRecorder()
+	f.handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("save without categories = %d %s", rec.Code, rec.Body.String())
+	}
+	profile, ok, err := f.store.GetBudgetProfile(context.Background(), "personal", "EUR")
+	if err != nil || !ok {
+		t.Fatalf("profile = ok=%v err=%v", ok, err)
+	}
+	if profile.NeedsBPS != 5000 || profile.WantsBPS != 3000 || profile.SavingsBPS != 2000 {
+		t.Fatalf("profile = %+v", profile)
+	}
+	allocations, err := f.store.ListBudgetAllocations(context.Background(), "personal", "EUR")
+	if err != nil {
+		t.Fatalf("allocations: %v", err)
+	}
+	total := 0
+	for _, allocation := range allocations {
+		total += allocation.PercentBPS
+	}
+	if len(allocations) != 7 || total != 10000 {
+		t.Fatalf("default injection = %+v total=%d", allocations, total)
+	}
+	page := f.request(t, http.MethodGet, "/budgets?workspace=personal", true, nil)
+	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "Housing / Rent") {
+		t.Fatalf("budget page after default save = %d", page.Code)
+	}
+	if strings.Contains(page.Body.String(), "No budget configured for this workspace") {
+		t.Fatal("default save left the budget empty")
+	}
+}
+
+func TestBudgetPageNetsSharedFlatReimbursements(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	f.server.budgetPlanner = budgets.NewPlanner(f.store, f.server.now)
+	now := f.server.now().UTC()
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	transactions := []domain.Transaction{
+		{
+			AccountID: "acc-1", ExternalID: "rent-v142", AmountMinor: -105_000, Currency: "EUR",
+			BookingDate: monthStart, Counterparty: "Inmobiliaria Centro",
+			Description: "Alquiler piso", Category: "Housing / Rent", Status: domain.TransactionStatusBooked,
+		},
+		{
+			AccountID: "acc-1", ExternalID: "flatmate-1-v142", AmountMinor: 35_000, Currency: "EUR",
+			BookingDate: monthStart.AddDate(0, 0, 1), Counterparty: "Ismael Díaz",
+			Description: "Piso marzo | From Ismael", Category: "Uncategorized", Status: domain.TransactionStatusBooked,
+		},
+		{
+			AccountID: "acc-1", ExternalID: "flatmate-2-v142", AmountMinor: 35_000, Currency: "EUR",
+			BookingDate: monthStart.AddDate(0, 0, 2), Counterparty: "Ana Ruiz",
+			Description: "Piso marzo | From Ana", Category: "Uncategorized", Status: domain.TransactionStatusBooked,
+		},
+	}
+	for i := range transactions {
+		if _, _, err := f.store.UpsertTransaction(context.Background(), &transactions[i]); err != nil {
+			t.Fatalf("UpsertTransaction: %v", err)
+		}
+	}
+	page := f.request(t, http.MethodGet, "/budgets?workspace=personal", true, nil)
+	if page.Code != http.StatusOK {
+		t.Fatalf("budgets status = %d", page.Code)
+	}
+	body := page.Body.String()
+	if !strings.Contains(body, "Housing / Rent") {
+		t.Fatal("housing category missing from budget page")
+	}
+	if !strings.Contains(body, "€350.00 of") {
+		t.Fatal("budget page does not show the net €350 housing spend")
+	}
+	if strings.Contains(body, "€1,050.00 of") {
+		t.Fatal("budget page still shows gross rent")
 	}
 }

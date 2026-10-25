@@ -47,7 +47,8 @@ same environment using the normal serve entrypoint.
   and dormant (“ghost”) subscriptions
 - Layered transaction categorization with embedded Spanish/European defaults,
   inline category overrides that auto-learn and propagate, dirty merchant
-  normalization, Bizum handling, and YAML rule suggestions
+  normalization, Bizum and Revolut P2P handling, YAML rule suggestions, and
+  shared-flat housing expense netting
 - Income-driven 50/30/20 budget allocation with deep sub-caps, workspace
   isolation, a dual-ring budget donut, and configurable category assignments
 - Recurring subscription and bank-fee detection with Inactive / Potential Ghost
@@ -363,11 +364,13 @@ The dedicated **Budgets** page is the single unified budget view. It includes:
   view asks you to choose one; it never mixes personal and business budgets.
 
 A workspace without budget records is initialized automatically with a
-zero-config template. Personal uses Rent 30%, Groceries 12%, Utilities 8%,
-Dining 12%, Subscriptions 5%, Leisure & Shopping 13%, and Emergency Fund 20%.
-Business gets operating and tax-reserve categories only. If no income has been
-detected yet, limits use a provisional €2,000 baseline and update automatically
-after the first confirmed income ingestion.
+zero-config template. Personal uses Housing / Rent 30%, Groceries 12%, Utilities
+8%, Dining 12%, Subscriptions 5%, Leisure & Shopping 13%, and Emergency Fund
+20%. Business gets operating and tax-reserve categories only. If no income has
+been detected yet, limits use a provisional €2,000 baseline and update
+automatically after the first confirmed income ingestion. Saving a 50/30/20
+profile without hand-picked categories injects the same defaults instead of
+creating an empty budget.
 
 Category shares are entered as percentages of monthly income and are persisted in
 SQLite (`budget_profiles` and `budget_allocations`, schema version 14). There is
@@ -377,6 +380,12 @@ the allocation editor.
 The YAML `budgets.items` block remains supported for legacy budget-pacing alerts
 and CLI tooling, but the income-driven Budgets page is managed from the UI and
 SQLite allocation tables:
+
+Housing spending is netted against shared-flat reimbursements. If the account
+pays €1,050 rent and receives two €350 transfers for `Piso octubre`, the budget
+records €350 of Housing / Rent spending. Flatmate reimbursements are treated as
+expense offsets, not payroll or general income, so net income and savings ratios
+stay accurate.
 
 ```yaml
 budgets:
@@ -654,9 +663,16 @@ Transaction categories use three rule layers, evaluated in this order:
 2. Learned rules persisted by the inline category editor.
 3. Embedded Spanish/European merchant fallbacks.
 
-The first match wins. The fallback catalog covers supermarkets, digital
-subscriptions, marketplaces, delivery, transport, telecom/utilities, banking
-fees, and Bizum. Unmatched transactions become `Uncategorized`.
+The first match wins. The fallback catalog covers supermarkets (including
+Coviran), digital subscriptions, marketplaces, delivery, transport,
+telecom/utilities, banking fees, Bizum, and Revolut P2P transfers. Unmatched
+transactions become `Uncategorized`.
+
+Revolut peer-to-peer descriptions such as `From Ismael`, `To Ismael`, and
+`| From Ismael` default to `Transfers / P2P` and share the violet transfer badge
+family. A prepended concept is extracted before the pipe: `Piso octubre | From
+Ismael` becomes `Housing / Rent`, `Uber Eats | To John` becomes
+`Restaurants & Delivery`, and `Coviran | To Ana` becomes `Groceries`.
 
 ```yaml
 rules:
@@ -728,7 +744,9 @@ without a recent charge are labelled `Inactive / Potential Ghost`. Counterpartie
 are normalized before matching, so tokenized descriptions such as
 `Amazon Prime*nk9ae7fn4` and `Google G1ai101m` group correctly. Two or more
 identical monthly charges in `Uncategorized` are also detected as a fallback;
-zero-value verification holds and refunds are ignored.
+zero-value verification holds and refunds are ignored. Housing, rent, mortgage,
+`alquiler`, `renta`, and `piso` payments are never treated as subscriptions;
+recurring consumer and SaaS services are the only entries shown here.
 
 Active and dormant subscription cards resolve merchant names such as
 `SPOTIFY AB`, `Amazon Web Services`, or `GitHub Copilot` to bundled official

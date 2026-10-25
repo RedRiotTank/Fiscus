@@ -19,6 +19,8 @@ func TestCategoryStylesAreDeterministic(t *testing.T) {
 		"Restaurants":           "cat-dining",
 		"Software":              "cat-software",
 		"Rent":                  "cat-housing",
+		"Housing / Rent":        "cat-housing",
+		"Transfers / P2P":       "cat-bizum",
 		"Health":                "cat-health",
 		"Taxi":                  "cat-travel",
 		"Professional Services": "cat-services",

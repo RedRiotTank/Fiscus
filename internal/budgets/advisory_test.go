@@ -197,3 +197,40 @@ func TestAdvisoryConfigNormalization(t *testing.T) {
 		t.Fatalf("clamped config = %+v", cfg)
 	}
 }
+
+func TestComputeAdvisoryNetsFlatmateReimbursements(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	transactions := advisoryFixture(now, 6)
+	start := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, -5, 0)
+	for i := 0; i < 6; i++ {
+		month := start.AddDate(0, i, 0)
+		key := month.Format("200601")
+		for index, roommate := range []string{"Ismael Díaz", "Ana Ruiz"} {
+			tx := advisoryTransaction("checking", "flatmate-"+key+"-"+roommate, 35_000,
+				time.Date(month.Year(), month.Month(), 3+index, 10, 0, 0, 0, time.UTC), "Uncategorized")
+			tx.Counterparty = roommate
+			tx.Description = "Piso " + month.Format("January") + " | From " + roommate
+			transactions = append(transactions, tx)
+		}
+	}
+	advisories := ComputeAdvisory(transactions, advisoryBudgets(), AdvisoryConfig{
+		Enabled: true, Model: AdvisoryModelHybrid,
+		NeedsPercent: 50, WantsPercent: 30, SavingsPercent: 20,
+		HeuristicWindowMonths: 6, OverbudgetWarningThreshold: 0.15, UnderbudgetNoticeThreshold: 0.30,
+	}, nil, now)
+	if len(advisories) != 1 {
+		t.Fatalf("advisories = %+v", advisories)
+	}
+	advisory := advisories[0]
+	if advisory.MonthlyNetIncomeMinor != 280_000 || advisory.MonthlyInflowMinor != 280_000 {
+		t.Fatalf("flatmate reimbursements inflated income: %+v", advisory)
+	}
+	if advisory.NeedsSpentMinor != 65_000 {
+		t.Fatalf("net needs spending = %d, want 65000", advisory.NeedsSpentMinor)
+	}
+	housingAdvisory := categoryByName(advisory, "Housing / Rent")
+	if housingAdvisory.ActualSpendMinor != 30_000 {
+		t.Fatalf("net housing spend = %+v", housingAdvisory)
+	}
+}

@@ -62,8 +62,12 @@ func (s *Server) loadBudgetPlan(ctx context.Context, data *PageData, spending []
 	if err != nil {
 		return err
 	}
-	if !stored.Exists {
-		if err := s.budgetPlanner.Save(ctx, budgets.DefaultProfile(workspace, currency), budgets.DefaultAllocations(workspace)); err != nil {
+	if !stored.Exists || len(stored.Allocations) == 0 {
+		profile := stored.Profile
+		if !stored.Exists || profile.Workspace == "" {
+			profile = budgets.DefaultProfile(workspace, currency)
+		}
+		if err := s.budgetPlanner.Save(ctx, profile, budgets.DefaultAllocations(workspace)); err != nil {
 			return err
 		}
 		stored, err = s.budgetPlanner.Load(ctx, workspace, currency)
@@ -212,8 +216,10 @@ func (s *Server) handleBudgetCustomize(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	if !stored.Exists {
-		stored.Profile = budgets.DefaultProfile(workspace, currency)
+	if !stored.Exists || len(stored.Allocations) == 0 {
+		if !stored.Exists {
+			stored.Profile = budgets.DefaultProfile(workspace, currency)
+		}
 		stored.Allocations = budgets.DefaultAllocations(workspace)
 	}
 	editor := BudgetEditorView{
@@ -394,6 +400,11 @@ func parseBudgetEditor(r *http.Request, workspace, currency string, existing bud
 			Category: newCategory, Pillar: pillar, PercentBPS: percent,
 			NotifyAtPercent: []int{80, 100}, SortOrder: len(allocations), Custom: true,
 		})
+	}
+	if len(allocations) == 0 {
+		// A 50/30/20 save without hand-picked categories must still produce a
+		// fully active budget instead of an empty allocation list.
+		allocations = budgets.DefaultAllocations(workspace)
 	}
 	return profile, allocations, nil
 }

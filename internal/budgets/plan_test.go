@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/RedRiotTank/Fiscus/internal/housing"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 )
 
@@ -199,6 +200,9 @@ func TestDefaultAllocations(t *testing.T) {
 	if len(personal) != 7 {
 		t.Fatalf("personal defaults = %+v", personal)
 	}
+	if personal[0].Category != housing.Category {
+		t.Fatalf("personal housing category = %q, want %q", personal[0].Category, housing.Category)
+	}
 	var total int
 	for _, allocation := range personal {
 		total += allocation.PercentBPS
@@ -212,7 +216,7 @@ func TestDefaultAllocations(t *testing.T) {
 	}
 	for _, allocation := range business {
 		switch allocation.Category {
-		case "Rent", "Groceries", "Restaurants & Delivery", "Leisure & Shopping":
+		case housing.Category, "Groceries", "Restaurants & Delivery", "Leisure & Shopping":
 			t.Fatalf("personal category in business defaults: %+v", allocation)
 		}
 	}

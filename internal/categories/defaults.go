@@ -11,6 +11,6 @@ func DefaultRules() []Rule {
 		{Category: "Transport", Pattern: `(?i)(?:renfe|\bmetro\b|\bemt\b|\btmb\b|\buber\b|cabify|\bbolt\b|repsol|cepsa|\bbp\b|shell|galp|bicing)`},
 		{Category: "Utilities & Telecom", Pattern: `(?i)(?:iberdrola|endesa|naturgy|totalenergies|vodafone|movistar|\bo2\b|orange|\bdigi\b|pepephone|yoigo|lowi|simyo|masmovil|másmóvil|canal isabel ii|agbar)`},
 		{Category: "Bank Fees", Pattern: `(?i)(?:comisi[oó]n|mantenimiento|cuota tarjeta)`},
-		{Category: "Groceries", Pattern: `(?i)(?:mercadona|carrefour|lidl|\bd[ií]a\b|alcampo|eroski|\baldi\b|consum|bonpreu|hipercor|ahorramas|ahorramás)`},
+		{Category: "Groceries", Pattern: `(?i)(?:mercadona|carrefour|lidl|\bd[ií]a\b|alcampo|eroski|\baldi\b|consum|bonpreu|hipercor|ahorramas|ahorramás|coviran)`},
 	}
 }

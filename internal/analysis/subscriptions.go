@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/domain"
+	"github.com/RedRiotTank/Fiscus/internal/housing"
 	"github.com/RedRiotTank/Fiscus/pkg/subscriptions"
 )
 
@@ -119,6 +120,9 @@ func Analyze(transactions []domain.Transaction, now time.Time) Snapshot {
 			continue
 		}
 		if isRefund(tx) {
+			continue
+		}
+		if housing.IsExpense(tx) {
 			continue
 		}
 		if fee, ok := detectFee(tx); ok {
@@ -284,8 +288,8 @@ func isSubscriptionCategory(category string) bool {
 	category = strings.ToLower(strings.TrimSpace(category))
 	switch category {
 	case "groceries", "restaurants", "restaurants & delivery", "dining", "shopping",
-		"leisure & shopping", "rent", "housing", "transfer", "transfers",
-		"transfers / bizum", "bizum", "emergency fund", "savings", "saving",
+		"leisure & shopping", "rent", "housing", "housing / rent", "transfer", "transfers",
+		"transfers / bizum", "bizum", "transfers / p2p", "p2p", "emergency fund", "savings", "saving",
 		"investments", "investment", "bank fees", "payroll", "meals", "travel",
 		"transport", "hardware", "office", "office & equipment", "tax reserve",
 		"taxes", "tax":
