@@ -133,13 +133,12 @@ func (s *Server) saveHousingRule(ctx context.Context, r *http.Request, workspace
 	if err := s.store.DeleteLearnedRulesBySource(ctx, housingRuleSourceFor(workspace)); err != nil {
 		return err
 	}
-	counterparties := append([]string{rule.LandlordCounterparty}, rule.FlatmateCounterparties...)
-	for _, counterparty := range counterparties {
-		counterparty = strings.TrimSpace(counterparty)
-		if len([]rune(counterparty)) < 3 {
-			continue
-		}
-		if _, err := s.store.UpsertLearnedRule(ctx, learnedPattern(counterparty), housing.Category, housingRuleSourceFor(workspace)); err != nil {
+	// Only the landlord/master payment gets a learned category rule. Installing
+	// counterparty-level rules for flatmates would classify every micro-transfer
+	// from them as Housing / Rent.
+	landlordPattern := strings.TrimSpace(rule.LandlordCounterparty)
+	if len([]rune(landlordPattern)) >= 3 {
+		if _, err := s.store.UpsertLearnedRule(ctx, learnedPattern(landlordPattern), housing.Category, housingRuleSourceFor(workspace)); err != nil {
 			return err
 		}
 	}

@@ -46,6 +46,17 @@ func (s *Store) ListLearnedRules(ctx context.Context) ([]domain.LearnedRule, err
 	return out, nil
 }
 
+// DeleteLearnedRuleByID removes one persisted inline-learning rule.
+func (s *Store) DeleteLearnedRuleByID(ctx context.Context, id int64) error {
+	if id <= 0 {
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM learned_rules WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("storage: delete learned rule: %w", err)
+	}
+	return nil
+}
+
 // UpsertLearnedRule persists a user-taught pattern. Existing patterns are
 // updated in place so reclassifying a merchant never creates contradictory
 // duplicates.

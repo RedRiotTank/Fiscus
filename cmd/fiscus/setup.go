@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/telegram"
 	"github.com/RedRiotTank/Fiscus/internal/web"
 	"github.com/RedRiotTank/Fiscus/internal/webhooks"
+	"github.com/RedRiotTank/Fiscus/pkg/housing"
 )
 
 type syncTrigger = web.SyncTrigger
@@ -38,9 +40,25 @@ func openStore(ctx context.Context, cfg *config.Config) (*storage.Store, error) 
 	if err != nil {
 		return nil, err
 	}
+	before, err := store.SchemaVersion(ctx)
+	if err != nil {
+		_ = store.Close()
+		return nil, err
+	}
 	if err := store.Migrate(ctx); err != nil {
 		_ = store.Close()
 		return nil, err
+	}
+	after, err := store.SchemaVersion(ctx)
+	if err != nil {
+		_ = store.Close()
+		return nil, err
+	}
+	if before < 18 && after >= 18 {
+		if err := repairLegacyHousingCategories(ctx, store); err != nil {
+			_ = store.Close()
+			return nil, fmt.Errorf("repair legacy housing categories: %w", err)
+		}
 	}
 	for id, accountType := range cfg.AccountTypes() {
 		if err := store.ApplyConfigAccountType(ctx, id, accountType); err != nil && !errors.Is(err, storage.ErrNotFound) {
@@ -49,6 +67,120 @@ func openStore(ctx context.Context, cfg *config.Config) (*storage.Store, error) 
 		}
 	}
 	return store, nil
+}
+
+// repairLegacyHousingCategories upgrades databases that stored counterparty-
+// wide Housing / Rent learned rules for flatmates. It removes those rules,
+// reinstalls the landlord-only rule, and recategorizes only transactions that
+// are currently marked as housing but no longer satisfy the strict rent match.
+func repairLegacyHousingCategories(ctx context.Context, store *storage.Store) error {
+	rules, err := store.ListHousingRules(ctx)
+	if err != nil {
+		return err
+	}
+	if len(rules) == 0 {
+		return nil
+	}
+	accounts, err := store.ListAccounts(ctx)
+	if err != nil {
+		return err
+	}
+	accountByID := make(map[string]domain.Account, len(accounts))
+	for _, account := range accounts {
+		accountByID[account.ID] = account
+	}
+
+	type ruleKey struct {
+		workspace string
+		currency  string
+	}
+	rulesByKey := make(map[ruleKey]domain.HousingRule, len(rules))
+	for _, rule := range rules {
+		key := ruleKey{
+			workspace: strings.ToLower(strings.TrimSpace(rule.Workspace)),
+			currency:  strings.ToUpper(strings.TrimSpace(rule.Currency)),
+		}
+		rulesByKey[key] = rule
+	}
+
+	flatmates := make([]string, 0)
+	for _, rule := range rules {
+		flatmates = append(flatmates, rule.FlatmateCounterparties...)
+	}
+	learned, err := store.ListLearnedRules(ctx)
+	if err != nil {
+		return err
+	}
+	for _, rule := range learned {
+		if !strings.EqualFold(strings.TrimSpace(rule.Category), housing.Category) {
+			continue
+		}
+		remove := strings.HasPrefix(strings.ToLower(strings.TrimSpace(rule.Source)), "housing:")
+		if !remove {
+			pattern, compileErr := regexp.Compile(rule.Pattern)
+			if compileErr == nil {
+				for _, flatmate := range flatmates {
+					if pattern.MatchString(flatmate) {
+						remove = true
+						break
+					}
+				}
+			}
+		}
+		if !remove {
+			continue
+		}
+		if err := store.DeleteLearnedRuleByID(ctx, rule.ID); err != nil {
+			return err
+		}
+	}
+
+	for _, rule := range rules {
+		landlord := strings.TrimSpace(rule.LandlordCounterparty)
+		if len([]rune(landlord)) < 3 {
+			continue
+		}
+		source := "housing:" + strings.ToLower(strings.TrimSpace(rule.Workspace))
+		if _, err := store.UpsertLearnedRule(ctx, categories.LearnedPattern(landlord), housing.Category, source); err != nil {
+			return err
+		}
+	}
+
+	_, err = store.Recategorize(ctx, func(tx domain.Transaction) string {
+		if !strings.EqualFold(strings.TrimSpace(tx.Category), housing.Category) {
+			return ""
+		}
+		account, ok := accountByID[tx.AccountID]
+		if !ok {
+			return ""
+		}
+		key := ruleKey{
+			workspace: domain.NormalizeAccountType(account.Type),
+			currency:  strings.ToUpper(strings.TrimSpace(tx.Currency)),
+		}
+		if key.currency == "" {
+			key.currency = "EUR"
+		}
+		rule, exists := rulesByKey[key]
+		if !exists {
+			return ""
+		}
+		if housing.IsMasterPayment(tx, rule) || housing.IsFlatmateContribution(tx, rule) ||
+			housing.TextMatchesExpense(tx.Counterparty+" "+tx.Description) {
+			return ""
+		}
+		for _, text := range []string{tx.Description, tx.Counterparty} {
+			if transfer, parsed := categories.ParseRevolutTransfer(text); parsed {
+				category := transfer.Category()
+				if strings.EqualFold(category, housing.Category) {
+					return ""
+				}
+				return category
+			}
+		}
+		return categories.CategoryP2P
+	}, true)
+	return err
 }
 
 func buildGoCardlessClient(cfg *config.Config) (*gocardless.Client, error) {

@@ -2788,9 +2788,9 @@ select {
 .transaction-facet-bar {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin: 8px 0 20px;
-  padding: 14px 20px;
+  gap: 16px;
+  margin: 24px 0;
+  padding: 16px 20px;
   border-top: 1px solid var(--border-soft);
   border-bottom: 1px solid var(--border-soft);
   background: rgba(15, 23, 32, 0.34);
@@ -2798,13 +2798,15 @@ select {
 
 .transaction-facet-group {
   display: flex;
+  flex-direction: column;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .transaction-facet-label {
   min-width: 64px;
+  margin-bottom: 0;
   color: var(--muted);
   font-size: 0.68rem;
   font-weight: 600;
@@ -2813,12 +2815,13 @@ select {
 }
 
 .transaction-facet-bar + .table-wrap {
-  margin-top: 4px;
+  margin-top: 8px;
 }
 
-.recurring-prompts.mt-4,
-.recurring-rules-card.mt-4 {
-  margin-top: 16px;
+.recurring-prompts,
+.recurring-rules-card {
+  margin-top: 24px;
+  margin-bottom: 24px;
 }
 
 .recurring-prompts.space-y-4,

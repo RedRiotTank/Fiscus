@@ -63,6 +63,29 @@ func TestClassifierRecognisesRevolutP2PConcepts(t *testing.T) {
 	}
 }
 
+func TestClassifierProtectsFlatmateMicroTransfers(t *testing.T) {
+	t.Parallel()
+	classifier := MustNew(DefaultRules())
+	tests := []struct {
+		counterparty string
+		description  string
+		amount       int64
+		want         string
+	}{
+		{counterparty: "Ismael Díaz Díaz", description: "From Ismael Díaz Díaz", amount: 170, want: CategoryP2P},
+		{counterparty: "Ismael D", description: "Piso octubre | From Ismael D", amount: 35_000, want: CategoryHousing},
+		{counterparty: "Ismael D", description: "Dia | From Ismael D", amount: 1_515, want: "Groceries"},
+	}
+	for _, test := range tests {
+		tx := domain.Transaction{
+			AmountMinor: test.amount, Counterparty: test.counterparty, Description: test.description,
+		}
+		if got := classifier.Classify(tx); got != test.want {
+			t.Errorf("Classify(%q/%q) = %q, want %q", test.counterparty, test.description, got, test.want)
+		}
+	}
+}
+
 func TestLearnedRulesBeatP2PFallback(t *testing.T) {
 	t.Parallel()
 	classifier := MustNew([]Rule{{Category: "Family", Pattern: `(?i)Ismael`}})

@@ -127,7 +127,7 @@ func TestHousingSetupSavesRuleAndNetsBudget(t *testing.T) {
 			housingRules++
 		}
 	}
-	if housingRules != 3 {
+	if housingRules != 1 {
 		t.Fatalf("learned housing rules = %+v", rules)
 	}
 	page := f.request(t, http.MethodGet, "/budgets?workspace=personal", true, nil)

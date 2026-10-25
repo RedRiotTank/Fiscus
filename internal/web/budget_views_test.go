@@ -102,7 +102,7 @@ func TestRecurringBillWizardPersistsPersonalShare(t *testing.T) {
 		t.Fatalf("budgets status = %d body=%s", page.Code, page.Body.String())
 	}
 	body := page.Body.String()
-	for _, want := range []string{"Recurring payment detected", "Alberto Avidad Fernández", "€16.00", "/api/budgets/recurring/setup"} {
+	for _, want := range []string{"Recurring payment detected", "Alberto Avidad Fernández", "€16.00", "/api/budgets/recurring/setup", "recurring-prompts my-6 space-y-4"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("recurring prompt missing %q", want)
 		}

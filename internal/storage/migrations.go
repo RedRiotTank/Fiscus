@@ -310,6 +310,16 @@ var migrations = []migration{
 			`ALTER TABLE recurring_bill_rules ADD COLUMN recurrence TEXT NOT NULL DEFAULT 'monthly'`,
 		},
 	},
+	{
+		version: 18,
+		statements: []string{
+			// The housing setup used to install counterparty-wide rules for every
+			// flatmate. Those rules reclassified micro-transfers as Housing / Rent.
+			`DELETE FROM learned_rules
+			 WHERE category = 'Housing / Rent'
+			   AND source LIKE 'housing:%'`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and

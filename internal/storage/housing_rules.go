@@ -54,6 +54,52 @@ func (s *Store) GetHousingRule(ctx context.Context, workspace, currency string) 
 	return rule, true, nil
 }
 
+// ListHousingRules returns every persisted shared-flat rule ordered by
+// workspace and currency.
+func (s *Store) ListHousingRules(ctx context.Context) ([]domain.HousingRule, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, workspace, currency, landlord_counterparty, personal_net_share_cents,
+		       calculation_mode, flatmate_counterparties, created_at, updated_at
+		FROM housing_rules
+		ORDER BY workspace ASC, currency ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("storage: list housing rules: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.HousingRule
+	for rows.Next() {
+		var (
+			rule      domain.HousingRule
+			flatmates string
+			created   string
+			updated   string
+		)
+		if err := rows.Scan(&rule.ID, &rule.Workspace, &rule.Currency, &rule.LandlordCounterparty,
+			&rule.PersonalNetShareCents, &rule.CalculationMode, &flatmates, &created, &updated); err != nil {
+			return nil, fmt.Errorf("storage: scan housing rule: %w", err)
+		}
+		if flatmates != "" {
+			if err := json.Unmarshal([]byte(flatmates), &rule.FlatmateCounterparties); err != nil {
+				return nil, fmt.Errorf("storage: decode housing flatmates: %w", err)
+			}
+		}
+		rule.CreatedAt, err = decodeTime(created)
+		if err != nil {
+			return nil, err
+		}
+		rule.UpdatedAt, err = decodeTime(updated)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rule)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("storage: iterate housing rules: %w", err)
+	}
+	return out, nil
+}
+
 // SaveHousingRule creates or replaces the shared-flat rule for a workspace and
 // currency.
 func (s *Store) SaveHousingRule(ctx context.Context, rule domain.HousingRule) (domain.HousingRule, error) {

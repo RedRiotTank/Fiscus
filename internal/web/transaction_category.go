@@ -116,29 +116,7 @@ func (s *Server) handleTransactionCategory(w http.ResponseWriter, r *http.Reques
 }
 
 func learnedPattern(merchant string) string {
-	var b strings.Builder
-	b.WriteString(`(?i)`)
-	for _, r := range merchant {
-		switch r {
-		case 'a', 'á', 'à', 'ä', 'â', 'ã':
-			b.WriteString("[aáàäâã]")
-		case 'e', 'é', 'è', 'ë', 'ê':
-			b.WriteString("[eéèëê]")
-		case 'i', 'í', 'ì', 'ï', 'î':
-			b.WriteString("[iíìïî]")
-		case 'o', 'ó', 'ò', 'ö', 'ô', 'õ':
-			b.WriteString("[oóòöôõ]")
-		case 'u', 'ú', 'ù', 'ü', 'û':
-			b.WriteString("[uúùüû]")
-		case 'n', 'ñ':
-			b.WriteString("[nñ]")
-		case 'c', 'ç':
-			b.WriteString("[cç]")
-		default:
-			b.WriteString(regexp.QuoteMeta(string(r)))
-		}
-	}
-	return b.String()
+	return categories.LearnedPattern(merchant)
 }
 
 func (s *Server) learnCategoryRule(ctx context.Context, tx domain.Transaction, category string) {

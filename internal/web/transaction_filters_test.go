@@ -50,7 +50,7 @@ func TestTransactionsFacetedFiltersAndHTMXSwap(t *testing.T) {
 	}
 	body := page.Body.String()
 	for _, want := range []string{
-		`transaction-facet-bar`, `Flow`, `Category`, `All Flow`, `Money In`, `Money Out`,
+		`transaction-facet-bar my-6 space-y-4`, `Flow`, `Category`, `All Flow`, `Money In`, `Money Out`,
 		`All Categories`, `Transfers / P2P`, `Housing / Rent`, `Utilities &amp; Telecom`,
 		`flow=inflows`, `facet=needs`, `data-search-toggle`, `transition-all duration-200`,
 		`id="transactions-history"`,
