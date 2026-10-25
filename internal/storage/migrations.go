@@ -282,6 +282,28 @@ var migrations = []migration{
 			`CREATE INDEX IF NOT EXISTS idx_housing_rules_workspace ON housing_rules(workspace, currency)`,
 		},
 	},
+	{
+		version: 16,
+		statements: []string{
+			`CREATE TABLE IF NOT EXISTS recurring_bill_rules (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				workspace TEXT NOT NULL DEFAULT 'personal',
+				currency TEXT NOT NULL DEFAULT 'EUR',
+				counterparty TEXT NOT NULL COLLATE NOCASE,
+				category TEXT NOT NULL DEFAULT 'Utilities & Telecom',
+				pillar TEXT NOT NULL DEFAULT 'needs',
+				split_mode TEXT NOT NULL DEFAULT 'solo',
+				split_people INTEGER NOT NULL DEFAULT 1,
+				gross_minor INTEGER NOT NULL DEFAULT 0,
+				personal_share_minor INTEGER NOT NULL DEFAULT 0,
+				active INTEGER NOT NULL DEFAULT 1,
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				UNIQUE(workspace, currency, counterparty)
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_recurring_bill_rules_workspace ON recurring_bill_rules(workspace, currency)`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and

@@ -44,6 +44,10 @@ type Store interface {
 	GetHousingRule(ctx context.Context, workspace, currency string) (domain.HousingRule, bool, error)
 	SaveHousingRule(ctx context.Context, rule domain.HousingRule) (domain.HousingRule, error)
 	DeleteHousingRule(ctx context.Context, workspace, currency string) error
+	GetRecurringBillRule(ctx context.Context, workspace, currency, counterparty string) (domain.RecurringBillRule, bool, error)
+	ListRecurringBillRules(ctx context.Context, workspace, currency string) ([]domain.RecurringBillRule, error)
+	SaveRecurringBillRule(ctx context.Context, rule domain.RecurringBillRule) (domain.RecurringBillRule, error)
+	DeleteRecurringBillRule(ctx context.Context, workspace, currency, counterparty string) error
 	ListAlerts(ctx context.Context, limit int) ([]domain.Alert, error)
 	ListConnections(ctx context.Context) ([]domain.Connection, error)
 	GetConnectionByID(ctx context.Context, id int64) (domain.Connection, error)
@@ -51,6 +55,7 @@ type Store interface {
 	AttachmentIDsForTransactions(ctx context.Context, transactionIDs []int64) (map[int64]int64, error)
 	CountTransactions(ctx context.Context) (int, error)
 	CountTransactionsFiltered(ctx context.Context, accountIDs []string) (int, error)
+	CountTransactionsMatching(ctx context.Context, filter storage.TransactionFilter) (int, error)
 	SpendingByCategory(ctx context.Context, from, to time.Time) ([]storage.CategorySpending, error)
 	SpendingByCategoryForAccounts(ctx context.Context, from, to time.Time, accountIDs []string) ([]storage.CategorySpending, error)
 	ListTransactionsBetween(ctx context.Context, from, to time.Time) ([]domain.Transaction, error)
@@ -243,6 +248,8 @@ func (s *Server) routes() http.Handler {
 	app.HandleFunc("POST /api/budgets/customize", s.handleBudgetCustomizeSave)
 	app.HandleFunc("GET /api/budgets/housing/setup", s.handleHousingSetup)
 	app.HandleFunc("POST /api/budgets/housing/setup", s.handleHousingSetupSave)
+	app.HandleFunc("GET /api/budgets/recurring/setup", s.handleRecurringBillSetup)
+	app.HandleFunc("POST /api/budgets/recurring/setup", s.handleRecurringBillSetupSave)
 	app.HandleFunc("POST /api/budgets/advisory/toggle", s.handleBudgetAdvisoryToggle)
 	app.HandleFunc("POST /attachments", s.handleAttachmentUpload)
 	app.HandleFunc("POST /attachments/repair", s.handleAttachmentRepair)

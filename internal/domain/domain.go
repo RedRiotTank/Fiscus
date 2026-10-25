@@ -299,3 +299,29 @@ type HousingRule struct {
 	CreatedAt              time.Time
 	UpdatedAt              time.Time
 }
+
+// Recurring bill split modes.
+const (
+	// RecurringSplitSolo records the full payment as the personal expense.
+	RecurringSplitSolo = "solo"
+	// RecurringSplitShared records only the user's share of a shared bill.
+	RecurringSplitShared = "shared"
+)
+
+// RecurringBillRule stores a confirmed recurring debit and the effective
+// personal share that should count against its budget category.
+type RecurringBillRule struct {
+	ID                 int64
+	Workspace          string
+	Currency           string
+	Counterparty       string
+	Category           string
+	Pillar             string
+	SplitMode          string
+	SplitPeople        int
+	GrossMinor         int64
+	PersonalShareMinor int64
+	Active             bool
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
