@@ -24,22 +24,39 @@
       <label>Counterparty
         <input name="counterparty_display" type="text" value="{{.Counterparty}}" readonly>
       </label>
-      <p class="housing-hint">Gross payment: <strong>{{money .GrossMinor .Currency}}</strong> each month.</p>
+      <div class="housing-share-row">
+        <label>Gross payment
+          <input type="text" value="{{money .GrossMinor .Currency}}" readonly>
+        </label>
+        <label>Recurrence
+          <select name="recurrence" aria-label="Bill recurrence">
+            <option value="monthly" {{if eq .Recurrence "monthly"}}selected{{end}}>Monthly</option>
+            <option value="quarterly" {{if eq .Recurrence "quarterly"}}selected{{end}}>Quarterly</option>
+            <option value="yearly" {{if eq .Recurrence "yearly"}}selected{{end}}>Yearly</option>
+          </select>
+        </label>
+      </div>
     </fieldset>
     <fieldset class="housing-fieldset">
       <legend>Budget category</legend>
       <div class="housing-share-row">
-        <label>Category
-          <input name="category" type="text" maxlength="120" required value="{{.Category}}" placeholder="Utilities &amp; Telecom">
-        </label>
         <label>Pillar
-          <select name="pillar" aria-label="Budget pillar">
+          <select name="pillar" aria-label="Budget pillar" data-recurring-pillar>
             <option value="needs" {{if eq .Pillar "needs"}}selected{{end}}>Needs</option>
             <option value="wants" {{if eq .Pillar "wants"}}selected{{end}}>Wants</option>
             <option value="savings" {{if eq .Pillar "savings"}}selected{{end}}>Savings &amp; Investment</option>
           </select>
         </label>
+        <label>Category
+          <select name="category" aria-label="Budget category" data-recurring-category
+            data-recurring-options="{{.CategoryOptions}}" required>
+            {{range .Categories}}
+              <option value="{{.Name}}" data-pillar="{{.Pillar}}" {{if eq .Name $.Category}}selected{{end}}>{{.Name}}</option>
+            {{end}}
+          </select>
+        </label>
       </div>
+      <p class="housing-hint">Categories follow the selected pillar. Custom categories appear here automatically.</p>
     </fieldset>
     <fieldset class="housing-fieldset">
       <legend>Split / sharing mode</legend>

@@ -33,12 +33,13 @@ var (
 	// housingPattern mirrors the rent vocabulary so housing is left to the
 	// dedicated shared-rent engine.
 	housingPattern          = regexp.MustCompile(`(?i)(?:\balquiler\b|\brenta\b|\bpiso\b|\bhipoteca\b|\bmortgage\b|\brent\b|\blandlord\b|\barrendador\b)`)
-	excludedCategoryPattern = regexp.MustCompile(`(?i)(?:housing|rent|subscription|bank fee|payroll|income|salary|savings|investment|emergency fund|vault|tax)`)
+	excludedCategoryPattern = regexp.MustCompile(`(?i)(?:housing|rent|subscription|software|cloud|\bsaas\b|bank fee|payroll|income|salary|savings|investment|emergency fund|vault|tax)`)
 )
 
 // Candidate is one repeating monthly debit that may be a shared bill.
 type Candidate struct {
 	Counterparty string
+	AccountID    string
 	AmountMinor  int64
 	Currency     string
 	Occurrences  int
@@ -49,10 +50,11 @@ type Candidate struct {
 }
 
 type amountMonth struct {
-	month  string
-	amount int64
-	day    int
-	seen   time.Time
+	month     string
+	amount    int64
+	day       int
+	seen      time.Time
+	accountID string
 }
 
 type accumulator struct {
@@ -106,6 +108,7 @@ func Detect(transactions []domain.Transaction, now time.Time) []Candidate {
 		if !exists || booking.After(current.seen) {
 			group.byMonth[month] = amountMonth{
 				month: month, amount: amount, day: booking.Day(), seen: booking,
+				accountID: tx.AccountID,
 			}
 		}
 		if description := strings.TrimSpace(tx.Description); description != "" && len(group.descriptions) < 3 {
@@ -173,6 +176,7 @@ func evaluate(group *accumulator) (Candidate, bool) {
 	sort.Ints(days)
 	return Candidate{
 		Counterparty: group.counterparty,
+		AccountID:    last.accountID,
 		AmountMinor:  last.amount,
 		Currency:     group.currency,
 		Occurrences:  len(months),

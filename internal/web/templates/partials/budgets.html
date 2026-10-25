@@ -83,7 +83,7 @@
     {{end}}
 
     {{if and .Recurring .Recurring.Candidates}}
-      <div class="budget-messages recurring-prompts">
+      <div class="budget-messages recurring-prompts mt-4 space-y-4">
         {{range .Recurring.Candidates}}
           <article class="budget-message info">
             <span class="badge severity-info">Recurring payment detected</span>
@@ -104,7 +104,7 @@
     {{end}}
 
     {{if and .Recurring .Recurring.Rules}}
-      <div class="budget-messages">
+      <div class="budget-messages recurring-rules-card mt-4 space-y-4">
         <article class="budget-message success">
           <span class="badge ok">Recurring splits active</span>
           <div>

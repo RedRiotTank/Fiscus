@@ -12,7 +12,7 @@ import (
 )
 
 const recurringBillColumns = `id, workspace, currency, counterparty, category, pillar,
-	split_mode, split_people, gross_minor, personal_share_minor, active, created_at, updated_at`
+	recurrence, split_mode, split_people, gross_minor, personal_share_minor, active, created_at, updated_at`
 
 func scanRecurringBillRule(row rowScanner) (domain.RecurringBillRule, error) {
 	var (
@@ -23,7 +23,7 @@ func scanRecurringBillRule(row rowScanner) (domain.RecurringBillRule, error) {
 	)
 	if err := row.Scan(
 		&rule.ID, &rule.Workspace, &rule.Currency, &rule.Counterparty, &rule.Category,
-		&rule.Pillar, &rule.SplitMode, &rule.SplitPeople, &rule.GrossMinor,
+		&rule.Pillar, &rule.Recurrence, &rule.SplitMode, &rule.SplitPeople, &rule.GrossMinor,
 		&rule.PersonalShareMinor, &active, &createdAt, &updatedAt,
 	); err != nil {
 		return domain.RecurringBillRule{}, err
@@ -61,6 +61,15 @@ func normalizeRecurringBillRule(rule domain.RecurringBillRule) (domain.Recurring
 	case "needs", "wants", "savings":
 	default:
 		return domain.RecurringBillRule{}, fmt.Errorf("storage: invalid recurring bill pillar %q", rule.Pillar)
+	}
+	rule.Recurrence = strings.ToLower(strings.TrimSpace(rule.Recurrence))
+	if rule.Recurrence == "" {
+		rule.Recurrence = domain.RecurringMonthly
+	}
+	switch rule.Recurrence {
+	case domain.RecurringMonthly, domain.RecurringQuarterly, domain.RecurringYearly:
+	default:
+		return domain.RecurringBillRule{}, fmt.Errorf("storage: invalid recurring bill recurrence %q", rule.Recurrence)
 	}
 	rule.SplitMode = strings.ToLower(strings.TrimSpace(rule.SplitMode))
 	switch rule.SplitMode {
@@ -151,12 +160,13 @@ func (s *Store) SaveRecurringBillRule(ctx context.Context, rule domain.Recurring
 	}
 	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO recurring_bill_rules
-			(workspace, currency, counterparty, category, pillar, split_mode,
+			(workspace, currency, counterparty, category, pillar, recurrence, split_mode,
 			 split_people, gross_minor, personal_share_minor, active, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(workspace, currency, counterparty) DO UPDATE SET
 			category = excluded.category,
 			pillar = excluded.pillar,
+			recurrence = excluded.recurrence,
 			split_mode = excluded.split_mode,
 			split_people = excluded.split_people,
 			gross_minor = excluded.gross_minor,
@@ -164,7 +174,7 @@ func (s *Store) SaveRecurringBillRule(ctx context.Context, rule domain.Recurring
 			active = excluded.active,
 			updated_at = excluded.updated_at`,
 		rule.Workspace, rule.Currency, rule.Counterparty, rule.Category, rule.Pillar,
-		rule.SplitMode, rule.SplitPeople, rule.GrossMinor, rule.PersonalShareMinor,
+		rule.Recurrence, rule.SplitMode, rule.SplitPeople, rule.GrossMinor, rule.PersonalShareMinor,
 		active, encodeTime(now), encodeTime(now)); err != nil {
 		return domain.RecurringBillRule{}, fmt.Errorf("storage: save recurring bill rule: %w", err)
 	}

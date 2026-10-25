@@ -116,6 +116,30 @@ func TestAnalyzeIgnoresNonSubscriptionCategories(t *testing.T) {
 	}
 }
 
+func TestAnalyzeExcludesFixedHouseholdBillsFromSubscriptions(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	makeTx := func(merchant, category, date string, amount int64) domain.Transaction {
+		tx := booked("acc-1", merchant, "EUR", amount, date)
+		tx.Category = category
+		return tx
+	}
+	transactions := []domain.Transaction{
+		makeTx("Iberdrola", "Utilities & Telecom", "2026-01-05", -6500),
+		makeTx("Iberdrola", "Utilities & Telecom", "2026-02-05", -6700),
+		makeTx("Landlord", "Housing / Rent", "2026-01-01", -85000),
+		makeTx("Landlord", "Housing / Rent", "2026-02-01", -85000),
+		makeTx("Vodafone", "Subscriptions", "2026-01-06", -4990),
+		makeTx("Vodafone", "Subscriptions", "2026-02-06", -4990),
+		makeTx("Streaming", "Subscriptions", "2026-01-10", -999),
+		makeTx("Streaming", "Subscriptions", "2026-02-10", -999),
+	}
+	snapshot := Analyze(transactions, now)
+	if len(snapshot.Subscriptions) != 1 || snapshot.Subscriptions[0].Counterparty != "Streaming" {
+		t.Fatalf("subscriptions = %+v, want only the consumer service", snapshot.Subscriptions)
+	}
+}
+
 func TestAnalyzeIgnoresIrregularAndInactiveForCosts(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)

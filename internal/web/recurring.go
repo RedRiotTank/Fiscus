@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -141,6 +142,7 @@ func (s *Server) handleRecurringBillSetupSave(w http.ResponseWriter, r *http.Req
 		}
 		editor.Category = strings.TrimSpace(r.FormValue("category"))
 		editor.Pillar = strings.ToLower(strings.TrimSpace(r.FormValue("pillar")))
+		editor.Recurrence = strings.ToLower(strings.TrimSpace(r.FormValue("recurrence")))
 		editor.SplitMode = strings.ToLower(strings.TrimSpace(r.FormValue("split_mode")))
 		editor.SplitPeople = parsePositiveInt(r.FormValue("split_people"), 1)
 		editor.PersonalShareMinor = parseHousingShareOrZero(r.FormValue("personal_share"), currency)
@@ -171,6 +173,14 @@ func (s *Server) saveRecurringBillRule(ctx context.Context, r *http.Request, wor
 	default:
 		return fmt.Errorf("choose a valid budget pillar")
 	}
+	recurrence := strings.ToLower(strings.TrimSpace(r.FormValue("recurrence")))
+	switch recurrence {
+	case domain.RecurringMonthly, domain.RecurringQuarterly, domain.RecurringYearly:
+	case "":
+		recurrence = domain.RecurringMonthly
+	default:
+		return fmt.Errorf("choose a valid recurrence")
+	}
 	mode := strings.ToLower(strings.TrimSpace(r.FormValue("split_mode")))
 	if mode != domain.RecurringSplitSolo && mode != domain.RecurringSplitShared {
 		return fmt.Errorf("choose solo or shared split mode")
@@ -196,7 +206,8 @@ func (s *Server) saveRecurringBillRule(ctx context.Context, r *http.Request, wor
 	}
 	rule, err := s.store.SaveRecurringBillRule(ctx, domain.RecurringBillRule{
 		Workspace: workspace, Currency: currency, Counterparty: candidate.Counterparty,
-		Category: category, Pillar: pillar, SplitMode: mode, SplitPeople: people,
+		Category: category, Pillar: pillar, Recurrence: recurrence,
+		SplitMode: mode, SplitPeople: people,
 		GrossMinor: candidate.AmountMinor, PersonalShareMinor: share, Active: true,
 	})
 	if err != nil {
@@ -259,7 +270,8 @@ func (s *Server) buildRecurringEditor(ctx context.Context, workspace, currency, 
 	editor := RecurringBillEditorView{
 		Workspace: workspace, Currency: currency,
 		Category: defaultRecurringCat, Pillar: defaultRecurringPill,
-		SplitMode: domain.RecurringSplitSolo, SplitPeople: 2, Error: message,
+		Recurrence: domain.RecurringMonthly,
+		SplitMode:  domain.RecurringSplitSolo, SplitPeople: 2, Error: message,
 	}
 	rule, exists, err := s.store.GetRecurringBillRule(ctx, workspace, currency, counterparty)
 	if err != nil {
@@ -269,35 +281,83 @@ func (s *Server) buildRecurringEditor(ctx context.Context, workspace, currency, 
 		editor.Counterparty = rule.Counterparty
 		editor.Category = rule.Category
 		editor.Pillar = rule.Pillar
+		editor.Recurrence = rule.Recurrence
 		editor.SplitMode = rule.SplitMode
 		editor.SplitPeople = rule.SplitPeople
 		editor.GrossMinor = rule.GrossMinor
 		editor.PersonalShareMinor = rule.PersonalShareMinor
-		return editor, nil
-	}
-	if view != nil {
-		for _, candidate := range view.Candidates {
-			if counterparty != "" && !strings.EqualFold(candidate.Counterparty, counterparty) {
-				continue
+	} else {
+		matched := false
+		if view != nil {
+			for _, candidate := range view.Candidates {
+				if counterparty != "" && !strings.EqualFold(candidate.Counterparty, counterparty) {
+					continue
+				}
+				editor.Counterparty = candidate.Counterparty
+				editor.GrossMinor = candidate.AmountMinor
+				// Leave the custom-share field blank for new candidates so the
+				// people selector drives the division by default.
+				editor.PersonalShareMinor = 0
+				editor.Occurrences = candidate.Occurrences
+				editor.TypicalDay = candidate.TypicalDay
+				editor.Detected = true
+				if candidate.Category != "" && !strings.EqualFold(candidate.Category, "Uncategorized") {
+					editor.Category = candidate.Category
+				}
+				matched = true
+				break
 			}
-			editor.Counterparty = candidate.Counterparty
-			editor.GrossMinor = candidate.AmountMinor
-			// Leave the custom-share field blank for new candidates so the
-			// people selector drives the division by default.
-			editor.PersonalShareMinor = 0
-			editor.Occurrences = candidate.Occurrences
-			editor.TypicalDay = candidate.TypicalDay
-			editor.Detected = true
-			if candidate.Category != "" && !strings.EqualFold(candidate.Category, "Uncategorized") {
-				editor.Category = candidate.Category
-			}
-			return editor, nil
+		}
+		if !matched && counterparty != "" {
+			editor.Counterparty = counterparty
 		}
 	}
-	if counterparty != "" {
-		editor.Counterparty = counterparty
+	options, encoded, err := s.recurringCategoryOptions(ctx, workspace, currency, editor.Category, editor.Pillar)
+	if err != nil {
+		return RecurringBillEditorView{}, err
+	}
+	editor.Categories = options
+	editor.CategoryOptions = encoded
+	if editor.Recurrence == "" {
+		editor.Recurrence = domain.RecurringMonthly
 	}
 	return editor, nil
+}
+
+func (s *Server) recurringCategoryOptions(ctx context.Context, workspace, currency, currentCategory, currentPillar string) ([]RecurringCategoryOption, string, error) {
+	allocations, err := s.workspaceBudgetAllocations(ctx, workspace, currency)
+	if err != nil {
+		return nil, "", err
+	}
+	seen := make(map[string]struct{}, len(allocations)+1)
+	options := make([]RecurringCategoryOption, 0, len(allocations)+1)
+	for _, allocation := range allocations {
+		name := strings.TrimSpace(allocation.Category)
+		if name == "" {
+			continue
+		}
+		key := strings.ToLower(name)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		options = append(options, RecurringCategoryOption{
+			Name: name, Pillar: strings.ToLower(strings.TrimSpace(string(allocation.Pillar))),
+		})
+	}
+	currentCategory = strings.TrimSpace(currentCategory)
+	if currentCategory != "" {
+		if _, exists := seen[strings.ToLower(currentCategory)]; !exists {
+			options = append(options, RecurringCategoryOption{
+				Name: currentCategory, Pillar: strings.ToLower(strings.TrimSpace(currentPillar)),
+			})
+		}
+	}
+	encoded, err := json.Marshal(options)
+	if err != nil {
+		return nil, "", err
+	}
+	return options, string(encoded), nil
 }
 
 func parsePositiveInt(raw string, fallback int) int {

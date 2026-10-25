@@ -19,7 +19,7 @@ func TestRecurringBillRulePersistence(t *testing.T) {
 	if err := store.Migrate(ctx); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	if version, err := store.SchemaVersion(ctx); err != nil || version < 16 {
+	if version, err := store.SchemaVersion(ctx); err != nil || version < 17 {
 		t.Fatalf("schema version = %d err=%v", version, err)
 	}
 	if _, exists, err := store.GetRecurringBillRule(ctx, "personal", "EUR", "Alberto Avidad Fernández"); err != nil || exists {
@@ -29,7 +29,7 @@ func TestRecurringBillRulePersistence(t *testing.T) {
 	saved, err := store.SaveRecurringBillRule(ctx, domain.RecurringBillRule{
 		Workspace: "personal", Currency: "EUR",
 		Counterparty: "Alberto Avidad Fernández", Category: "Utilities & Telecom",
-		Pillar: "needs", SplitMode: domain.RecurringSplitShared, SplitPeople: 3,
+		Pillar: "needs", Recurrence: domain.RecurringMonthly, SplitMode: domain.RecurringSplitShared, SplitPeople: 3,
 		GrossMinor: 1600, PersonalShareMinor: 533, Active: true,
 	})
 	if err != nil {
@@ -51,13 +51,13 @@ func TestRecurringBillRulePersistence(t *testing.T) {
 	updated, err := store.SaveRecurringBillRule(ctx, domain.RecurringBillRule{
 		Workspace: "personal", Currency: "EUR",
 		Counterparty: "Alberto Avidad Fernández", Category: "Internet",
-		Pillar: "needs", SplitMode: domain.RecurringSplitSolo, SplitPeople: 1,
+		Pillar: "needs", Recurrence: domain.RecurringYearly, SplitMode: domain.RecurringSplitSolo, SplitPeople: 1,
 		GrossMinor: 1600, PersonalShareMinor: 1600, Active: true,
 	})
 	if err != nil {
 		t.Fatalf("update recurring rule: %v", err)
 	}
-	if updated.ID != saved.ID || updated.Category != "Internet" || updated.SplitMode != domain.RecurringSplitSolo {
+	if updated.ID != saved.ID || updated.Category != "Internet" || updated.SplitMode != domain.RecurringSplitSolo || updated.Recurrence != domain.RecurringYearly {
 		t.Fatalf("updated = %+v", updated)
 	}
 

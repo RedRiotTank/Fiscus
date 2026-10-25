@@ -277,7 +277,7 @@ func TestSubscriptionsAndFeesPage(t *testing.T) {
 	}
 	body := resp.Body.String()
 	for _, want := range []string{
-		"Subscriptions &amp; Fees", "Active subscriptions", "Recurring transaction history",
+		"Subscriptions &amp; Fees", "Consumer subscriptions", "Fixed Bills &amp; Utilities", "Recurring transaction history",
 		"Streaming", "Spotify", "Adobe", "€9.99", "€119.88", "Previously €9.99", "price increase",
 		"Dormant / potential ghost", "Potential ghost",
 		"Detected bank fees", "Maintenance fee", "€15.00",

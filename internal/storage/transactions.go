@@ -14,51 +14,115 @@ import (
 const transactionColumns = `id, account_id, external_id, amount_minor, currency, booking_date,
 	value_date, counterparty, description, category, notes, status, created_at, updated_at`
 
-// QuickFilter is an instant transaction-history chip.
-type QuickFilter string
+// FlowFacet is the direction half of the transaction filter toolbar.
+type FlowFacet string
 
 const (
-	// QuickFilterAll applies no amount or category predicate.
-	QuickFilterAll QuickFilter = "all"
-	// QuickFilterInflows keeps positive amounts.
-	QuickFilterInflows QuickFilter = "inflows"
-	// QuickFilterOutflows keeps negative amounts.
-	QuickFilterOutflows QuickFilter = "outflows"
-	// QuickFilterP2P keeps Bizum and peer-to-peer transfers.
-	QuickFilterP2P QuickFilter = "p2p"
-	// QuickFilterNeeds keeps categories allocated to the Needs pillar.
-	QuickFilterNeeds QuickFilter = "needs"
-	// QuickFilterWants keeps categories allocated to the Wants pillar.
-	QuickFilterWants QuickFilter = "wants"
+	// FlowAll applies no amount predicate.
+	FlowAll FlowFacet = "all"
+	// FlowInflows keeps positive amounts.
+	FlowInflows FlowFacet = "inflows"
+	// FlowOutflows keeps negative amounts.
+	FlowOutflows FlowFacet = "outflows"
 )
 
-// NormalizeQuickFilter validates a quick-filter query parameter.
-func NormalizeQuickFilter(raw string) QuickFilter {
-	switch QuickFilter(strings.ToLower(strings.TrimSpace(raw))) {
-	case QuickFilterInflows:
-		return QuickFilterInflows
-	case QuickFilterOutflows:
-		return QuickFilterOutflows
-	case QuickFilterP2P:
-		return QuickFilterP2P
-	case QuickFilterNeeds:
-		return QuickFilterNeeds
-	case QuickFilterWants:
-		return QuickFilterWants
+// CategoryFacet is the category/pillar half of the transaction filter toolbar.
+type CategoryFacet string
+
+const (
+	// CategoryFacetAll applies no category predicate.
+	CategoryFacetAll CategoryFacet = "all"
+	// CategoryFacetNeeds keeps categories allocated to the Needs pillar.
+	CategoryFacetNeeds CategoryFacet = "needs"
+	// CategoryFacetWants keeps categories allocated to the Wants pillar.
+	CategoryFacetWants CategoryFacet = "wants"
+	// CategoryFacetHousing keeps housing and rent categories.
+	CategoryFacetHousing CategoryFacet = "housing"
+	// CategoryFacetUtilities keeps utilities and telecom categories.
+	CategoryFacetUtilities CategoryFacet = "utilities"
+	// CategoryFacetGroceries keeps grocery categories.
+	CategoryFacetGroceries CategoryFacet = "groceries"
+	// CategoryFacetP2P keeps Bizum and peer-to-peer transfers.
+	CategoryFacetP2P CategoryFacet = "p2p"
+)
+
+// NormalizeFlowFacet validates a direction filter query parameter.
+func NormalizeFlowFacet(raw string) FlowFacet {
+	switch FlowFacet(strings.ToLower(strings.TrimSpace(raw))) {
+	case FlowInflows:
+		return FlowInflows
+	case FlowOutflows:
+		return FlowOutflows
 	default:
-		return QuickFilterAll
+		return FlowAll
 	}
 }
 
-// TransactionFilter controls transaction listing.
-type TransactionFilter struct {
-	AccountID   string
-	AccountIDs  []string
-	QuickFilter QuickFilter
-	Categories  []string
-	Limit       int
-	Offset      int
+// NormalizeCategoryFacet validates a category filter query parameter.
+func NormalizeCategoryFacet(raw string) CategoryFacet {
+	switch CategoryFacet(strings.ToLower(strings.TrimSpace(raw))) {
+	case CategoryFacetNeeds:
+		return CategoryFacetNeeds
+	case CategoryFacetWants:
+		return CategoryFacetWants
+	case CategoryFacetHousing:
+		return CategoryFacetHousing
+	case CategoryFacetUtilities:
+		return CategoryFacetUtilities
+	case CategoryFacetGroceries:
+		return CategoryFacetGroceries
+	case CategoryFacetP2P:
+		return CategoryFacetP2P
+	default:
+		return CategoryFacetAll
+	}
 }
+
+// NormalizeLegacyFilter maps the previous single-chip filter onto the two
+// facets so bookmarked transaction URLs keep working.
+func NormalizeLegacyFilter(raw string) (FlowFacet, CategoryFacet) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "inflows":
+		return FlowInflows, CategoryFacetAll
+	case "outflows":
+		return FlowOutflows, CategoryFacetAll
+	case "needs":
+		return FlowAll, CategoryFacetNeeds
+	case "wants":
+		return FlowAll, CategoryFacetWants
+	case "p2p":
+		return FlowAll, CategoryFacetP2P
+	default:
+		return FlowAll, CategoryFacetAll
+	}
+}
+
+// TransactionFilter controls transaction listing. Flow and Category are
+// independent facets and combine with AND.
+type TransactionFilter struct {
+	AccountID  string
+	AccountIDs []string
+	Flow       FlowFacet
+	Category   CategoryFacet
+	Categories []string
+	Limit      int
+	Offset     int
+}
+
+var (
+	housingFacetCategories = []string{
+		"housing / rent", "housing", "rent", "renta", "alquiler", "mortgage", "hipoteca",
+	}
+	utilitiesFacetCategories = []string{
+		"utilities & telecom", "utilities", "utility", "telecom", "telecomunicaciones",
+	}
+	groceriesFacetCategories = []string{
+		"groceries", "grocery", "supermarket", "supermercado",
+	}
+	p2pFacetCategories = []string{
+		"transfers / p2p", "bizum", "transfers / bizum", "p2p",
+	}
+)
 
 func transactionWhere(filter TransactionFilter) ([]string, []any) {
 	var (
@@ -72,31 +136,42 @@ func transactionWhere(filter TransactionFilter) ([]string, []any) {
 		where = append(where, clause)
 		args = append(args, clauseArgs...)
 	}
-	switch NormalizeQuickFilter(string(filter.QuickFilter)) {
-	case QuickFilterInflows:
+	switch NormalizeFlowFacet(string(filter.Flow)) {
+	case FlowInflows:
 		where = append(where, "amount_minor > 0")
-	case QuickFilterOutflows:
+	case FlowOutflows:
 		where = append(where, "amount_minor < 0")
-	case QuickFilterP2P:
-		where = append(where, "LOWER(TRIM(category)) IN (?, ?, ?)")
-		args = append(args, "transfers / p2p", "bizum", "transfers / bizum")
-	case QuickFilterNeeds, QuickFilterWants:
-		categories := canonicalQuickFilterCategories(filter.Categories)
+	}
+	categoryFacet := NormalizeCategoryFacet(string(filter.Category))
+	var categories []string
+	switch categoryFacet {
+	case CategoryFacetNeeds, CategoryFacetWants:
+		categories = canonicalFilterCategories(filter.Categories)
+	case CategoryFacetHousing:
+		categories = housingFacetCategories
+	case CategoryFacetUtilities:
+		categories = utilitiesFacetCategories
+	case CategoryFacetGroceries:
+		categories = groceriesFacetCategories
+	case CategoryFacetP2P:
+		categories = p2pFacetCategories
+	}
+	if categoryFacet != CategoryFacetAll {
 		if len(categories) == 0 {
 			where = append(where, "1 = 0")
-			break
+		} else {
+			placeholders := make([]string, len(categories))
+			for i, category := range categories {
+				placeholders[i] = "?"
+				args = append(args, category)
+			}
+			where = append(where, "LOWER(TRIM(category)) IN ("+strings.Join(placeholders, ",")+")")
 		}
-		placeholders := make([]string, len(categories))
-		for i, category := range categories {
-			placeholders[i] = "?"
-			args = append(args, strings.ToLower(strings.TrimSpace(category)))
-		}
-		where = append(where, "LOWER(TRIM(category)) IN ("+strings.Join(placeholders, ",")+")")
 	}
 	return where, args
 }
 
-func canonicalQuickFilterCategories(categories []string) []string {
+func canonicalFilterCategories(categories []string) []string {
 	seen := make(map[string]struct{}, len(categories))
 	out := make([]string, 0, len(categories))
 	for _, category := range categories {

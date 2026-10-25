@@ -157,7 +157,7 @@ func TestSeedPopulatesCoherentDataset(t *testing.T) {
 	}
 	for _, merchant := range []string{
 		"Spotify", "Netflix", "Amazon Web Services", "GitHub", "Cloudflare",
-		"JetBrains", "Vodafone", "Gestoría Fiscal", "Adobe",
+		"JetBrains", "Gestoría Fiscal", "Adobe",
 	} {
 		if _, ok := subscriptions[merchant]; !ok {
 			t.Errorf("expected subscription %q, got %+v", merchant, snapshot.Subscriptions)
@@ -166,8 +166,8 @@ func TestSeedPopulatesCoherentDataset(t *testing.T) {
 	if adobe := subscriptions["Adobe"]; adobe.Active {
 		t.Errorf("Adobe should be a dormant ghost: %+v", adobe)
 	}
-	if vodafone := subscriptions["Vodafone"]; vodafone.AmountMinor != 4_990 {
-		t.Errorf("Vodafone amount = %d, want 4990", vodafone.AmountMinor)
+	if _, ok := subscriptions["Vodafone"]; ok {
+		t.Errorf("Vodafone should be a fixed household bill, not a subscription: %+v", subscriptions["Vodafone"])
 	}
 	if gestoria := subscriptions["Gestoría Fiscal"]; gestoria.AmountMinor != 6_000 {
 		t.Errorf("Gestoría amount = %d, want 6000", gestoria.AmountMinor)

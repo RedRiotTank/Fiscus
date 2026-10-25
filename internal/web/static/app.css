@@ -2783,3 +2783,69 @@ select {
     max-width: calc(100vw - 120px);
   }
 }
+
+/* Faceted transaction filters and household-bill separation */
+.transaction-facet-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 8px 0 20px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+  background: rgba(15, 23, 32, 0.34);
+}
+
+.transaction-facet-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.transaction-facet-label {
+  min-width: 64px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.transaction-facet-bar + .table-wrap {
+  margin-top: 4px;
+}
+
+.recurring-prompts.mt-4,
+.recurring-rules-card.mt-4 {
+  margin-top: 16px;
+}
+
+.recurring-prompts.space-y-4,
+.recurring-rules-card.space-y-4 {
+  row-gap: 16px;
+}
+
+.recurring-prompts > .budget-message,
+.recurring-rules-card > .budget-message {
+  margin: 0;
+}
+
+.fixed-bills-panel .panel-head {
+  align-items: flex-start;
+}
+
+.fixed-bills-panel table td,
+.fixed-bills-panel table th {
+  vertical-align: middle;
+}
+
+@media (max-width: 720px) {
+  .transaction-facet-label {
+    min-width: 100%;
+  }
+
+  .transaction-facet-bar {
+    padding: 12px 14px;
+  }
+}

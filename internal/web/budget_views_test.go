@@ -112,7 +112,7 @@ func TestRecurringBillWizardPersistsPersonalShare(t *testing.T) {
 	if setup.Code != http.StatusOK {
 		t.Fatalf("setup status = %d body=%s", setup.Code, setup.Body.String())
 	}
-	for _, want := range []string{"Shared Bill", "Split by people", "Save Recurring Rule", "Utilities &amp; Telecom"} {
+	for _, want := range []string{"Shared Bill", "Split by people", "Save Recurring Rule", `<select name="category" aria-label="Budget category" data-recurring-category`, `data-recurring-options=`, `<option value="Utilities &amp; Telecom"`, `name="recurrence"`, "Monthly"} {
 		if !strings.Contains(setup.Body.String(), want) {
 			t.Errorf("recurring setup missing %q", want)
 		}
@@ -124,6 +124,7 @@ func TestRecurringBillWizardPersistsPersonalShare(t *testing.T) {
 		"counterparty":   {"Alberto Avidad Fernández"},
 		"category":       {"Utilities & Telecom"},
 		"pillar":         {"needs"},
+		"recurrence":     {"monthly"},
 		"split_mode":     {"shared"},
 		"split_people":   {"3"},
 		"personal_share": {""},
@@ -142,7 +143,7 @@ func TestRecurringBillWizardPersistsPersonalShare(t *testing.T) {
 		t.Fatalf("rule exists=%v err=%v", exists, err)
 	}
 	if rule.SplitMode != domain.RecurringSplitShared || rule.SplitPeople != 3 ||
-		rule.PersonalShareMinor != 533 || rule.GrossMinor != 1600 {
+		rule.PersonalShareMinor != 533 || rule.GrossMinor != 1600 || rule.Recurrence != domain.RecurringMonthly {
 		t.Fatalf("saved rule = %+v", rule)
 	}
 	after := f.request(t, http.MethodGet, "/budgets?workspace=personal", true, nil)

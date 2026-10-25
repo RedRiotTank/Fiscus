@@ -101,6 +101,10 @@ type feePattern struct {
 // the supported bank feeds. Unicode escapes avoid encoding issues.
 var refundPattern = regexp.MustCompile(`(?i)\b(refund|reembolso|devoluci(?:o|\x{f3})n|reversal|chargeback)\b`)
 
+// fixedBillPattern recognises household bills that must not be sold as
+// consumer subscriptions: telecoms, utilities, and landlord/rent payments.
+var fixedBillPattern = regexp.MustCompile(`(?i)(?:\biberdrola\b|\bendesa\b|\bnaturgy\b|totalenergies|\bvodafone\b|\bmovistar\b|\borange\b|\bdigi\b|pepephone|\byoigo\b|\blowi\b|\bsimyo\b|masm[oó]vil|canal isabel ii|\bagbar\b|\baquaservice\b|\btelecom\b|\btelecomunicaciones\b|\binternet\b|\bfibra\b|\bfiber\b|\belectricidad\b|\belectricity\b|\bwater\b|\bgas\b|\blandlord\b|\barrendador\b|\binmobiliaria\b)`)
+
 var defaultFeePatterns = []feePattern{
 	{label: "Maintenance fee", pattern: regexp.MustCompile(`(?i)comisi(?:o|\x{f3})n|mantenimiento|maintenance fee|account fee`)},
 	{label: "Overdraft fee", pattern: regexp.MustCompile(`(?i)descubierto|overdraft|insufficient funds`)},
@@ -123,6 +127,9 @@ func Analyze(transactions []domain.Transaction, now time.Time) Snapshot {
 			continue
 		}
 		if housing.IsExpense(tx) {
+			continue
+		}
+		if fixedBillPattern.MatchString(tx.Counterparty + " " + tx.Description) {
 			continue
 		}
 		if fee, ok := detectFee(tx); ok {
@@ -292,7 +299,8 @@ func isSubscriptionCategory(category string) bool {
 		"transfers / bizum", "bizum", "transfers / p2p", "p2p", "emergency fund", "savings", "saving",
 		"investments", "investment", "bank fees", "payroll", "meals", "travel",
 		"transport", "hardware", "office", "office & equipment", "tax reserve",
-		"taxes", "tax":
+		"taxes", "tax", "utilities & telecom", "utilities", "utility", "telecom",
+		"telecomunicaciones", "fixed bills", "household bills", "bills & utilities":
 		return false
 	default:
 		return true

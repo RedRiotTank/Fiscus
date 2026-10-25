@@ -32,10 +32,59 @@
     {{end}}
   </div>
 
+  <section class="panel subscription-showcase fixed-bills-panel">
+    <header class="panel-head">
+      <div>
+        <h2>Fixed Bills &amp; Utilities</h2>
+        <p class="panel-sub">Household bills, telecoms, utilities, and recurring shared expenses kept separate from consumer subscriptions</p>
+      </div>
+      <span class="badge muted">{{len .FixedBills}} tracked</span>
+    </header>
+    {{if .FixedBills}}
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Household bill</th>
+              <th scope="col">Category</th>
+              <th scope="col">Recurrence</th>
+              <th scope="col">Last seen</th>
+              <th scope="col" class="right">Gross</th>
+              <th scope="col" class="right">Your share</th>
+              <th scope="col">State</th>
+              <th scope="col"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .FixedBills}}
+              <tr>
+                <td><span class="account-name">{{.Counterparty}}</span></td>
+                <td><span class="badge category {{categoryClass .Category}}">{{if .Category}}{{.Category}}{{else}}Utilities &amp; Telecom{{end}}</span></td>
+                <td><span class="badge muted">{{.Recurrence}}</span></td>
+                <td class="nowrap">{{date .LastSeen}}</td>
+                <td class="right amount debit">{{money .GrossMinor .Currency}}</td>
+                <td class="right amount">{{money .PersonalShareMinor .Currency}}{{if and (eq .SplitMode "shared") (gt .SplitPeople 1)}} <span class="muted small">/ {{.SplitPeople}}</span>{{end}}</td>
+                <td>{{if .Confirmed}}<span class="badge ok">confirmed</span>{{else}}<span class="badge pending">needs review</span>{{end}}</td>
+                <td class="right">
+                  <button class="button ghost small"
+                    hx-get="/api/budgets/recurring/setup?workspace={{.Workspace}}&currency={{.Currency}}&counterparty={{urlquery .Counterparty}}"
+                    hx-target="#budget-customize-content" hx-swap="innerHTML"
+                    data-budget-customize-open>{{if .Confirmed}}Edit split{{else}}Tag as household bill{{end}}</button>
+                </td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}
+      <div class="empty compact"><p>No fixed household bills detected yet. Recurring utilities and confirmed splits appear here.</p></div>
+    {{end}}
+  </section>
+
   <section class="panel subscription-showcase">
     <header class="panel-head">
       <div>
-        <h2>Active subscriptions</h2>
+        <h2>Consumer subscriptions</h2>
         <p class="panel-sub">Recurring services with a charge inside their expected window</p>
       </div>
       <span class="badge muted">{{len .ActiveSubscriptions}} active</span>
@@ -209,4 +258,8 @@
     {{end}}
   </section>
 </div>
+
+<dialog id="budget-customize-dialog" class="budget-dialog" aria-labelledby="budget-recurring-title">
+  <div id="budget-customize-content"></div>
+</dialog>
 {{end}}

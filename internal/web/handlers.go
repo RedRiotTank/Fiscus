@@ -71,7 +71,18 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 	data.SearchQuery = strings.TrimSpace(r.URL.Query().Get("q"))
 	data.Page = parsePage(r.URL.Query().Get("page"))
 	data.Limit = parseLimit(r.URL.Query().Get("limit"))
-	data.QuickFilter = string(storage.NormalizeQuickFilter(r.URL.Query().Get("filter")))
+	query := r.URL.Query()
+	data.FlowFacet = string(storage.NormalizeFlowFacet(query.Get("flow")))
+	data.CategoryFacet = string(storage.NormalizeCategoryFacet(query.Get("facet")))
+	if legacy := strings.TrimSpace(query.Get("filter")); legacy != "" {
+		legacyFlow, legacyCategory := storage.NormalizeLegacyFilter(legacy)
+		if strings.TrimSpace(query.Get("flow")) == "" {
+			data.FlowFacet = string(legacyFlow)
+		}
+		if strings.TrimSpace(query.Get("facet")) == "" {
+			data.CategoryFacet = string(legacyCategory)
+		}
+	}
 	data.TaxEnabled = s.tax != nil
 
 	ctx := r.Context()
@@ -91,9 +102,9 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	currency := budgetCurrency(accounts)
-	var quickCategories []string
-	if data.QuickFilter == string(storage.QuickFilterNeeds) || data.QuickFilter == string(storage.QuickFilterWants) {
-		quickCategories, err = s.quickFilterCategories(ctx, data.Workspace.View, currency, data.QuickFilter)
+	var facetCategories []string
+	if data.CategoryFacet == string(storage.CategoryFacetNeeds) || data.CategoryFacet == string(storage.CategoryFacetWants) {
+		facetCategories, err = s.facetCategories(ctx, data.Workspace.View, currency, data.CategoryFacet)
 		if err != nil {
 			s.fail(w, r, err)
 			return
@@ -121,10 +132,10 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 					}
 					transactions = filtered
 				}
-				if data.QuickFilter != string(storage.QuickFilterAll) {
+				if data.FlowFacet != string(storage.FlowAll) || data.CategoryFacet != string(storage.CategoryFacetAll) {
 					filtered := transactions[:0]
 					for _, tx := range transactions {
-						if matchesTransactionQuickFilter(tx, data.QuickFilter, quickCategories) {
+						if matchesTransactionFacets(tx, data.FlowFacet, data.CategoryFacet, facetCategories) {
 							filtered = append(filtered, tx)
 						}
 					}
@@ -133,8 +144,9 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 			}
 		} else {
 			filter := transactionFilter(data.FilterAccount, accountIDs, data.Page, data.Limit)
-			filter.QuickFilter = storage.NormalizeQuickFilter(data.QuickFilter)
-			filter.Categories = quickCategories
+			filter.Flow = storage.NormalizeFlowFacet(data.FlowFacet)
+			filter.Category = storage.NormalizeCategoryFacet(data.CategoryFacet)
+			filter.Categories = facetCategories
 			transactions, err = s.store.ListTransactions(ctx, filter)
 			if err != nil {
 				s.fail(w, r, err)
@@ -157,12 +169,13 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 		case searchMode:
 			total = len(transactions)
 			err = nil
-		case data.QuickFilter == string(storage.QuickFilterAll):
+		case data.FlowFacet == string(storage.FlowAll) && data.CategoryFacet == string(storage.CategoryFacetAll):
 			total, err = s.store.CountTransactionsFiltered(ctx, accountIDs)
 		default:
 			total, err = s.store.CountTransactionsMatching(ctx, storage.TransactionFilter{
 				AccountID: data.FilterAccount, AccountIDs: accountIDs,
-				QuickFilter: storage.NormalizeQuickFilter(data.QuickFilter), Categories: quickCategories,
+				Flow:     storage.NormalizeFlowFacet(data.FlowFacet),
+				Category: storage.NormalizeCategoryFacet(data.CategoryFacet), Categories: facetCategories,
 			})
 		}
 		if err != nil {
@@ -171,7 +184,8 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.TotalTransactions = total
-	data.QuickFilters = buildQuickFilterViews(data.FilterAccount, data.SearchQuery, data.Limit, data.QuickFilter)
+	data.FlowFilters = buildFlowFacetViews(data.FilterAccount, data.SearchQuery, data.Limit, data.FlowFacet, data.CategoryFacet)
+	data.CategoryFilters = buildCategoryFacetViews(data.FilterAccount, data.SearchQuery, data.Limit, data.FlowFacet, data.CategoryFacet)
 	data.AttachmentNotice = attachmentNotice(r.URL.Query().Get("attachment"))
 	if err := s.loadAttachmentData(ctx, &data); err != nil {
 		s.fail(w, r, err)
@@ -190,32 +204,54 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "transactions", data)
 }
 
-func buildQuickFilterViews(account, query string, limit int, selected string) []QuickFilterView {
+func buildFlowFacetViews(account, query string, limit int, selectedFlow, category string) []FacetView {
 	specs := []struct {
 		label string
-		value storage.QuickFilter
+		value storage.FlowFacet
 	}{
-		{label: "All", value: storage.QuickFilterAll},
-		{label: "Money In", value: storage.QuickFilterInflows},
-		{label: "Money Out", value: storage.QuickFilterOutflows},
-		{label: "Transfers / P2P", value: storage.QuickFilterP2P},
-		{label: "Needs", value: storage.QuickFilterNeeds},
-		{label: "Wants", value: storage.QuickFilterWants},
+		{label: "All Flow", value: storage.FlowAll},
+		{label: "Money In", value: storage.FlowInflows},
+		{label: "Money Out", value: storage.FlowOutflows},
 	}
-	selected = string(storage.NormalizeQuickFilter(selected))
-	out := make([]QuickFilterView, 0, len(specs))
+	selectedFlow = string(storage.NormalizeFlowFacet(selectedFlow))
+	out := make([]FacetView, 0, len(specs))
 	for _, spec := range specs {
-		href := transactionListURL(account, query, string(spec.value), 1, limit)
-		out = append(out, QuickFilterView{
+		href := transactionListURL(account, query, string(spec.value), category, 1, limit)
+		out = append(out, FacetView{
 			Label: spec.label, Value: string(spec.value), Href: href,
-			Active: string(spec.value) == selected,
+			Active: string(spec.value) == selectedFlow,
 		})
 	}
 	return out
 }
 
-func transactionListURL(account, query, filter string, page, limit int) string {
-	values := make([]string, 0, 5)
+func buildCategoryFacetViews(account, query string, limit int, flow, selectedCategory string) []FacetView {
+	specs := []struct {
+		label string
+		value storage.CategoryFacet
+	}{
+		{label: "All Categories", value: storage.CategoryFacetAll},
+		{label: "Needs", value: storage.CategoryFacetNeeds},
+		{label: "Wants", value: storage.CategoryFacetWants},
+		{label: "Housing / Rent", value: storage.CategoryFacetHousing},
+		{label: "Utilities & Telecom", value: storage.CategoryFacetUtilities},
+		{label: "Groceries", value: storage.CategoryFacetGroceries},
+		{label: "Transfers / P2P", value: storage.CategoryFacetP2P},
+	}
+	selectedCategory = string(storage.NormalizeCategoryFacet(selectedCategory))
+	out := make([]FacetView, 0, len(specs))
+	for _, spec := range specs {
+		href := transactionListURL(account, query, flow, string(spec.value), 1, limit)
+		out = append(out, FacetView{
+			Label: spec.label, Value: string(spec.value), Href: href,
+			Active: string(spec.value) == selectedCategory,
+		})
+	}
+	return out
+}
+
+func transactionListURL(account, query, flow, category string, page, limit int) string {
+	values := make([]string, 0, 6)
 	if page > 1 {
 		values = append(values, "page="+strconv.Itoa(page))
 	}
@@ -226,57 +262,60 @@ func transactionListURL(account, query, filter string, page, limit int) string {
 	if query != "" {
 		values = append(values, "q="+url.QueryEscape(query))
 	}
-	if filter != "" && filter != string(storage.QuickFilterAll) {
-		values = append(values, "filter="+url.QueryEscape(filter))
+	if flow != "" && flow != string(storage.FlowAll) {
+		values = append(values, "flow="+url.QueryEscape(flow))
+	}
+	if category != "" && category != string(storage.CategoryFacetAll) {
+		values = append(values, "facet="+url.QueryEscape(category))
 	}
 	return "/transactions?" + strings.Join(values, "&")
 }
 
-func matchesTransactionQuickFilter(tx domain.Transaction, filter string, categories []string) bool {
-	switch storage.NormalizeQuickFilter(filter) {
-	case storage.QuickFilterInflows:
-		return tx.AmountMinor > 0
-	case storage.QuickFilterOutflows:
-		return tx.AmountMinor < 0
-	case storage.QuickFilterP2P:
-		switch strings.ToLower(strings.TrimSpace(tx.Category)) {
-		case "transfers / p2p", "bizum", "transfers / bizum":
-			return true
+func matchesTransactionFacets(tx domain.Transaction, flow, category string, categories []string) bool {
+	switch storage.NormalizeFlowFacet(flow) {
+	case storage.FlowInflows:
+		if tx.AmountMinor <= 0 {
+			return false
 		}
-		return false
-	case storage.QuickFilterNeeds, storage.QuickFilterWants:
-		category := strings.ToLower(strings.TrimSpace(tx.Category))
-		for _, allowed := range categories {
-			if strings.EqualFold(category, strings.TrimSpace(allowed)) {
-				return true
-			}
+	case storage.FlowOutflows:
+		if tx.AmountMinor >= 0 {
+			return false
 		}
-		return false
+	}
+	switch storage.NormalizeCategoryFacet(category) {
+	case storage.CategoryFacetP2P:
+		return transactionCategoryIn(tx.Category, []string{"transfers / p2p", "bizum", "transfers / bizum", "p2p"})
+	case storage.CategoryFacetHousing:
+		return transactionCategoryIn(tx.Category, []string{"housing / rent", "housing", "rent", "renta", "alquiler", "mortgage", "hipoteca"})
+	case storage.CategoryFacetUtilities:
+		return transactionCategoryIn(tx.Category, []string{"utilities & telecom", "utilities", "utility", "telecom", "telecomunicaciones"})
+	case storage.CategoryFacetGroceries:
+		return transactionCategoryIn(tx.Category, []string{"groceries", "grocery", "supermarket", "supermercado"})
+	case storage.CategoryFacetNeeds, storage.CategoryFacetWants:
+		return transactionCategoryIn(tx.Category, categories)
 	default:
 		return true
 	}
 }
 
-func (s *Server) quickFilterCategories(ctx context.Context, workspace, currency, dataFilter string) ([]string, error) {
+func transactionCategoryIn(category string, allowed []string) bool {
+	category = strings.ToLower(strings.TrimSpace(category))
+	for _, candidate := range allowed {
+		if category == strings.ToLower(strings.TrimSpace(candidate)) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) facetCategories(ctx context.Context, workspace, currency, dataFilter string) ([]string, error) {
 	pillar := budgets.PillarNeeds
-	if storage.NormalizeQuickFilter(dataFilter) == storage.QuickFilterWants {
+	if storage.NormalizeCategoryFacet(dataFilter) == storage.CategoryFacetWants {
 		pillar = budgets.PillarWants
 	}
-	var allocations []budgets.Allocation
-	if workspace != domain.WorkspaceAll && s.budgetPlanner != nil {
-		stored, err := s.budgetPlanner.Load(ctx, workspace, currency)
-		if err != nil {
-			return nil, err
-		}
-		if stored.Exists && len(stored.Allocations) > 0 {
-			allocations = stored.Allocations
-		}
-	}
-	if len(allocations) == 0 {
-		allocations = budgets.DefaultAllocations(workspace)
-		if workspace == domain.WorkspaceAll {
-			allocations = append(allocations, budgets.DefaultAllocations(domain.WorkspaceBusiness)...)
-		}
+	allocations, err := s.workspaceBudgetAllocations(ctx, workspace, currency)
+	if err != nil {
+		return nil, err
 	}
 	seen := make(map[string]struct{}, len(allocations))
 	out := make([]string, 0, len(allocations))
@@ -296,6 +335,26 @@ func (s *Server) quickFilterCategories(ctx context.Context, workspace, currency,
 		out = append(out, category)
 	}
 	return out, nil
+}
+
+func (s *Server) workspaceBudgetAllocations(ctx context.Context, workspace, currency string) ([]budgets.Allocation, error) {
+	var allocations []budgets.Allocation
+	if workspace != domain.WorkspaceAll && s.budgetPlanner != nil {
+		stored, err := s.budgetPlanner.Load(ctx, workspace, currency)
+		if err != nil {
+			return nil, err
+		}
+		if stored.Exists && len(stored.Allocations) > 0 {
+			allocations = stored.Allocations
+		}
+	}
+	if len(allocations) == 0 {
+		allocations = budgets.DefaultAllocations(workspace)
+		if workspace == domain.WorkspaceAll {
+			allocations = append(allocations, budgets.DefaultAllocations(domain.WorkspaceBusiness)...)
+		}
+	}
+	return allocations, nil
 }
 
 const maxNoteRunes = 2000
@@ -506,23 +565,40 @@ func (s *Server) handleSubscriptions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data.Accounts = accounts
-	if data.Workspace.View != domain.WorkspaceAll {
-		allowed := allowedAccountIDs(accounts, data.Workspace.View)
-		subscriptions := make([]analysis.Subscription, 0, len(snapshot.Subscriptions))
-		for _, subscription := range snapshot.Subscriptions {
-			if _, ok := allowed[subscription.AccountID]; ok {
-				subscriptions = append(subscriptions, subscription)
-			}
-		}
-		fees := make([]analysis.Fee, 0, len(snapshot.Fees))
-		for _, fee := range snapshot.Fees {
-			if _, ok := allowed[fee.AccountID]; ok {
-				fees = append(fees, fee)
-			}
-		}
-		snapshot.Subscriptions = subscriptions
-		snapshot.Fees = fees
+	currency := budgetCurrency(accounts)
+	fixedBills, fixedRules, err := s.loadFixedBills(ctx, data.Workspace.View, accounts, s.now().UTC())
+	if err != nil {
+		s.fail(w, r, err)
+		return
 	}
+	housingRules, err := s.loadHousingRules(ctx, data.Workspace.View, accounts)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	fixedNeeds, err := s.fixedNeedCategories(ctx, data.Workspace.View, currency)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	allowed := allowedAccountIDs(accounts, data.Workspace.View)
+	subscriptions := make([]analysis.Subscription, 0, len(snapshot.Subscriptions))
+	for _, subscription := range snapshot.Subscriptions {
+		if _, ok := allowed[subscription.AccountID]; !ok {
+			continue
+		}
+		subscriptions = append(subscriptions, subscription)
+	}
+	fees := make([]analysis.Fee, 0, len(snapshot.Fees))
+	for _, fee := range snapshot.Fees {
+		if _, ok := allowed[fee.AccountID]; ok {
+			fees = append(fees, fee)
+		}
+	}
+	subscriptions = filterFixedBillSubscriptions(subscriptions, fixedRules, housingRules, fixedNeeds)
+	monthlyCosts, annualCosts := subscriptionCurrencyAmounts(subscriptions)
+	snapshot.Subscriptions = subscriptions
+	snapshot.Fees = fees
 	views := subscriptionViews(snapshot.Subscriptions, accountMap(accounts))
 	data.Subscriptions = views
 	for _, view := range views {
@@ -533,8 +609,9 @@ func (s *Server) handleSubscriptions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.Fees = feeViews(snapshot.Fees, accountMap(accounts))
-	data.MonthlyCosts = currencyAmountViews(snapshot.MonthlyCosts)
-	data.AnnualCosts = currencyAmountViews(snapshot.AnnualCosts)
+	data.FixedBills = fixedBills
+	data.MonthlyCosts = currencyAmountViews(monthlyCosts)
+	data.AnnualCosts = currencyAmountViews(annualCosts)
 	data.FeeTotals = currencyAmountViews(snapshot.FeeTotals)
 	s.render(w, "subscriptions", data)
 }

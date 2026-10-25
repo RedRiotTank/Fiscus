@@ -308,6 +308,16 @@ const (
 	RecurringSplitShared = "shared"
 )
 
+// Recurring household bill cadences.
+const (
+	// RecurringMonthly repeats every month.
+	RecurringMonthly = "monthly"
+	// RecurringQuarterly repeats every three months.
+	RecurringQuarterly = "quarterly"
+	// RecurringYearly repeats every twelve months.
+	RecurringYearly = "yearly"
+)
+
 // RecurringBillRule stores a confirmed recurring debit and the effective
 // personal share that should count against its budget category.
 type RecurringBillRule struct {
@@ -317,6 +327,7 @@ type RecurringBillRule struct {
 	Counterparty       string
 	Category           string
 	Pillar             string
+	Recurrence         string
 	SplitMode          string
 	SplitPeople        int
 	GrossMinor         int64

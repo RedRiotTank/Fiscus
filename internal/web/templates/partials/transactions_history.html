@@ -16,12 +16,23 @@
       {{if .TaxEnabled}}<a class="button ghost small" href="/transactions/export?format=tax-summary">Tax summary</a>{{end}}
     </div>
   </header>
-  <div class="transaction-quick-filters" role="group" aria-label="Quick transaction filters">
-    {{range .QuickFilters}}
-      <a class="filter-chip {{if .Active}}active{{end}}" href="{{.Href}}"
-        hx-get="{{.Href}}" hx-target="#transactions-history" hx-swap="outerHTML" hx-push-url="true"
-        {{if .Active}}aria-current="true"{{end}}>{{.Label}}</a>
-    {{end}}
+  <div class="transaction-facet-bar mb-5 mt-2">
+    <div class="transaction-facet-group" role="group" aria-label="Flow direction filter">
+      <span class="transaction-facet-label">Flow</span>
+      {{range .FlowFilters}}
+        <a class="filter-chip {{if .Active}}active{{end}}" href="{{.Href}}"
+          hx-get="{{.Href}}" hx-target="#transactions-history" hx-swap="outerHTML" hx-push-url="true"
+          {{if .Active}}aria-current="true"{{end}}>{{.Label}}</a>
+      {{end}}
+    </div>
+    <div class="transaction-facet-group" role="group" aria-label="Category and pillar filter">
+      <span class="transaction-facet-label">Category</span>
+      {{range .CategoryFilters}}
+        <a class="filter-chip {{if .Active}}active{{end}}" href="{{.Href}}"
+          hx-get="{{.Href}}" hx-target="#transactions-history" hx-swap="outerHTML" hx-push-url="true"
+          {{if .Active}}aria-current="true"{{end}}>{{.Label}}</a>
+      {{end}}
+    </div>
   </div>
   {{if .Transactions}}
     <div class="table-wrap transactions-table-wrap">
@@ -84,18 +95,18 @@
     </div>
     <nav class="pagination" aria-label="Transaction pages">
       {{if gt .Page 1}}
-        <a class="button ghost small" href="/transactions?page={{.PrevPage}}&limit={{.Limit}}{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}{{if .SearchQuery}}&q={{urlquery .SearchQuery}}{{end}}{{if ne .QuickFilter "all"}}&filter={{.QuickFilter}}{{end}}">← Previous</a>
+        <a class="button ghost small" href="/transactions?page={{.PrevPage}}&limit={{.Limit}}{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}{{if .SearchQuery}}&q={{urlquery .SearchQuery}}{{end}}{{if ne .FlowFacet "all"}}&flow={{.FlowFacet}}{{end}}{{if ne .CategoryFacet "all"}}&facet={{.CategoryFacet}}{{end}}">← Previous</a>
       {{else}}
         <span></span>
       {{end}}
       {{if .HasNext}}
-        <a class="button ghost small" href="/transactions?page={{.NextPage}}&limit={{.Limit}}{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}{{if .SearchQuery}}&q={{urlquery .SearchQuery}}{{end}}{{if ne .QuickFilter "all"}}&filter={{.QuickFilter}}{{end}}">Next →</a>
+        <a class="button ghost small" href="/transactions?page={{.NextPage}}&limit={{.Limit}}{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}{{if .SearchQuery}}&q={{urlquery .SearchQuery}}{{end}}{{if ne .FlowFacet "all"}}&flow={{.FlowFacet}}{{end}}{{if ne .CategoryFacet "all"}}&facet={{.CategoryFacet}}{{end}}">Next →</a>
       {{end}}
     </nav>
   {{else}}
     <div class="empty">
       <p>No transactions match this view.</p>
-      {{if or .FilterAccount .SearchQuery (ne .QuickFilter "all")}}<a class="button ghost" href="/transactions">Clear filters</a>{{end}}
+      {{if or .FilterAccount .SearchQuery (ne .FlowFacet "all") (ne .CategoryFacet "all")}}<a class="button ghost" href="/transactions">Clear filters</a>{{end}}
     </div>
   {{end}}
 </section>

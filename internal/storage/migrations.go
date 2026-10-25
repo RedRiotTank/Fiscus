@@ -304,6 +304,12 @@ var migrations = []migration{
 			`CREATE INDEX IF NOT EXISTS idx_recurring_bill_rules_workspace ON recurring_bill_rules(workspace, currency)`,
 		},
 	},
+	{
+		version: 17,
+		statements: []string{
+			`ALTER TABLE recurring_bill_rules ADD COLUMN recurrence TEXT NOT NULL DEFAULT 'monthly'`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and

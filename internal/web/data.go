@@ -44,8 +44,11 @@ type PageData struct {
 	Categories              []string
 	Housing                 *HousingSetupView
 	Recurring               *RecurringBillsView
-	QuickFilter             string
-	QuickFilters            []QuickFilterView
+	FlowFacet               string
+	CategoryFacet           string
+	FlowFilters             []FacetView
+	CategoryFilters         []FacetView
+	FixedBills              []FixedBillView
 	Alerts                  []AlertView
 	Connections             []ConnectionView
 	Reconciliations         map[string]domain.Reconciliation
@@ -120,6 +123,12 @@ type RecurringBillsView struct {
 	Rules      []domain.RecurringBillRule
 }
 
+// RecurringCategoryOption is one budget category grouped by pillar.
+type RecurringCategoryOption struct {
+	Name   string `json:"name"`
+	Pillar string `json:"pillar"`
+}
+
 // RecurringBillEditorView is the interactive recurring split modal model.
 type RecurringBillEditorView struct {
 	Workspace          string
@@ -127,22 +136,42 @@ type RecurringBillEditorView struct {
 	Counterparty       string
 	Category           string
 	Pillar             string
+	Recurrence         string
 	SplitMode          string
 	SplitPeople        int
 	GrossMinor         int64
 	PersonalShareMinor int64
 	Occurrences        int
 	TypicalDay         int
+	Categories         []RecurringCategoryOption
+	CategoryOptions    string
 	Detected           bool
 	Error              string
 }
 
-// QuickFilterView is one instant transaction-history chip.
-type QuickFilterView struct {
+// FacetView is one instant transaction-history facet button.
+type FacetView struct {
 	Label  string
 	Value  string
 	Href   string
 	Active bool
+}
+
+// FixedBillView is one confirmed or detected household bill on the
+// subscriptions page.
+type FixedBillView struct {
+	Workspace          string
+	Currency           string
+	Counterparty       string
+	Category           string
+	Recurrence         string
+	GrossMinor         int64
+	PersonalShareMinor int64
+	Occurrences        int
+	LastSeen           time.Time
+	Confirmed          bool
+	SplitMode          string
+	SplitPeople        int
 }
 
 // CategorySpendingView is a category total rendered on the overview.

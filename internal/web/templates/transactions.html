@@ -35,16 +35,17 @@
     <form class="search-bar tx-search-form transition-all duration-200" method="get" action="/transactions" role="search">
       <input type="search" name="q" value="{{.SearchQuery}}" data-search-input placeholder="Search: coffee, amount:&gt;100, category:Utilities, status:booked, has:receipt, type:business" aria-label="Search transactions">
       {{if .FilterAccount}}<input type="hidden" name="account" value="{{.FilterAccount}}">{{end}}
-      {{if ne .QuickFilter "all"}}<input type="hidden" name="filter" value="{{.QuickFilter}}">{{end}}
+      {{if ne .FlowFacet "all"}}<input type="hidden" name="flow" value="{{.FlowFacet}}">{{end}}
+      {{if ne .CategoryFacet "all"}}<input type="hidden" name="facet" value="{{.CategoryFacet}}">{{end}}
       <input type="hidden" name="limit" value="{{.Limit}}">
       <button class="button small" type="submit">Search</button>
-      {{if .SearchQuery}}<a class="link" href="/transactions?limit={{.Limit}}{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}{{if ne .QuickFilter "all"}}&filter={{.QuickFilter}}{{end}}">Clear</a>{{end}}
+      {{if .SearchQuery}}<a class="link" href="/transactions?limit={{.Limit}}{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}{{if ne .FlowFacet "all"}}&flow={{.FlowFacet}}{{end}}{{if ne .CategoryFacet "all"}}&facet={{.CategoryFacet}}{{end}}">Clear</a>{{end}}
     </form>
   </div>
 </div>
 
 {{if and .Recurring .Recurring.Candidates}}
-  <div class="budget-messages recurring-prompts">
+  <div class="budget-messages recurring-prompts mt-4 space-y-4">
     {{range .Recurring.Candidates}}
       <article class="budget-message info">
         <span class="badge severity-info">Recurring payment detected</span>

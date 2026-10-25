@@ -9,28 +9,32 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 )
 
-func TestTransactionQuickFilterQueryBuilder(t *testing.T) {
+func TestTransactionFacetQueryBuilderCombinesFlowAndCategory(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name      string
 		filter    TransactionFilter
-		wantSQL   string
+		wantSQL   []string
 		wantArgs  int
 		rejectSQL string
 	}{
-		{name: "inflows", filter: TransactionFilter{QuickFilter: QuickFilterInflows}, wantSQL: "amount_minor > 0"},
-		{name: "outflows", filter: TransactionFilter{QuickFilter: QuickFilterOutflows}, wantSQL: "amount_minor < 0"},
-		{name: "p2p", filter: TransactionFilter{QuickFilter: QuickFilterP2P}, wantSQL: "LOWER(TRIM(category)) IN", wantArgs: 3},
-		{name: "needs", filter: TransactionFilter{QuickFilter: QuickFilterNeeds, Categories: []string{"Utilities & Telecom", "Groceries"}}, wantSQL: "LOWER(TRIM(category)) IN", wantArgs: 2},
-		{name: "wants empty", filter: TransactionFilter{QuickFilter: QuickFilterWants}, wantSQL: "1 = 0"},
-		{name: "all", filter: TransactionFilter{QuickFilter: QuickFilterAll}, rejectSQL: "amount_minor"},
+		{name: "inflows", filter: TransactionFilter{Flow: FlowInflows}, wantSQL: []string{"amount_minor > 0"}},
+		{name: "outflows", filter: TransactionFilter{Flow: FlowOutflows}, wantSQL: []string{"amount_minor < 0"}},
+		{name: "p2p", filter: TransactionFilter{Category: CategoryFacetP2P}, wantSQL: []string{"LOWER(TRIM(category)) IN"}, wantArgs: 4},
+		{name: "needs", filter: TransactionFilter{Category: CategoryFacetNeeds, Categories: []string{"Utilities & Telecom", "Groceries"}}, wantSQL: []string{"LOWER(TRIM(category)) IN"}, wantArgs: 2},
+		{name: "wants empty", filter: TransactionFilter{Category: CategoryFacetWants}, wantSQL: []string{"1 = 0"}},
+		{name: "outflows housing", filter: TransactionFilter{Flow: FlowOutflows, Category: CategoryFacetHousing}, wantSQL: []string{"amount_minor < 0", "LOWER(TRIM(category)) IN"}, wantArgs: 7},
+		{name: "inflows p2p", filter: TransactionFilter{Flow: FlowInflows, Category: CategoryFacetP2P}, wantSQL: []string{"amount_minor > 0", "LOWER(TRIM(category)) IN"}, wantArgs: 4},
+		{name: "all", filter: TransactionFilter{Flow: FlowAll, Category: CategoryFacetAll}, rejectSQL: "amount_minor"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			where, args := transactionWhere(test.filter)
 			clause := strings.Join(where, " AND ")
-			if test.wantSQL != "" && !strings.Contains(clause, test.wantSQL) {
-				t.Fatalf("clause = %q, want %q", clause, test.wantSQL)
+			for _, want := range test.wantSQL {
+				if !strings.Contains(clause, want) {
+					t.Fatalf("clause = %q, want %q", clause, want)
+				}
 			}
 			if test.rejectSQL != "" && strings.Contains(clause, test.rejectSQL) {
 				t.Fatalf("clause = %q should not contain %q", clause, test.rejectSQL)
@@ -42,7 +46,7 @@ func TestTransactionQuickFilterQueryBuilder(t *testing.T) {
 	}
 }
 
-func TestListTransactionsQuickFilters(t *testing.T) {
+func TestListTransactionsFacetedFilters(t *testing.T) {
 	t.Parallel()
 	store := newTestStore(t)
 	ctx := context.Background()
@@ -52,8 +56,11 @@ func TestListTransactionsQuickFilters(t *testing.T) {
 	transactions := []domain.Transaction{
 		{AccountID: account.ID, ExternalID: "salary", AmountMinor: 300000, Currency: "EUR", BookingDate: now, Counterparty: "Employer", Category: "Payroll", Status: domain.TransactionStatusBooked},
 		{AccountID: account.ID, ExternalID: "coffee", AmountMinor: -1250, Currency: "EUR", BookingDate: now, Counterparty: "Coffee Shop", Category: "Dining", Status: domain.TransactionStatusBooked},
-		{AccountID: account.ID, ExternalID: "bizum", AmountMinor: -1600, Currency: "EUR", BookingDate: now, Counterparty: "Alberto", Category: "Transfers / P2P", Status: domain.TransactionStatusBooked},
+		{AccountID: account.ID, ExternalID: "bizum-out", AmountMinor: -1600, Currency: "EUR", BookingDate: now, Counterparty: "Alberto", Category: "Transfers / P2P", Status: domain.TransactionStatusBooked},
+		{AccountID: account.ID, ExternalID: "bizum-in", AmountMinor: 1600, Currency: "EUR", BookingDate: now, Counterparty: "Ana", Category: "Transfers / P2P", Status: domain.TransactionStatusBooked},
+		{AccountID: account.ID, ExternalID: "rent", AmountMinor: -85000, Currency: "EUR", BookingDate: now, Counterparty: "Inmobiliaria", Category: "Housing / Rent", Status: domain.TransactionStatusBooked},
 		{AccountID: account.ID, ExternalID: "fiber", AmountMinor: -5000, Currency: "EUR", BookingDate: now, Counterparty: "Vodafone", Category: "Utilities & Telecom", Status: domain.TransactionStatusBooked},
+		{AccountID: account.ID, ExternalID: "groceries", AmountMinor: -4200, Currency: "EUR", BookingDate: now, Counterparty: "Mercadona", Category: "Groceries", Status: domain.TransactionStatusBooked},
 	}
 	for i := range transactions {
 		if _, _, err := store.UpsertTransaction(ctx, &transactions[i]); err != nil {
@@ -66,11 +73,14 @@ func TestListTransactionsQuickFilters(t *testing.T) {
 		filter TransactionFilter
 		want   []string
 	}{
-		{name: "inflows", filter: TransactionFilter{QuickFilter: QuickFilterInflows}, want: []string{"salary"}},
-		{name: "outflows", filter: TransactionFilter{QuickFilter: QuickFilterOutflows}, want: []string{"coffee", "bizum", "fiber"}},
-		{name: "p2p", filter: TransactionFilter{QuickFilter: QuickFilterP2P}, want: []string{"bizum"}},
-		{name: "needs", filter: TransactionFilter{QuickFilter: QuickFilterNeeds, Categories: []string{"Utilities & Telecom", "Groceries"}}, want: []string{"fiber"}},
-		{name: "wants", filter: TransactionFilter{QuickFilter: QuickFilterWants, Categories: []string{"Dining"}}, want: []string{"coffee"}},
+		{name: "inflows", filter: TransactionFilter{Flow: FlowInflows}, want: []string{"salary", "bizum-in"}},
+		{name: "outflows", filter: TransactionFilter{Flow: FlowOutflows}, want: []string{"coffee", "bizum-out", "rent", "fiber", "groceries"}},
+		{name: "outflows housing", filter: TransactionFilter{Flow: FlowOutflows, Category: CategoryFacetHousing}, want: []string{"rent"}},
+		{name: "inflows p2p", filter: TransactionFilter{Flow: FlowInflows, Category: CategoryFacetP2P}, want: []string{"bizum-in"}},
+		{name: "utilities", filter: TransactionFilter{Category: CategoryFacetUtilities}, want: []string{"fiber"}},
+		{name: "groceries out", filter: TransactionFilter{Flow: FlowOutflows, Category: CategoryFacetGroceries}, want: []string{"groceries"}},
+		{name: "needs", filter: TransactionFilter{Category: CategoryFacetNeeds, Categories: []string{"Utilities & Telecom", "Groceries"}}, want: []string{"fiber", "groceries"}},
+		{name: "wants", filter: TransactionFilter{Category: CategoryFacetWants, Categories: []string{"Dining"}}, want: []string{"coffee"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
