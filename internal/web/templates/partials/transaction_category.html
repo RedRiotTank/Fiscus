@@ -1,0 +1,12 @@
+{{define "transaction_category"}}
+<form class="category-quick" hx-patch="/api/transactions/{{.Transaction.ID}}/category" hx-target="this" hx-swap="outerHTML" hx-trigger="change">
+  <span class="badge category {{categoryClass .Transaction.Category}} category-quick-badge">
+    <select name="category" class="category-select" aria-label="Category for transaction {{.Transaction.ID}}" title="{{.Transaction.Category}} — change category; Fiscus will remember this merchant">
+      {{$current := .Transaction.Category}}
+      {{range .Categories}}
+        <option value="{{.}}" {{if eq . $current}}selected{{end}}>{{.}}</option>
+      {{end}}
+    </select>
+  </span>
+</form>
+{{end}}

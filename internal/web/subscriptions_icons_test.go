@@ -101,12 +101,12 @@ func TestSubscriptionsPageRendersBrandIcon(t *testing.T) {
 	}
 	body := page.Body.String()
 	for _, want := range []string{
-		"Spotify AB",
+		"Spotify",
 		"/static/icons/brands/spotify.svg",
 		"service-avatar service-brand",
-		"Bookkeeping Co",
+		"Bookkeeping",
 		"service-avatar service-default",
-		`aria-hidden="true">BC</span>`,
+		`aria-hidden="true">B</span>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("subscriptions page missing %q", want)

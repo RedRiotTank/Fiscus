@@ -45,8 +45,9 @@ same environment using the normal serve entrypoint.
 - Alert rules for duplicate charges, spending spikes, low-balance liquidity,
   consent expiry, subscription price increases, expected inflows, budget caps,
   and dormant (“ghost”) subscriptions
-- Regex-based transaction categorization, retroactive rule re-evaluation, and
-  YAML rule suggestions for frequent Uncategorized counterparties
+- Layered transaction categorization with embedded Spanish/European defaults,
+  inline category overrides that auto-learn and propagate, dirty merchant
+  normalization, Bizum handling, and YAML rule suggestions
 - Income-driven 50/30/20 budget allocation with deep sub-caps, workspace
   isolation, a dual-ring budget donut, and configurable category assignments
 - Recurring subscription and bank-fee detection with Inactive / Potential Ghost
@@ -361,10 +362,17 @@ The dedicated **Budgets** page is the single unified budget view. It includes:
   baselines, categories, profiles, and advisory settings. The All-workspaces
   view asks you to choose one; it never mixes personal and business budgets.
 
-The default personal profile is 50/30/20. Category shares are entered as
-percentages of monthly income and are persisted in SQLite (`budget_profiles` and
-`budget_allocations`, schema version 13). There is no destructive “apply
-recommended budgets” action; changes happen only through the allocation editor.
+A workspace without budget records is initialized automatically with a
+zero-config template. Personal uses Rent 30%, Groceries 12%, Utilities 8%,
+Dining 12%, Subscriptions 5%, Leisure & Shopping 13%, and Emergency Fund 20%.
+Business gets operating and tax-reserve categories only. If no income has been
+detected yet, limits use a provisional €2,000 baseline and update automatically
+after the first confirmed income ingestion.
+
+Category shares are entered as percentages of monthly income and are persisted in
+SQLite (`budget_profiles` and `budget_allocations`, schema version 14). There is
+no destructive “apply recommended budgets” action; changes happen only through
+the allocation editor.
 
 The YAML `budgets.items` block remains supported for legacy budget-pacing alerts
 and CLI tooling, but the income-driven Budgets page is managed from the UI and
@@ -640,17 +648,35 @@ configured per currency as decimal strings in major units, for example
 environment. They are parsed into integer minor units at startup and must be
 positive.
 
-Transaction categories are defined with top-level `rules` in YAML. Rules are
-evaluated in order against the counterparty and description, and the first match
-wins. Unmatched transactions become `Uncategorized`.
+Transaction categories use three rule layers, evaluated in this order:
+
+1. Custom rules from top-level `rules` in YAML.
+2. Learned rules persisted by the inline category editor.
+3. Embedded Spanish/European merchant fallbacks.
+
+The first match wins. The fallback catalog covers supermarkets, digital
+subscriptions, marketplaces, delivery, transport, telecom/utilities, banking
+fees, and Bizum. Unmatched transactions become `Uncategorized`.
 
 ```yaml
 rules:
-  - category: "Utilities"
-    pattern: "(?i)IBERDROLA|ENDESA|AGUAS"
+  - category: "Utilities & Telecom"
+    pattern: "(?i)IBERDROLA|ENDESA|VODAFONE"
   - category: "Payroll"
     pattern: "(?i)NOMINA|SALARY"
 ```
+
+The Transactions table includes an inline category selector. Changing it:
+
+- immediately updates the transaction and FTS5 index;
+- derives a cleaned merchant root and stores a learned rule in SQLite;
+- applies that rule to matching historical `Uncategorized` transactions;
+- keeps the rule active for all future bank ingests.
+
+Repeated dirty counterparties such as `Amazon Prime*nk9ae7fn4`,
+`Google G1ai101m`, or `Www.amazon*...` are normalized before subscription
+matching. Zero-value verification holds and refunds are excluded. Bizum
+transactions are categorized as `Transfers / Bizum` and carry a distinct badge.
 
 Set either `server.password` or `server.password_hash` (bcrypt), never both. If
 neither a username nor a password is set, the dashboard is unauthenticated, which
@@ -698,7 +724,11 @@ not be public.
 
 The **Subscriptions & Fees** dashboard view estimates the monthly and annualized
 cost of active subscriptions and lists detected bank commissions. Subscriptions
-without a recent charge are labelled `Inactive / Potential Ghost`.
+without a recent charge are labelled `Inactive / Potential Ghost`. Counterparties
+are normalized before matching, so tokenized descriptions such as
+`Amazon Prime*nk9ae7fn4` and `Google G1ai101m` group correctly. Two or more
+identical monthly charges in `Uncategorized` are also detected as a fallback;
+zero-value verification holds and refunds are ignored.
 
 Active and dormant subscription cards resolve merchant names such as
 `SPOTIFY AB`, `Amazon Web Services`, or `GitHub Copilot` to bundled official

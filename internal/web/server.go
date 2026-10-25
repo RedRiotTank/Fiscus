@@ -36,6 +36,9 @@ type Store interface {
 	ListAccounts(ctx context.Context) ([]domain.Account, error)
 	RecentTransactions(ctx context.Context, limit int) ([]domain.Transaction, error)
 	ListTransactions(ctx context.Context, filter storage.TransactionFilter) ([]domain.Transaction, error)
+	GetTransaction(ctx context.Context, id int64) (domain.Transaction, error)
+	UpdateTransactionCategory(ctx context.Context, id int64, category string) error
+	UpsertLearnedRule(ctx context.Context, pattern, category, source string) (domain.LearnedRule, error)
 	ListAlerts(ctx context.Context, limit int) ([]domain.Alert, error)
 	ListConnections(ctx context.Context) ([]domain.Connection, error)
 	GetConnectionByID(ctx context.Context, id int64) (domain.Connection, error)
@@ -57,6 +60,7 @@ type Store interface {
 type Classifier interface {
 	Classify(tx domain.Transaction) string
 	RuleCount() int
+	Categories() []string
 }
 
 // SyncTrigger requests an asynchronous bank sync.
@@ -196,6 +200,8 @@ func (s *Server) templateFuncs() template.FuncMap {
 		"categoryClass":       categoryClass,
 		"bpsPercent":          bpsPercent,
 		"bpsInput":            bpsInput,
+		"categoryEditor":      categoryEditor,
+		"isBizum":             isBizum,
 	}
 }
 
@@ -235,6 +241,7 @@ func (s *Server) routes() http.Handler {
 	app.HandleFunc("GET /attachments/{id}", s.handleAttachmentDownload)
 	app.HandleFunc("GET /api/attachments/unpaired", s.handleUnpairedAttachments)
 	app.HandleFunc("PATCH /api/transactions/{id}/notes", s.handleTransactionNotes)
+	app.HandleFunc("PATCH /api/transactions/{id}/category", s.handleTransactionCategory)
 	app.HandleFunc("POST /api/accounts/{id}/type", s.handleAccountType)
 	app.HandleFunc("GET /subscriptions", s.handleSubscriptions)
 	app.HandleFunc("GET /alerts", s.handleAlerts)

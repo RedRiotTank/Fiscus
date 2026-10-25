@@ -62,6 +62,18 @@
       </div>
     </header>
 
+    {{if .BudgetPlan.Nominal}}
+      <div class="budget-messages">
+        <article class="budget-message info">
+          <span class="badge severity-info">Provisional</span>
+          <div>
+            <strong>No confirmed income baseline yet</strong>
+            <p>Using a nominal {{money .BudgetPlan.BaselineMinor .BudgetPlan.Currency}} monthly baseline. Limits update automatically after the first confirmed income ingestion.</p>
+          </div>
+        </article>
+      </div>
+    {{end}}
+
     {{if .BudgetPlan.Messages}}
       <div class="budget-messages">
         {{range .BudgetPlan.Messages}}

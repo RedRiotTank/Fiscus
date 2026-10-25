@@ -3,6 +3,60 @@
 All notable changes to Fiscus are documented here. Versions use semantic
 versioning and annotated Git tags.
 
+## v1.4.1 - 2026-10-25
+
+Real-world ingestion, auto-learning, and default-budget release.
+
+### Added
+
+- Dirty merchant normalization:
+  - Strips trailing authorization tokens, asterisks, card hashes, web prefixes,
+    legal suffixes, and dynamic transaction references.
+  - Normalizes examples such as `Amazon Prime*nk9ae7fn4`, `Www.amazon*...`,
+    `Google G1ai101m`, and `Google One`.
+  - Subscription detection groups dirty histories by normalized merchant root.
+- Subscription heuristics:
+  - Monthly interval window tightened to 28–33 days.
+  - Fallback detection for `Uncategorized` merchants with two or more charges
+    sharing the same normalized root, exact amount, and recurring cadence.
+  - Zero-value verification holds and refunds are excluded.
+  - Dirty Amazon Prime and Google One histories now become active subscriptions.
+- Embedded categorization fallbacks:
+  - Spanish/European merchant rules for groceries, subscriptions, marketplaces,
+    delivery, transport, telecom/utilities, bank fees, and Bizum.
+  - Custom YAML rules take precedence, followed by learned rules, then embedded
+    defaults.
+  - Retroactive default-rule application only touches `Uncategorized` rows.
+- Inline categorization learning:
+  - Category selector directly in the Transactions table.
+  - `PATCH /api/transactions/{id}/category`.
+  - Learned merchant roots persisted in `learned_rules`.
+  - Matching historical `Uncategorized` transactions are updated immediately.
+  - Future ingest cycles use the learned rule without a restart.
+  - FTS5 index updates automatically through the existing triggers.
+- Bizum handling:
+  - `Transfers / Bizum` default category and distinct violet badge.
+  - Bizum is mapped to the Wants macro-bucket for legacy advisory calculations.
+- Zero-config budgets:
+  - Workspaces without budget records receive a default template automatically.
+  - Personal: Rent 30%, Groceries 12%, Utilities 8%, Dining 12%,
+    Subscriptions 5%, Leisure & Shopping 13%, Emergency Fund 20%.
+  - Business: operating and tax-reserve categories only.
+  - Uses a provisional €2,000 baseline until confirmed income is detected.
+- GitHub attribution:
+  - Footer link with octocat SVG to `RedRiotTank/Fiscus`, opened safely in a new tab.
+- Persistence:
+  - Added SQLite `learned_rules` table.
+  - Latest schema version is 14.
+
+### Verification
+
+- `go test -v -race ./...`
+- `golangci-lint run ./...`
+- `CGO_ENABLED=0 go build -v ./cmd/fiscus`
+- Demo verification covered dirty subscription roots, inline category learning,
+  Bizum badges, default budget templates, and repository attribution.
+
 ## v1.4.0 - 2026-10-25
 
 Income-driven budget allocation and deep advisory release.

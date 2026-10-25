@@ -159,7 +159,7 @@ func TestDefaultProfileAndNoIncomeMessage(t *testing.T) {
 		t.Fatalf("personal default = %+v", personal)
 	}
 	business := DefaultProfile("business", "EUR")
-	if business.NeedsBPS != 10000 || business.WantsBPS != 0 || business.SavingsBPS != 0 {
+	if business.NeedsBPS != 2800 || business.WantsBPS != 0 || business.SavingsBPS != 2100 {
 		t.Fatalf("business default = %+v", business)
 	}
 	plan := BuildPlan(personal, nil, nil, 0, 0, 0, time.Now())
@@ -191,4 +191,33 @@ func hasMessage(messages []AdvisoryMessage, contains string) bool {
 		}
 	}
 	return false
+}
+
+func TestDefaultAllocations(t *testing.T) {
+	t.Parallel()
+	personal := DefaultAllocations("personal")
+	if len(personal) != 7 {
+		t.Fatalf("personal defaults = %+v", personal)
+	}
+	var total int
+	for _, allocation := range personal {
+		total += allocation.PercentBPS
+	}
+	if total != 10000 {
+		t.Fatalf("personal default total = %d", total)
+	}
+	business := DefaultAllocations("business")
+	if len(business) != 5 {
+		t.Fatalf("business defaults = %+v", business)
+	}
+	for _, allocation := range business {
+		switch allocation.Category {
+		case "Rent", "Groceries", "Restaurants & Delivery", "Leisure & Shopping":
+			t.Fatalf("personal category in business defaults: %+v", allocation)
+		}
+	}
+	profile := DefaultProfile("business", "EUR")
+	if profile.NeedsBPS != 2800 || profile.SavingsBPS != 2100 {
+		t.Fatalf("business default profile = %+v", profile)
+	}
 }

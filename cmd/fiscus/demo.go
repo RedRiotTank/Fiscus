@@ -131,7 +131,11 @@ func runDemoMode(opts demoOptions) error {
 	}
 	metrics := observability.New(version)
 	budgetPlanner := budgets.NewPlanner(store, nil)
-	server, err := newWebServer(cfg, store, nil, logger, metrics, nil, attachmentService, taxService, search.New(store), budgetPlanner)
+	classifier, err := buildCategoryClassifier(ctx, cfg, store)
+	if err != nil {
+		return fmt.Errorf("demo: category classifier: %w", err)
+	}
+	server, err := newWebServer(cfg, store, nil, logger, metrics, nil, attachmentService, taxService, search.New(store), classifier, budgetPlanner)
 	if err != nil {
 		return fmt.Errorf("demo: web server: %w", err)
 	}

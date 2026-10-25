@@ -38,6 +38,7 @@ type PageData struct {
 	Treasury                []RunwayView
 	Accounts                []domain.Account
 	Transactions            []TransactionView
+	Categories              []string
 	Alerts                  []AlertView
 	Connections             []ConnectionView
 	Reconciliations         map[string]domain.Reconciliation

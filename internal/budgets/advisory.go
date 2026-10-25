@@ -524,7 +524,7 @@ func BucketForCategory(category string) string {
 		return BucketNeeds
 	case "restaurants", "dining", "bars", "cafes", "cafés", "coffee",
 		"entertainment", "ocio", "leisure", "subscriptions", "shopping",
-		"travel", "meals", "health & fitness":
+		"travel", "meals", "health & fitness", "bizum", "transfers / bizum":
 		return BucketWants
 	case "savings", "investments", "investment", "emergency fund":
 		return BucketSavings

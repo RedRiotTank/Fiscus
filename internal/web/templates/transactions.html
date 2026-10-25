@@ -84,7 +84,10 @@
                 <span class="tx-description">{{if .Description}}{{.Description}}{{else}}<span class="muted">—</span>{{end}}</span>
                 {{if .Counterparty}}<span class="tx-counterparty" title="{{.Counterparty}}">{{.Counterparty}}</span>{{end}}
               </td>
-              <td class="tx-category"><span class="badge category {{categoryClass .Category}}" title="{{if .Category}}{{.Category}}{{else}}Uncategorized{{end}}">{{if .Category}}{{.Category}}{{else}}Uncategorized{{end}}</span></td>
+              <td class="tx-category">
+                {{template "transaction_category" (categoryEditor . $.Categories)}}
+                {{if isBizum .Counterparty .Description}}<span class="badge bizum">Bizum</span>{{end}}
+              </td>
               <td class="notes">{{template "transaction_notes" .}}</td>
               <td><span class="badge workspace {{if eq .AccountType "business"}}business{{else}}personal{{end}}">{{if eq .AccountType "business"}}Business{{else}}Personal{{end}}</span></td>
               {{$attachmentID := index $.AttachmentIDs .ID}}

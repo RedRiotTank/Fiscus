@@ -5,6 +5,7 @@ package categories
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/RedRiotTank/Fiscus/internal/domain"
@@ -81,6 +82,22 @@ func (c *Classifier) RuleCount() int {
 		return 0
 	}
 	return len(c.rules)
+}
+
+// Categories returns the unique categories covered by the compiled rules.
+func (c *Classifier) Categories() []string {
+	seen := map[string]struct{}{DefaultCategory: {}}
+	if c != nil {
+		for _, rule := range c.rules {
+			seen[rule.category] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for category := range seen {
+		out = append(out, category)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // ValidateRules checks a rule set without constructing a classifier.

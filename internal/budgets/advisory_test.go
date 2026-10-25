@@ -166,7 +166,7 @@ func TestAdvisoryCategoryBuckets(t *testing.T) {
 	t.Parallel()
 	tests := map[string]string{
 		"Rent": "needs", "Groceries": "needs", "Utilities": "needs",
-		"Restaurants": "wants", "Subscriptions": "wants", "Travel": "wants",
+		"Restaurants": "wants", "Subscriptions": "wants", "Travel": "wants", "Bizum": "wants",
 		"Investments": "savings", "Mystery": "unallocated",
 	}
 	for category, want := range tests {

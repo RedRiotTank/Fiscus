@@ -407,6 +407,13 @@ func runSync(args []string, stdout, stderr io.Writer) error {
 	}
 	defer sink.Wait()
 	budgetManager := buildBudgetManager(cfg, store)
+	classifier, err := buildCategoryClassifier(ctx, cfg, store)
+	if err != nil {
+		return err
+	}
+	if _, err := applyDefaultCategoryRules(ctx, store, classifier); err != nil {
+		return err
+	}
 	engine, err := buildEngine(cfg, store, logger, nil, sink, nil, budgetManager)
 	if err != nil {
 		return err
@@ -415,7 +422,7 @@ func runSync(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	worker, err := buildWorker(cfg, store, engine, logger, nil, bank, sink)
+	worker, err := buildWorker(cfg, store, engine, logger, nil, bank, sink, classifier)
 	if err != nil {
 		return err
 	}
@@ -508,10 +515,7 @@ func runRecategorize(args []string, stdout, stderr io.Writer) error {
 		return nil
 	}
 
-	if len(cfg.Rules) == 0 {
-		return errors.New("recategorize: no categorization rules are configured")
-	}
-	classifier, err := buildCategoryClassifier(cfg)
+	classifier, err := buildCategoryClassifier(ctx, cfg, store)
 	if err != nil {
 		return err
 	}

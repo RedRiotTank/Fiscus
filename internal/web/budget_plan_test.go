@@ -159,6 +159,14 @@ func TestBudgetWorkspaceIsolationAndEmptyState(t *testing.T) {
 	}
 
 	emptyFixture := newWebFixture(t)
+	emptyFixture.server.budgetPlanner = budgets.NewPlanner(emptyFixture.store, emptyFixture.server.now)
+	if err := emptyFixture.store.SaveBudgetPlan(context.Background(), domain.BudgetProfile{
+		Workspace: domain.WorkspaceBusiness, Currency: "EUR",
+		NeedsBPS: 2800, WantsBPS: 0, SavingsBPS: 2100,
+		AdvisoryEnabled: true, UpdatedAt: emptyFixture.server.now().UTC(),
+	}, nil); err != nil {
+		t.Fatalf("empty plan: %v", err)
+	}
 	empty := emptyFixture.request(t, http.MethodGet, "/budgets?workspace=business", true, nil)
 	if !strings.Contains(empty.Body.String(), "No budget configured for this workspace") {
 		t.Fatal("empty workspace state missing")
@@ -187,5 +195,73 @@ func TestBudgetDonutData(t *testing.T) {
 	view := buildBudgetDonut(plan)
 	if view == nil {
 		t.Fatal("expected donut data")
+	}
+}
+
+func TestDefaultBudgetTemplateAutoSeed(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	f.server.budgetPlanner = budgets.NewPlanner(f.store, f.server.now)
+	page := f.request(t, http.MethodGet, "/budgets?workspace=personal", true, nil)
+	if page.Code != http.StatusOK {
+		t.Fatalf("budgets status = %d", page.Code)
+	}
+	body := page.Body.String()
+	for _, want := range []string{"Rent", "Groceries", "Utilities &amp; Telecom", "Restaurants &amp; Delivery", "Subscriptions", "Leisure &amp; Shopping", "Emergency Fund"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("default budget page missing %q", want)
+		}
+	}
+	if strings.Contains(body, "No budget configured for this workspace") {
+		t.Fatal("default template should not render the empty state")
+	}
+	profile, ok, err := f.store.GetBudgetProfile(context.Background(), "personal", "EUR")
+	if err != nil || !ok {
+		t.Fatalf("profile = ok=%v err=%v", ok, err)
+	}
+	if profile.NeedsBPS != 5000 || profile.WantsBPS != 3000 || profile.SavingsBPS != 2000 {
+		t.Fatalf("profile = %+v", profile)
+	}
+	allocations, err := f.store.ListBudgetAllocations(context.Background(), "personal", "EUR")
+	if err != nil {
+		t.Fatalf("allocations: %v", err)
+	}
+	total := 0
+	for _, allocation := range allocations {
+		total += allocation.PercentBPS
+	}
+	if len(allocations) != 7 || total != 10000 {
+		t.Fatalf("allocations = %+v total=%d", allocations, total)
+	}
+
+	businessPage := f.request(t, http.MethodGet, "/budgets?workspace=business", true, nil)
+	if businessPage.Code != http.StatusOK {
+		t.Fatalf("business budgets status = %d", businessPage.Code)
+	}
+	businessBody := businessPage.Body.String()
+	for _, want := range []string{"Software &amp; Cloud", "Gestoría / Legal", "Office &amp; Equipment", "Freelance Subcontractors", "Tax Reserve", "Nominal operating revenue"} {
+		if !strings.Contains(businessBody, want) {
+			t.Errorf("default business budget page missing %q", want)
+		}
+	}
+	if strings.Contains(businessBody, "Groceries") || strings.Contains(businessBody, "Restaurants &amp; Delivery") {
+		t.Fatal("personal categories leaked into default business budget")
+	}
+	businessAllocations, err := f.store.ListBudgetAllocations(context.Background(), "business", "EUR")
+	if err != nil {
+		t.Fatalf("business allocations: %v", err)
+	}
+	if len(businessAllocations) != 5 {
+		t.Fatalf("business allocations = %+v", businessAllocations)
+	}
+}
+
+func TestNominalBudgetBaseline(t *testing.T) {
+	t.Parallel()
+	if baseline, nominal := nominalBudgetBaseline(0); baseline != 200_000 || !nominal {
+		t.Fatalf("zero baseline = %d/%v", baseline, nominal)
+	}
+	if baseline, nominal := nominalBudgetBaseline(280_000); baseline != 280_000 || nominal {
+		t.Fatalf("income baseline = %d/%v", baseline, nominal)
 	}
 }

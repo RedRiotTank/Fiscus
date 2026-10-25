@@ -117,6 +117,11 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.Transactions = transactionViews(transactions, accountMap(accounts))
+	categoriesSeen := make([]string, 0, len(data.Transactions))
+	for _, transaction := range data.Transactions {
+		categoriesSeen = append(categoriesSeen, transaction.Category)
+	}
+	data.Categories = s.categoryOptions(categoriesSeen...)
 	data.HasNext = len(transactions) == data.Limit
 	data.PrevPage = max(data.Page-1, 1)
 	data.NextPage = data.Page + 1

@@ -28,6 +28,16 @@ func TestBrandingAssetsAreServed(t *testing.T) {
 	if strings.Contains(body, `rel="icon" href="data:`) {
 		t.Error("dashboard still uses the old inline favicon")
 	}
+	for _, want := range []string{
+		`href="https://github.com/RedRiotTank/Fiscus"`,
+		`target="_blank"`,
+		`rel="noopener noreferrer"`,
+		`RedRiotTank/Fiscus`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("dashboard source attribution missing %q", want)
+		}
+	}
 
 	for _, path := range []string{
 		"/static/brand.png",

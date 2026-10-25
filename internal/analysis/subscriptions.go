@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/domain"
+	"github.com/RedRiotTank/Fiscus/pkg/subscriptions"
 )
 
 // Frequency classifies a recurring charge period.
@@ -24,8 +25,8 @@ const (
 )
 
 const (
-	monthlyMinDays = 25
-	monthlyMaxDays = 35
+	monthlyMinDays = 28
+	monthlyMaxDays = 33
 	yearlyMinDays  = 350
 	yearlyMaxDays  = 380
 
@@ -97,6 +98,8 @@ type feePattern struct {
 
 // Spanish and English patterns are kept together so the detector works across
 // the supported bank feeds. Unicode escapes avoid encoding issues.
+var refundPattern = regexp.MustCompile(`(?i)\b(refund|reembolso|devoluci(?:o|\x{f3})n|reversal|chargeback)\b`)
+
 var defaultFeePatterns = []feePattern{
 	{label: "Maintenance fee", pattern: regexp.MustCompile(`(?i)comisi(?:o|\x{f3})n|mantenimiento|maintenance fee|account fee`)},
 	{label: "Overdraft fee", pattern: regexp.MustCompile(`(?i)descubierto|overdraft|insufficient funds`)},
@@ -115,6 +118,9 @@ func Analyze(transactions []domain.Transaction, now time.Time) Snapshot {
 		if tx.Status != domain.TransactionStatusBooked || tx.AmountMinor >= 0 {
 			continue
 		}
+		if isRefund(tx) {
+			continue
+		}
 		if fee, ok := detectFee(tx); ok {
 			fees = append(fees, fee)
 		}
@@ -125,13 +131,13 @@ func Analyze(transactions []domain.Transaction, now time.Time) Snapshot {
 		if merchant == "" {
 			continue
 		}
-		key := strings.Join([]string{tx.AccountID, strings.ToUpper(tx.Currency), merchant}, "\x00")
+		key := strings.Join([]string{tx.AccountID, strings.ToUpper(tx.Currency), strings.ToLower(merchant)}, "\x00")
 		byMerchant[key] = append(byMerchant[key], tx)
 	}
 
 	subscriptions := make([]Subscription, 0, len(byMerchant))
 	for _, group := range byMerchant {
-		subscription, ok := detectSubscription(group, now)
+		subscription, ok := detectSubscription(group, now, allUncategorized(group))
 		if ok {
 			subscriptions = append(subscriptions, subscription)
 		}
@@ -174,7 +180,7 @@ func Analyze(transactions []domain.Transaction, now time.Time) Snapshot {
 	}
 }
 
-func detectSubscription(group []domain.Transaction, now time.Time) (Subscription, bool) {
+func detectSubscription(group []domain.Transaction, now time.Time, fallback bool) (Subscription, bool) {
 	if len(group) < 2 {
 		return Subscription{}, false
 	}
@@ -221,10 +227,17 @@ func detectSubscription(group []domain.Transaction, now time.Time) (Subscription
 	for i := len(group) - 2; i >= 0; i-- {
 		amount := -group[i].AmountMinor
 		if amount != current {
+			if fallback {
+				return Subscription{}, false
+			}
 			previous = amount
 			priceChangedAt = group[i+1].BookingDate
 			break
 		}
+	}
+	category := strings.TrimSpace(last.Category)
+	if fallback || strings.EqualFold(category, "Uncategorized") || category == "" {
+		category = "Subscriptions"
 	}
 	priceIncrease := current - previous
 	ageDays := int(now.Sub(last.BookingDate).Hours() / 24)
@@ -233,7 +246,7 @@ func detectSubscription(group []domain.Transaction, now time.Time) (Subscription
 	return Subscription{
 		AccountID:           last.AccountID,
 		Counterparty:        transactionMerchant(last),
-		Category:            strings.TrimSpace(last.Category),
+		Category:            category,
 		Currency:            strings.ToUpper(last.Currency),
 		Frequency:           frequency,
 		IntervalDays:        interval,
@@ -269,17 +282,13 @@ func average(values []int) int {
 
 func isSubscriptionCategory(category string) bool {
 	category = strings.ToLower(strings.TrimSpace(category))
-	if category == "" {
-		// Imported or legacy rows may not carry a category; keep detecting
-		// them as before.
-		return true
-	}
 	switch category {
-	case "uncategorized", "groceries", "restaurants", "dining", "shopping",
+	case "groceries", "restaurants", "restaurants & delivery", "dining", "shopping",
 		"leisure & shopping", "rent", "housing", "transfer", "transfers",
-		"emergency fund", "savings", "saving", "investments", "investment",
-		"bank fees", "payroll", "meals", "travel", "hardware", "office",
-		"office & equipment", "tax reserve", "taxes", "tax":
+		"transfers / bizum", "bizum", "emergency fund", "savings", "saving",
+		"investments", "investment", "bank fees", "payroll", "meals", "travel",
+		"transport", "hardware", "office", "office & equipment", "tax reserve",
+		"taxes", "tax":
 		return false
 	default:
 		return true
@@ -291,7 +300,25 @@ func transactionMerchant(tx domain.Transaction) string {
 	if merchant == "" {
 		merchant = strings.TrimSpace(tx.Description)
 	}
-	return strings.TrimSpace(merchant)
+	cleaned := subscriptions.CleanMerchant(merchant)
+	if cleaned != "" {
+		return cleaned
+	}
+	return merchant
+}
+
+func isRefund(tx domain.Transaction) bool {
+	return refundPattern.MatchString(tx.Counterparty + " " + tx.Description)
+}
+
+func allUncategorized(group []domain.Transaction) bool {
+	for _, tx := range group {
+		category := strings.TrimSpace(tx.Category)
+		if category != "" && !strings.EqualFold(category, "Uncategorized") {
+			return false
+		}
+	}
+	return true
 }
 
 func detectFee(tx domain.Transaction) (Fee, bool) {

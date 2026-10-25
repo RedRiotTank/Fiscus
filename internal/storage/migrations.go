@@ -251,6 +251,19 @@ var migrations = []migration{
 			)`,
 		},
 	},
+	{
+		version: 14,
+		statements: []string{
+			`CREATE TABLE IF NOT EXISTS learned_rules (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				pattern TEXT NOT NULL COLLATE NOCASE UNIQUE,
+				category TEXT NOT NULL,
+				source TEXT NOT NULL DEFAULT 'inline',
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			)`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and

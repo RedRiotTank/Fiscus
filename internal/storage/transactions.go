@@ -174,6 +174,23 @@ func (s *Store) UpsertTransaction(ctx context.Context, t *domain.Transaction) (i
 	return inserted, promoted, nil
 }
 
+// GetTransaction returns one transaction by ID.
+func (s *Store) GetTransaction(ctx context.Context, id int64) (domain.Transaction, error) {
+	if id <= 0 {
+		return domain.Transaction{}, ErrNotFound
+	}
+	row := s.db.QueryRowContext(ctx,
+		`SELECT `+transactionColumns+` FROM transactions WHERE id = ?`, id)
+	t, err := scanTransaction(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.Transaction{}, ErrNotFound
+	}
+	if err != nil {
+		return domain.Transaction{}, fmt.Errorf("storage: get transaction: %w", err)
+	}
+	return t, nil
+}
+
 // UpdateTransactionCategory changes a transaction's category. It is used by
 // interactive categorization flows such as Telegram inline keyboards.
 func (s *Store) UpdateTransactionCategory(ctx context.Context, id int64, category string) error {

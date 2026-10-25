@@ -23,6 +23,7 @@ type BudgetPlanView struct {
 	BaselineSubtitle   string
 	AllocatedPercent   int64
 	UnallocatedPercent int64
+	Nominal            bool
 	Donut              *BudgetDonutView
 }
 
@@ -61,7 +62,16 @@ func (s *Server) loadBudgetPlan(ctx context.Context, data *PageData, spending []
 	if err != nil {
 		return err
 	}
-	if !stored.Exists || len(stored.Allocations) == 0 {
+	if !stored.Exists {
+		if err := s.budgetPlanner.Save(ctx, budgets.DefaultProfile(workspace, currency), budgets.DefaultAllocations(workspace)); err != nil {
+			return err
+		}
+		stored, err = s.budgetPlanner.Load(ctx, workspace, currency)
+		if err != nil {
+			return err
+		}
+	}
+	if len(stored.Allocations) == 0 {
 		data.BudgetEmpty = true
 		return nil
 	}
@@ -98,6 +108,11 @@ func (s *Server) loadBudgetPlan(ctx context.Context, data *PageData, spending []
 		}
 		break
 	}
+	nominal := false
+	if baseline <= 0 {
+		baseline, nominal = nominalBudgetBaseline(0)
+		tax, netAfterTax = 0, baseline
+	}
 	if workspace == domain.WorkspaceBusiness {
 		for _, allocation := range stored.Allocations {
 			category := strings.ToLower(allocation.Category)
@@ -113,12 +128,22 @@ func (s *Server) loadBudgetPlan(ctx context.Context, data *PageData, spending []
 		Plan:               plan,
 		AllocatedPercent:   roundedBPSPercent(plan.AllocatedBPS),
 		UnallocatedPercent: roundedBPSPercent(plan.UnallocatedBPS),
+		Nominal:            nominal,
 	}
-	if workspace == domain.WorkspaceBusiness {
+	switch {
+	case nominal && workspace == domain.WorkspaceBusiness:
+		view.BaselineLabel = "Nominal operating revenue"
+		view.BaselineSubtitle = fmt.Sprintf("Awaiting confirmed income · provisional %s baseline",
+			money.FormatGrouped(baseline, currency))
+	case nominal:
+		view.BaselineLabel = "Nominal monthly baseline"
+		view.BaselineSubtitle = fmt.Sprintf("Awaiting confirmed income · provisional %s baseline",
+			money.FormatGrouped(baseline, currency))
+	case workspace == domain.WorkspaceBusiness:
 		view.BaselineLabel = "Operating revenue"
 		view.BaselineSubtitle = fmt.Sprintf("Planned tax reserve %s · net after reserve %s",
 			money.FormatGrouped(tax, currency), money.FormatGrouped(netAfterTax, currency))
-	} else {
+	default:
 		view.BaselineLabel = "Total net monthly income"
 		view.BaselineSubtitle = "Confirmed recurring inflows, net of transfers and internal movements"
 	}
@@ -134,6 +159,13 @@ func (s *Server) budgetWorkspaceAllowed(workspace string) bool {
 	default:
 		return true
 	}
+}
+
+func nominalBudgetBaseline(baseline int64) (int64, bool) {
+	if baseline > 0 {
+		return baseline, false
+	}
+	return 200_000, true
 }
 
 func budgetCurrency(accounts []domain.Account) string {
@@ -179,6 +211,10 @@ func (s *Server) handleBudgetCustomize(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.fail(w, r, err)
 		return
+	}
+	if !stored.Exists {
+		stored.Profile = budgets.DefaultProfile(workspace, currency)
+		stored.Allocations = budgets.DefaultAllocations(workspace)
 	}
 	editor := BudgetEditorView{
 		Workspace: workspace, Currency: currency,

@@ -268,3 +268,13 @@ type BudgetAllocation struct {
 	Custom          bool
 	UpdatedAt       time.Time
 }
+
+// LearnedRule is a persisted user-taught categorization rule.
+type LearnedRule struct {
+	ID        int64
+	Pattern   string
+	Category  string
+	Source    string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}

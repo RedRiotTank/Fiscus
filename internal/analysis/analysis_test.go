@@ -73,6 +73,9 @@ func TestAnalyzeDetectsHistoricalPriceIncrease(t *testing.T) {
 		booked("acc-1", "Streaming", "EUR", -1099, "2026-02-05"),
 		booked("acc-1", "Streaming", "EUR", -1099, "2026-03-05"),
 	}
+	for i := range transactions {
+		transactions[i].Category = "Subscriptions"
+	}
 	snapshot := Analyze(transactions, now)
 	if len(snapshot.Subscriptions) != 1 {
 		t.Fatalf("subscriptions = %+v", snapshot.Subscriptions)
@@ -252,5 +255,57 @@ func TestSubscriptionStaleThresholds(t *testing.T) {
 	yearlyAtThreeNinetyOne := Analyze(transactions, time.Date(2027, 3, 27, 12, 0, 0, 0, time.UTC))
 	if find(yearlyAtThreeNinetyOne, "Yearly Service").Active {
 		t.Fatal("yearly subscription aged 391 days should be inactive")
+	}
+}
+
+func TestAnalyzeDirtyMerchantRootsAndFallback(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
+	transactions := []domain.Transaction{
+		booked("acc-1", "Amazon Prime*nk9ae7fn4", "EUR", -499, "2026-01-05"),
+		booked("acc-1", "Amazon Prime*nj7t039f4", "EUR", -499, "2026-02-04"),
+		booked("acc-1", "Amazon Prime*zz8aa111x", "EUR", -499, "2026-03-06"),
+		booked("acc-1", "Google G1ai101m", "EUR", -2199, "2026-01-10"),
+		booked("acc-1", "Google One", "EUR", -2199, "2026-02-09"),
+		booked("acc-1", "Google G1zz220n", "EUR", -2199, "2026-03-11"),
+		booked("acc-1", "Google *temporary Hold", "EUR", 0, "2026-02-15"),
+		booked("acc-1", "Amazon Prime Refund", "EUR", -499, "2026-02-20"),
+	}
+	for i := range transactions {
+		transactions[i].Category = "Uncategorized"
+		if transactions[i].Description == "" {
+			transactions[i].Description = transactions[i].Counterparty
+		}
+	}
+	transactions[7].Description = "Refund for Amazon Prime"
+	snapshot := Analyze(transactions, now)
+	if len(snapshot.Subscriptions) != 2 {
+		t.Fatalf("subscriptions = %+v", snapshot.Subscriptions)
+	}
+	byName := make(map[string]Subscription, len(snapshot.Subscriptions))
+	for _, subscription := range snapshot.Subscriptions {
+		byName[subscription.Counterparty] = subscription
+	}
+	if amazon, ok := byName["Amazon Prime"]; !ok || amazon.Category != "Subscriptions" || amazon.AmountMinor != 499 {
+		t.Fatalf("amazon prime = %+v", byName)
+	}
+	if google, ok := byName["Google"]; !ok || google.Category != "Subscriptions" || google.AmountMinor != 2199 {
+		t.Fatalf("google = %+v", byName)
+	}
+}
+
+func TestAnalyzeFallbackRequiresStableAmount(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
+	transactions := []domain.Transaction{
+		booked("acc-1", "Unknown Service", "EUR", -999, "2026-01-05"),
+		booked("acc-1", "Unknown Service", "EUR", -1099, "2026-02-04"),
+		booked("acc-1", "Unknown Service", "EUR", -1099, "2026-03-06"),
+	}
+	for i := range transactions {
+		transactions[i].Category = "Uncategorized"
+	}
+	if snapshot := Analyze(transactions, now); len(snapshot.Subscriptions) != 0 {
+		t.Fatalf("uncategorized price change should not be a fallback subscription: %+v", snapshot.Subscriptions)
 	}
 }

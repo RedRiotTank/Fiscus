@@ -24,7 +24,7 @@ import (
 )
 
 var (
-	version = "v1.4.0"
+	version = "v1.4.1"
 	commit  = "none"
 	date    = "unknown"
 )
@@ -193,6 +193,15 @@ func runServe(args []string, stdout, stderr io.Writer) error {
 	searchService := search.New(store)
 	budgetManager := buildBudgetManager(cfg, store)
 	budgetPlanner := budgets.NewPlanner(store, nil)
+	classifier, err := buildCategoryClassifier(appCtx, cfg, store)
+	if err != nil {
+		return err
+	}
+	if changed, err := applyDefaultCategoryRules(appCtx, store, classifier); err != nil {
+		return err
+	} else if changed > 0 {
+		logger.Info("applied default category rules", "changed", changed)
+	}
 
 	metrics := observability.New(version)
 	sink, err := buildEventSink(cfg, logger)
@@ -209,7 +218,7 @@ func runServe(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	worker, err := buildWorker(cfg, store, engine, logger, metrics, bank, sink)
+	worker, err := buildWorker(cfg, store, engine, logger, metrics, bank, sink, classifier)
 	if err != nil {
 		return err
 	}
@@ -255,7 +264,7 @@ func runServe(args []string, stdout, stderr io.Writer) error {
 	if worker != nil {
 		trigger = worker
 	}
-	server, err := newWebServer(cfg, store, trigger, logger, metrics, authHandler, attachmentService, taxService, searchService, budgetPlanner)
+	server, err := newWebServer(cfg, store, trigger, logger, metrics, authHandler, attachmentService, taxService, searchService, classifier, budgetPlanner)
 	if err != nil {
 		return err
 	}

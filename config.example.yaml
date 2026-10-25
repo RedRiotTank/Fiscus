@@ -193,9 +193,12 @@ expected_inflows:
 # the first match wins; transactions that match no rule become "Uncategorized".
 # Patterns are Go regular expressions, matched against the counterparty and
 # description independently.
+# Custom rules take precedence over learned inline rules and the embedded
+# Spanish/European merchant fallback catalog. Unmatched transactions are
+# categorized from the default catalog before becoming Uncategorized.
 rules:
-  - category: "Utilities"
-    pattern: "(?i)IBERDROLA|ENDESA|AGUAS"
+  - category: "Utilities & Telecom"
+    pattern: "(?i)IBERDROLA|ENDESA|VODAFONE"
   - category: "Payroll"
     pattern: "(?i)NOMINA|SALARY"
 

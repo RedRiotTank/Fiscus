@@ -121,9 +121,34 @@ func DefaultProfile(workspace, currency string) Profile {
 		AdvisoryEnabled: true,
 	}
 	if workspace == "business" {
-		profile.NeedsBPS, profile.WantsBPS, profile.SavingsBPS = 10000, 0, 0
+		profile.NeedsBPS, profile.WantsBPS, profile.SavingsBPS = 2800, 0, 2100
 	}
 	return profile
+}
+
+// DefaultAllocations returns the zero-config allocation template for a
+// workspace. Personal uses a 50/30/20 split; Business uses operating and tax
+// reserve categories only.
+func DefaultAllocations(workspace string) []Allocation {
+	workspace = strings.ToLower(strings.TrimSpace(workspace))
+	if workspace == "business" {
+		return []Allocation{
+			{Category: "Software & Cloud", Pillar: PillarNeeds, PercentBPS: 800, NotifyAtPercent: []int{80, 100}, SortOrder: 0},
+			{Category: "Gestoría / Legal", Pillar: PillarNeeds, PercentBPS: 400, NotifyAtPercent: []int{80, 100}, SortOrder: 1},
+			{Category: "Office & Equipment", Pillar: PillarNeeds, PercentBPS: 600, NotifyAtPercent: []int{80, 100}, SortOrder: 2},
+			{Category: "Freelance Subcontractors", Pillar: PillarNeeds, PercentBPS: 1000, NotifyAtPercent: []int{80, 100}, SortOrder: 3},
+			{Category: "Tax Reserve", Pillar: PillarSavings, PercentBPS: 2100, NotifyAtPercent: []int{80, 100}, SortOrder: 4},
+		}
+	}
+	return []Allocation{
+		{Category: "Rent", Pillar: PillarNeeds, PercentBPS: 3000, NotifyAtPercent: []int{80, 100}, SortOrder: 0},
+		{Category: "Groceries", Pillar: PillarNeeds, PercentBPS: 1200, NotifyAtPercent: []int{80, 100}, SortOrder: 1},
+		{Category: "Utilities & Telecom", Pillar: PillarNeeds, PercentBPS: 800, NotifyAtPercent: []int{80, 100}, SortOrder: 2},
+		{Category: "Restaurants & Delivery", Pillar: PillarWants, PercentBPS: 1200, NotifyAtPercent: []int{80, 100}, SortOrder: 3},
+		{Category: "Subscriptions", Pillar: PillarWants, PercentBPS: 500, NotifyAtPercent: []int{80, 100}, SortOrder: 4},
+		{Category: "Leisure & Shopping", Pillar: PillarWants, PercentBPS: 1300, NotifyAtPercent: []int{80, 100}, SortOrder: 5},
+		{Category: "Emergency Fund", Pillar: PillarSavings, PercentBPS: 2000, NotifyAtPercent: []int{80, 100}, SortOrder: 6},
+	}
 }
 
 // NormalizeProfile validates and normalizes pillar targets.

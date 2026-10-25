@@ -278,12 +278,20 @@ func consentRenewalURL(cfg *config.Config) func(domain.Connection) string {
 	}
 }
 
-func buildCategoryClassifier(cfg *config.Config) (*categories.Classifier, error) {
+func buildCategoryClassifier(ctx context.Context, cfg *config.Config, store *storage.Store) (*categories.DynamicClassifier, error) {
 	rules := make([]categories.Rule, 0, len(cfg.Rules))
 	for _, rule := range cfg.Rules {
 		rules = append(rules, categories.Rule{Category: rule.Category, Pattern: rule.Pattern})
 	}
-	return categories.New(rules)
+	return categories.NewDynamicClassifier(ctx, store, rules, categories.DefaultRules())
+}
+
+func applyDefaultCategoryRules(ctx context.Context, store *storage.Store, classifier *categories.DynamicClassifier) (int, error) {
+	result, err := store.Recategorize(ctx, categories.OnlyUncategorized(classifier.Classify), true)
+	if err != nil {
+		return 0, fmt.Errorf("apply default category rules: %w", err)
+	}
+	return result.Changed, nil
 }
 
 func configuredBudgets(cfg *config.Config) []budgets.Budget {
@@ -439,7 +447,7 @@ func buildEventSink(cfg *config.Config, logger *slog.Logger) (*webhooks.Dispatch
 	return webhooks.New(configs, logger)
 }
 
-func buildWorker(cfg *config.Config, store *storage.Store, engine *alerts.Engine, logger *slog.Logger, metrics *observability.Metrics, bank ingest.Bank, sink events.Sink) (*ingest.Worker, error) {
+func buildWorker(cfg *config.Config, store *storage.Store, engine *alerts.Engine, logger *slog.Logger, metrics *observability.Metrics, bank ingest.Bank, sink events.Sink, classifier *categories.DynamicClassifier) (*ingest.Worker, error) {
 	if bank == nil {
 		return nil, nil
 	}
@@ -450,10 +458,6 @@ func buildWorker(cfg *config.Config, store *storage.Store, engine *alerts.Engine
 		syncTimeout = cfg.EnableBanking.SyncTimeout.Std()
 		lookbackDays = cfg.EnableBanking.InitialLookbackDays
 		overlapDays = cfg.EnableBanking.OverlapDays
-	}
-	classifier, err := buildCategoryClassifier(cfg)
-	if err != nil {
-		return nil, err
 	}
 	worker, err := ingest.New(bank, store, engine, logger, ingest.Config{
 		SyncInterval:        syncInterval,
@@ -474,11 +478,7 @@ func buildWorker(cfg *config.Config, store *storage.Store, engine *alerts.Engine
 	return worker, nil
 }
 
-func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger, logger *slog.Logger, metrics *observability.Metrics, authHandler web.AuthorizationCallback, attachmentService *attachments.Service, taxService *tax.Service, searchService *search.Service, budgetPlanner *budgets.Planner) (*web.Server, error) {
-	classifier, err := buildCategoryClassifier(cfg)
-	if err != nil {
-		return nil, err
-	}
+func newWebServer(cfg *config.Config, store *storage.Store, trigger syncTrigger, logger *slog.Logger, metrics *observability.Metrics, authHandler web.AuthorizationCallback, attachmentService *attachments.Service, taxService *tax.Service, searchService *search.Service, classifier *categories.DynamicClassifier, budgetPlanner *budgets.Planner) (*web.Server, error) {
 	return web.New(web.Config{
 		Username:       cfg.Server.Username,
 		Password:       cfg.Server.Password,

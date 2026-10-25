@@ -150,13 +150,13 @@ func TestSeedPopulatesCoherentDataset(t *testing.T) {
 	subscriptions := make(map[string]analysis.Subscription, len(snapshot.Subscriptions))
 	for _, subscription := range snapshot.Subscriptions {
 		subscriptions[subscription.Counterparty] = subscription
-		if subscription.Category == "Restaurants" || subscription.Category == "Groceries" ||
-			subscription.Category == "Rent" || subscription.Category == "Shopping" {
+		if subscription.Category == "Restaurants & Delivery" || subscription.Category == "Groceries" ||
+			subscription.Category == "Rent" || subscription.Category == "Leisure & Shopping" {
 			t.Errorf("non-subscription category detected: %+v", subscription)
 		}
 	}
 	for _, merchant := range []string{
-		"Spotify", "Netflix", "Amazon Web Services", "GitHub Copilot", "Cloudflare",
+		"Spotify", "Netflix", "Amazon Web Services", "GitHub", "Cloudflare",
 		"JetBrains", "Vodafone", "Gestoría Fiscal", "Adobe",
 	} {
 		if _, ok := subscriptions[merchant]; !ok {
