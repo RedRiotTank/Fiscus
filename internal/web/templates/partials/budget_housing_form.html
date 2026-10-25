@@ -1,0 +1,68 @@
+{{define "budget_housing_form"}}
+<div class="budget-dialog-inner housing-dialog-inner">
+  <header class="budget-dialog-head">
+    <div>
+      <p class="eyebrow">Housing &amp; shared flat</p>
+      <h2 id="budget-housing-title">Configure Rent / Flatmates</h2>
+      <p>Track the part of the rent you actually pay. Flatmate transfers offset the master payment and never count as income.</p>
+    </div>
+    <button class="icon-button" type="button" data-budget-customize-close aria-label="Close">×</button>
+  </header>
+  {{if .Error}}<p class="notice error" role="alert">{{.Error}}</p>{{end}}
+  {{if .Detected}}<p class="housing-detected-note"><span class="badge severity-info">Detected</span> A shared-rent pattern was found in your recent transactions. Review the values before saving.</p>{{end}}
+  <form hx-post="/api/budgets/housing/setup" hx-target="#budget-customize-content" hx-swap="innerHTML">
+    <input type="hidden" name="workspace" value="{{.Workspace}}">
+    <input type="hidden" name="currency" value="{{.Currency}}">
+    <fieldset class="housing-fieldset">
+      <legend>Landlord / master payment</legend>
+      <label>Counterparty
+        <input name="landlord_counterparty" type="text" maxlength="120" required value="{{.Landlord}}" placeholder="e.g. Sonia Reyes Álvarez">
+      </label>
+      {{if gt .MasterAmountMinor 0}}
+        <p class="housing-hint">Detected master payment: <strong>{{money .MasterAmountMinor .Currency}}</strong></p>
+      {{end}}
+    </fieldset>
+    <fieldset class="housing-fieldset">
+      <legend>Your net monthly share</legend>
+      <div class="housing-share-row">
+        <label>Amount
+          <input name="personal_net_share" type="number" min="0" step="0.01" required value="{{moneyInput .PersonalNetShareMinor .Currency}}">
+        </label>
+        <label>Calculation
+          <select name="calculation_mode" aria-label="Housing calculation mode">
+            <option value="fixed_share" {{if eq .CalculationMode "fixed_share"}}selected{{end}}>Fixed monthly share</option>
+            <option value="net_balance" {{if eq .CalculationMode "net_balance"}}selected{{end}}>Net balance (rent minus flats)</option>
+          </select>
+        </label>
+      </div>
+      <p class="housing-hint">Use a fixed share for uneven rooms. The net-balance mode recalculates each month from the actual flatmate transfers received.</p>
+    </fieldset>
+    <fieldset class="housing-fieldset">
+      <legend>Flatmate contributions <span class="muted small">(optional)</span></legend>
+      {{if .Flatmates}}
+        <ul class="housing-flatmate-list">
+          {{range .Flatmates}}
+            <li>
+              <label>
+                <input type="checkbox" name="flatmate" value="{{.Counterparty}}" {{if .Selected}}checked{{end}}>
+                <span>{{.Counterparty}}</span>
+                {{if gt .AmountMinor 0}}<small>{{money .AmountMinor $.Currency}}</small>{{end}}
+                {{if .Detected}}<span class="badge muted">Detected</span>{{end}}
+              </label>
+            </li>
+          {{end}}
+        </ul>
+      {{else}}
+        <p class="housing-hint">No flatmate transfers detected yet. You can add counterparties manually.</p>
+      {{end}}
+      <label>Add another flatmate
+        <input name="new_flatmate" type="text" maxlength="240" placeholder="e.g. Ismael Díaz, Jose Hinojos">
+      </label>
+    </fieldset>
+    <footer class="budget-dialog-foot">
+      <button class="button ghost" type="button" data-budget-customize-close>Dismiss</button>
+      <button class="button" type="submit">Save Housing Rule</button>
+    </footer>
+  </form>
+</div>
+{{end}}

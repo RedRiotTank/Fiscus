@@ -62,6 +62,26 @@
       </div>
     </header>
 
+    {{if and .Housing .Housing.Detection.Found (not .Housing.Rule)}}
+      <div class="budget-messages">
+        <article class="budget-message info">
+          <span class="badge severity-info">Shared rent detected</span>
+          <div>
+            <strong>Shared rent detected. Confirm your setup to track net housing cost.</strong>
+            <p>
+              {{.Housing.Detection.Landlord.Counterparty}} · {{money .Housing.Detection.GrossRentMinor .Housing.Detection.Currency}} master payment
+              {{if .Housing.Detection.Flatmates}}· {{len .Housing.Detection.Flatmates}} flatmate contribution(s){{end}}
+              · tentative net {{money .Housing.Detection.NetShareMinor .Housing.Detection.Currency}}.
+            </p>
+            <button class="button small"
+              hx-get="/api/budgets/housing/setup?workspace={{.Housing.Workspace}}&currency={{.Housing.Currency}}"
+              hx-target="#budget-customize-content" hx-swap="innerHTML"
+              data-budget-customize-open>Review &amp; confirm</button>
+          </div>
+        </article>
+      </div>
+    {{end}}
+
     {{if .BudgetPlan.Nominal}}
       <div class="budget-messages">
         <article class="budget-message info">
@@ -167,6 +187,25 @@
                     <span class="badge {{if eq .Tone "critical"}}error{{else if eq .Tone "warning"}}pending{{else}}ok{{end}}">{{.Percent}}%</span>
                   </div>
                   <progress class="budget-progress {{.Tone}}" max="100" value="{{if gt .Percent 100}}100{{else}}{{.Percent}}{{end}}">{{.Percent}}%</progress>
+                  {{if and (isHousingCategory .Category) $.Housing}}
+                    <div class="housing-category-actions">
+                      {{if $.Housing.Rule}}
+                        <span class="badge ok">Housing rule active</span>
+                        <button class="button ghost small"
+                          hx-get="/api/budgets/housing/setup?workspace={{$.Housing.Workspace}}&currency={{$.Housing.Currency}}"
+                          hx-target="#budget-customize-content" hx-swap="innerHTML"
+                          data-budget-customize-open>Edit Rent / Flatmates</button>
+                      {{else}}
+                        <button class="button ghost small"
+                          hx-get="/api/budgets/housing/setup?workspace={{$.Housing.Workspace}}&currency={{$.Housing.Currency}}"
+                          hx-target="#budget-customize-content" hx-swap="innerHTML"
+                          data-budget-customize-open>Configure Rent / Flatmates</button>
+                        {{if $.Housing.Detection.Found}}
+                          <span class="badge severity-info">Suggestion ready</span>
+                        {{end}}
+                      {{end}}
+                    </div>
+                  {{end}}
                 </li>
               {{end}}
             </ul>

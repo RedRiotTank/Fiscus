@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/domain"
-	"github.com/RedRiotTank/Fiscus/internal/housing"
+	"github.com/RedRiotTank/Fiscus/pkg/housing"
 	"github.com/RedRiotTank/Fiscus/pkg/subscriptions"
 )
 

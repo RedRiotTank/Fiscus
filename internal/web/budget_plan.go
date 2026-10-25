@@ -89,6 +89,9 @@ func (s *Server) loadBudgetPlan(ctx context.Context, data *PageData, spending []
 		return err
 	}
 	transactions = filterTransactions(transactions, allowedAccountIDs(data.Accounts, workspace), workspace)
+	if err := s.loadHousingSetup(ctx, data, workspace, currency, transactions, now); err != nil {
+		return err
+	}
 	taxProvision := make(map[string]int64)
 	if workspace == domain.WorkspaceBusiness {
 		for _, shield := range data.TaxShields {
@@ -440,6 +443,10 @@ func bpsInput(bps int) string {
 		return "0"
 	}
 	return value
+}
+
+func moneyInput(minor int64, currency string) string {
+	return money.Format(minor, currency)
 }
 
 func roundedBPSPercent(bps int) int64 {

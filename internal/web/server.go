@@ -24,6 +24,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/search"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"github.com/RedRiotTank/Fiscus/internal/tax"
+	"github.com/RedRiotTank/Fiscus/pkg/housing"
 	"github.com/RedRiotTank/Fiscus/pkg/icons"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -39,6 +40,10 @@ type Store interface {
 	GetTransaction(ctx context.Context, id int64) (domain.Transaction, error)
 	UpdateTransactionCategory(ctx context.Context, id int64, category string) error
 	UpsertLearnedRule(ctx context.Context, pattern, category, source string) (domain.LearnedRule, error)
+	DeleteLearnedRulesBySource(ctx context.Context, source string) error
+	GetHousingRule(ctx context.Context, workspace, currency string) (domain.HousingRule, bool, error)
+	SaveHousingRule(ctx context.Context, rule domain.HousingRule) (domain.HousingRule, error)
+	DeleteHousingRule(ctx context.Context, workspace, currency string) error
 	ListAlerts(ctx context.Context, limit int) ([]domain.Alert, error)
 	ListConnections(ctx context.Context) ([]domain.Connection, error)
 	GetConnectionByID(ctx context.Context, id int64) (domain.Connection, error)
@@ -200,8 +205,10 @@ func (s *Server) templateFuncs() template.FuncMap {
 		"categoryClass":       categoryClass,
 		"bpsPercent":          bpsPercent,
 		"bpsInput":            bpsInput,
+		"moneyInput":          moneyInput,
 		"categoryEditor":      categoryEditor,
 		"isBizum":             isBizum,
+		"isHousingCategory":   housing.IsCategory,
 	}
 }
 
@@ -234,6 +241,8 @@ func (s *Server) routes() http.Handler {
 	app.HandleFunc("GET /budgets", s.handleBudgets)
 	app.HandleFunc("GET /api/budgets/customize", s.handleBudgetCustomize)
 	app.HandleFunc("POST /api/budgets/customize", s.handleBudgetCustomizeSave)
+	app.HandleFunc("GET /api/budgets/housing/setup", s.handleHousingSetup)
+	app.HandleFunc("POST /api/budgets/housing/setup", s.handleHousingSetupSave)
 	app.HandleFunc("POST /api/budgets/advisory/toggle", s.handleBudgetAdvisoryToggle)
 	app.HandleFunc("POST /attachments", s.handleAttachmentUpload)
 	app.HandleFunc("POST /attachments/repair", s.handleAttachmentRepair)

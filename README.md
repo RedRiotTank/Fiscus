@@ -49,6 +49,8 @@ same environment using the normal serve entrypoint.
   inline category overrides that auto-learn and propagate, dirty merchant
   normalization, Bizum and Revolut P2P handling, YAML rule suggestions, and
   shared-flat housing expense netting
+- Interactive Housing & Shared Flat setup with automatic landlord/flatmate
+  detection, uneven room shares, and fixed-share or net-balance rent tracking
 - Income-driven 50/30/20 budget allocation with deep sub-caps, workspace
   isolation, a dual-ring budget donut, and configurable category assignments
 - Recurring subscription and bank-fee detection with Inactive / Potential Ghost
@@ -373,7 +375,7 @@ profile without hand-picked categories injects the same defaults instead of
 creating an empty budget.
 
 Category shares are entered as percentages of monthly income and are persisted in
-SQLite (`budget_profiles` and `budget_allocations`, schema version 14). There is
+SQLite (`budget_profiles` and `budget_allocations`, schema version 15). There is
 no destructive “apply recommended budgets” action; changes happen only through
 the allocation editor.
 
@@ -381,11 +383,20 @@ The YAML `budgets.items` block remains supported for legacy budget-pacing alerts
 and CLI tooling, but the income-driven Budgets page is managed from the UI and
 SQLite allocation tables:
 
-Housing spending is netted against shared-flat reimbursements. If the account
-pays €1,050 rent and receives two €350 transfers for `Piso octubre`, the budget
-records €350 of Housing / Rent spending. Flatmate reimbursements are treated as
-expense offsets, not payroll or general income, so net income and savings ratios
-stay accurate.
+Housing spending is netted against shared-flat reimbursements. The Budgets page
+detects month-edge master rent transfers and flatmate inflows, then exposes a
+**Configure Rent / Flatmates** modal under Housing / Rent. The modal prefills the
+landlord, master payment, your net monthly share, and detected flatmates. Uneven
+room prices are supported by editing the personal share. Choose **fixed share**
+to report that amount once the master rent is paid, or **net balance** to report
+gross rent minus the actual flatmate transfers received each month. For example,
+€1,050 gross rent minus two €350 flatmate transfers yields €350 of Housing / Rent
+spending. Flatmate reimbursements are treated as expense offsets, not payroll or
+general income, so net income and savings ratios stay accurate.
+
+Housing rules are persisted in SQLite (`housing_rules`, schema version 15) per
+workspace and currency. Saving a rule also assigns matching master and flatmate
+transactions to Housing / Rent and installs learned rules for future ingests.
 
 ```yaml
 budgets:

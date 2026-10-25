@@ -278,3 +278,24 @@ type LearnedRule struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
+
+// Housing rule calculation modes.
+const (
+	// HousingModeNetBalance reports gross master rent minus actual flatmate inflows.
+	HousingModeNetBalance = "net_balance"
+	// HousingModeFixedShare reports the user's fixed personal share once rent is paid.
+	HousingModeFixedShare = "fixed_share"
+)
+
+// HousingRule stores the shared-flat setup for one workspace and currency.
+type HousingRule struct {
+	ID                     int64
+	Workspace              string
+	Currency               string
+	LandlordCounterparty   string
+	PersonalNetShareCents  int64
+	CalculationMode        string
+	FlatmateCounterparties []string
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}

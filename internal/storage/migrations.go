@@ -264,6 +264,24 @@ var migrations = []migration{
 			)`,
 		},
 	},
+	{
+		version: 15,
+		statements: []string{
+			`CREATE TABLE IF NOT EXISTS housing_rules (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				workspace TEXT NOT NULL DEFAULT 'personal',
+				currency TEXT NOT NULL DEFAULT 'EUR',
+				landlord_counterparty TEXT NOT NULL,
+				personal_net_share_cents INTEGER NOT NULL DEFAULT 0,
+				calculation_mode TEXT NOT NULL DEFAULT 'net_balance',
+				flatmate_counterparties TEXT NOT NULL DEFAULT '[]',
+				created_at TEXT NOT NULL,
+				updated_at TEXT NOT NULL,
+				UNIQUE(workspace, currency)
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_housing_rules_workspace ON housing_rules(workspace, currency)`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and

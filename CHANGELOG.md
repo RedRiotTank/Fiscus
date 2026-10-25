@@ -3,6 +3,47 @@
 All notable changes to Fiscus are documented here. Versions use semantic
 versioning and annotated Git tags.
 
+## v1.4.3 - 2026-10-25
+
+Interactive housing setup and shared-rent engine release.
+
+### Added
+
+- Automatic rent and roommate detection in `pkg/housing`:
+  - Scans the last six month-edge windows (day 25 through day 5).
+  - Finds master rent outflows between €400 and €3,000 and ranks recurring,
+    transfer-labelled, and rent-labelled candidates.
+  - Finds flatmate inflows by `piso`/`alquiler`/`rent`/`habitación` notes or by
+    repeated amounts from the same contacts.
+  - Calculates tentative net personal rent as master outflow minus flatmate
+    inflows.
+- Interactive Housing & Shared Flat modal:
+  - Budgets page prompt and detection banner when no rule is configured.
+  - `GET /api/budgets/housing/setup` prefills the landlord, master payment, net
+    monthly share, and detected flatmates.
+  - Editable personal share supports uneven room prices.
+  - Fixed-share or net-balance calculation modes, plus optional manually added
+    flatmates.
+  - `POST /api/budgets/housing/setup` persists the setup and redirects back to
+    the budget panel.
+- Persistence:
+  - Added SQLite `housing_rules` with workspace/currency isolation, landlord,
+    personal share, calculation mode, flatmate JSON, and timestamps.
+  - Latest schema version is 15.
+- Categorization and budget integration:
+  - Saving a rule assigns matching master and flatmate transactions to
+    Housing / Rent and installs learned rules for future syncs.
+  - Fixed-share rules report the personal share once rent is paid.
+  - Net-balance rules subtract the actual flatmate inflows received.
+  - Inbound flatmate transfers are excluded from gross income, so a €1,050 rent
+    with two €350 contributions reports €350 spent under Housing / Rent.
+
+### Verification
+
+- `go test -v -race ./...`
+- `golangci-lint run ./...`
+- `CGO_ENABLED=0 go build -v ./cmd/fiscus`
+
 ## v1.4.2 - 2026-10-25
 
 Housing netting, Revolut P2P, and zero-config budget release.

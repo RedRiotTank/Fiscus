@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RedRiotTank/Fiscus/internal/housing"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
+	"github.com/RedRiotTank/Fiscus/pkg/housing"
 )
 
 func testSpending() []storage.CategorySpending {

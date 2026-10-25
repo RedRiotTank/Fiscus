@@ -13,6 +13,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"github.com/RedRiotTank/Fiscus/internal/treasury"
+	"github.com/RedRiotTank/Fiscus/pkg/housing"
 )
 
 // PageData is the common view model for all templates.
@@ -40,6 +41,7 @@ type PageData struct {
 	Accounts                []domain.Account
 	Transactions            []TransactionView
 	Categories              []string
+	Housing                 *HousingSetupView
 	Alerts                  []AlertView
 	Connections             []ConnectionView
 	Reconciliations         map[string]domain.Reconciliation
@@ -72,6 +74,37 @@ type CurrencySummary struct {
 	Currency string
 	Minor    int64
 	Accounts int
+}
+
+// HousingSetupView supplies the budget-page housing prompt, detection banner,
+// and modal state.
+type HousingSetupView struct {
+	Workspace  string
+	Currency   string
+	Rule       *domain.HousingRule
+	Detection  housing.Detection
+	MasterPaid bool
+}
+
+// HousingFlatmateView is one editable flatmate contribution.
+type HousingFlatmateView struct {
+	Counterparty string
+	AmountMinor  int64
+	Detected     bool
+	Selected     bool
+}
+
+// HousingEditorView is the interactive shared-rent modal model.
+type HousingEditorView struct {
+	Workspace             string
+	Currency              string
+	Landlord              string
+	MasterAmountMinor     int64
+	PersonalNetShareMinor int64
+	CalculationMode       string
+	Flatmates             []HousingFlatmateView
+	Detected              bool
+	Error                 string
 }
 
 // CategorySpendingView is a category total rendered on the overview.
@@ -299,7 +332,18 @@ func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 			return err
 		}
 		monthTransactions = filterTransactions(monthTransactions, allowedAccountIDs(accounts, data.Workspace.View), data.Workspace.View)
-		spending = budgets.NetHousingSpending(spending, monthTransactions)
+		var housingRule *domain.HousingRule
+		if data.Workspace.View != domain.WorkspaceAll {
+			currency := budgetCurrency(accounts)
+			rule, exists, ruleErr := s.store.GetHousingRule(ctx, data.Workspace.View, currency)
+			if ruleErr != nil {
+				return ruleErr
+			}
+			if exists {
+				housingRule = &rule
+			}
+		}
+		spending = budgets.NetHousingSpendingWithRule(spending, monthTransactions, housingRule)
 	}
 	for _, item := range spending {
 		data.CategorySpending = append(data.CategorySpending, CategorySpendingView{

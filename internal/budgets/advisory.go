@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/domain"
-	"github.com/RedRiotTank/Fiscus/internal/housing"
 	"github.com/RedRiotTank/Fiscus/internal/treasury"
+	"github.com/RedRiotTank/Fiscus/pkg/housing"
 )
 
 // Advisory models.

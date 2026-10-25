@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/RedRiotTank/Fiscus/internal/housing"
 	"github.com/RedRiotTank/Fiscus/internal/money"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
+	"github.com/RedRiotTank/Fiscus/pkg/housing"
 )
 
 // Pillar is one macro allocation bucket.
