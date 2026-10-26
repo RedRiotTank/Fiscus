@@ -45,6 +45,9 @@ func NetRecurringBillSpending(spending []storage.CategorySpending, transactions 
 		if tx.Status != domain.TransactionStatusBooked || tx.AmountMinor >= 0 {
 			continue
 		}
+		if isExcludedTransaction(tx) {
+			continue
+		}
 		currency := currencyOf(tx.Currency)
 		for _, rule := range active {
 			if !strings.EqualFold(currency, currencyOf(rule.Currency)) ||

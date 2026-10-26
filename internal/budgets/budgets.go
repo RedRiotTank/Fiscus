@@ -84,6 +84,9 @@ func Compute(spending []storage.CategorySpending, budgets []Budget, now time.Tim
 	now = now.UTC()
 	byKey := make(map[string]int64, len(spending))
 	for _, item := range spending {
+		if isExcludedCategory(item.Category) {
+			continue
+		}
 		category := canonicalSpendingCategory(item.Category)
 		currency := strings.ToUpper(strings.TrimSpace(item.Currency))
 		if currency == "" {

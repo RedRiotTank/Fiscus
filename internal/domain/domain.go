@@ -147,6 +147,13 @@ type Transaction struct {
 	Status       string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+	// PairedTransactionID links the offsetting leg of a pass-through pair.
+	PairedTransactionID *int64
+	// IsBudgetExcluded removes neutralized transfers from income and spend.
+	IsBudgetExcluded bool
+	// PassThroughSuppressed prevents automatic re-pairing after a manual
+	// category change away from the neutral pass-through category.
+	PassThroughSuppressed bool
 }
 
 // IsDebit reports whether the transaction removes money from the account.

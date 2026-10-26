@@ -10,6 +10,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/alerts"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
+	"github.com/RedRiotTank/Fiscus/pkg/transfers"
 )
 
 func TestComputeBudgetStatuses(t *testing.T) {
@@ -49,6 +50,61 @@ func TestComputeP2PAliasCountsAgainstTransfersBudget(t *testing.T) {
 	)
 	if len(statuses) != 1 || statuses[0].SpentMinor != 4_000 || statuses[0].Percent != 40 {
 		t.Fatalf("P2P alias status = %+v", statuses)
+	}
+}
+
+func TestPassThroughPairHasZeroBudgetImpact(t *testing.T) {
+	t.Parallel()
+	day := time.Date(2026, 10, 5, 9, 0, 0, 0, time.UTC)
+	transactions := []domain.Transaction{
+		{
+			AccountID: "acc-1", ExternalID: "mirror-in", AmountMinor: 58_556, Currency: "EUR",
+			BookingDate: day, Counterparty: "Cuenta Remunerada", Category: transfers.CategoryPassThrough,
+			Status: domain.TransactionStatusBooked, IsBudgetExcluded: true,
+		},
+		{
+			AccountID: "acc-1", ExternalID: "mirror-out", AmountMinor: -58_556, Currency: "EUR",
+			BookingDate: day, Counterparty: "Ismael Díaz Díaz", Category: transfers.CategoryPassThrough,
+			Status: domain.TransactionStatusBooked, IsBudgetExcluded: true,
+		},
+	}
+	if income := MonthlyIncomeMinor(transactions, "EUR", day, day.Add(24*time.Hour)); income != 0 {
+		t.Fatalf("pass-through income = %d, want 0", income)
+	}
+	spending := []storage.CategorySpending{
+		{Category: transfers.CategoryPassThrough, Currency: "EUR", Minor: 58_556},
+		{Category: "Transfers / P2P", Currency: "EUR", Minor: 2_500},
+	}
+	plan := BuildPlan(personalProfile(), []Allocation{
+		{Category: CategoryP2P, Pillar: PillarWants, PercentBPS: DefaultP2PWantsBPS},
+	}, spending, 280_000, 0, 280_000, day)
+	var p2p *CategoryPlan
+	for index := range plan.Categories {
+		if plan.Categories[index].Category == CategoryP2P {
+			p2p = &plan.Categories[index]
+		}
+	}
+	if p2p == nil || p2p.SpentMinor != 2_500 {
+		t.Fatalf("P2P spend = %+v, want only the non-neutralized 2500", p2p)
+	}
+	if plan.TotalSpentMinor != 2_500 {
+		t.Fatalf("total spend = %d, want 2500", plan.TotalSpentMinor)
+	}
+}
+
+func TestComputeExcludesPassThroughSpending(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	statuses := Compute(
+		[]storage.CategorySpending{
+			{Category: transfers.CategoryPassThrough, Currency: "EUR", Minor: 58_556},
+			{Category: CategoryP2P, Currency: "EUR", Minor: 1_200},
+		},
+		[]Budget{{Category: CategoryP2P, LimitMinor: 10_000, Currency: "EUR"}},
+		now,
+	)
+	if len(statuses) != 1 || statuses[0].SpentMinor != 1_200 {
+		t.Fatalf("pass-through leaked into legacy budget: %+v", statuses)
 	}
 }
 

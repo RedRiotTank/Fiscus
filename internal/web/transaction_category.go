@@ -14,6 +14,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"github.com/RedRiotTank/Fiscus/pkg/subscriptions"
+	"github.com/RedRiotTank/Fiscus/pkg/transfers"
 )
 
 var bizumPattern = regexp.MustCompile(`(?i)\bbizum\b`)
@@ -25,6 +26,8 @@ type TransactionCategoryView struct {
 	Suggestion           string
 	SuggestionConfidence int
 	QuickActions         []QuickCategoryAction
+	PassThroughLabel     string
+	PassThroughTooltip   string
 }
 
 // QuickCategoryAction is one single-transaction category shortcut.
@@ -52,7 +55,12 @@ func categoryEditor(tx TransactionView, categories []string) TransactionCategory
 		options = append(options, category)
 	}
 	sort.Strings(options)
-	return TransactionCategoryView{Transaction: transaction, Categories: options}
+	return TransactionCategoryView{
+		Transaction:        transaction,
+		Categories:         options,
+		PassThroughLabel:   tx.PassThroughLabel,
+		PassThroughTooltip: tx.PassThroughTooltip,
+	}
 }
 
 // categoryEditor adds quick single-transaction chips for P2P and
@@ -90,7 +98,10 @@ func isBizum(counterparty, description string) bool {
 }
 
 func (s *Server) categoryOptions(extras ...string) []string {
-	seen := map[string]struct{}{categories.DefaultCategory: {}}
+	seen := map[string]struct{}{
+		categories.DefaultCategory:    {},
+		transfers.CategoryPassThrough: {},
+	}
 	if s.classifier != nil {
 		for _, category := range s.classifier.Categories() {
 			if category = strings.TrimSpace(category); category != "" {
@@ -150,17 +161,24 @@ func (s *Server) handleTransactionCategory(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	tx.Category = category
-	if remember && !strings.EqualFold(category, categories.DefaultCategory) {
+	if updated, loadErr := s.store.GetTransaction(r.Context(), id); loadErr == nil {
+		tx = updated
+	} else {
+		s.logger.Error("reload transaction after category update", "transaction_id", id, "error", loadErr)
+	}
+	learnable := remember && !strings.EqualFold(category, categories.DefaultCategory) &&
+		!transfers.IsPassThroughCategory(category)
+	if learnable {
 		if learner, ok := s.classifier.(interface {
 			Learn(domain.Transaction, string)
 		}); ok {
 			learner.Learn(tx, category)
 		}
-	}
-	if remember && !strings.EqualFold(category, categories.DefaultCategory) {
 		s.learnCategoryRule(r.Context(), tx, category)
 	}
-	view := s.categoryEditor(TransactionView{Transaction: tx}, s.categoryOptions(category))
+	views := []TransactionView{{Transaction: tx}}
+	s.enrichPassThroughViews(r.Context(), views)
+	view := s.categoryEditor(views[0], s.categoryOptions(category))
 	s.renderPartialData(w, "transaction_category", view)
 }
 

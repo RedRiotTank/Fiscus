@@ -13,6 +13,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/pkg/housing"
 	"github.com/RedRiotTank/Fiscus/pkg/subscriptions"
+	"github.com/RedRiotTank/Fiscus/pkg/transfers"
 )
 
 // Frequency classifies a recurring charge period.
@@ -127,6 +128,9 @@ func Analyze(transactions []domain.Transaction, now time.Time) Snapshot {
 	fees := make([]Fee, 0)
 	for _, tx := range transactions {
 		if tx.Status != domain.TransactionStatusBooked || tx.AmountMinor >= 0 {
+			continue
+		}
+		if transfers.IsExcluded(tx) {
 			continue
 		}
 		if isRefund(tx) {
@@ -299,6 +303,9 @@ func average(values []int) int {
 }
 
 func isSubscriptionCategory(category string) bool {
+	if transfers.IsPassThroughCategory(category) {
+		return false
+	}
 	category = strings.ToLower(strings.TrimSpace(category))
 	switch category {
 	case "groceries", "restaurants", "restaurants & delivery", "dining", "shopping",

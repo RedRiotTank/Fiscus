@@ -219,8 +219,10 @@ type RunwayView struct {
 // TransactionView augments a transaction with display metadata.
 type TransactionView struct {
 	domain.Transaction
-	AccountName string
-	AccountType string
+	AccountName        string
+	AccountType        string
+	PassThroughLabel   string
+	PassThroughTooltip string
 }
 
 // AlertView augments an alert with display metadata.
@@ -295,6 +297,49 @@ func transactionViews(transactions []domain.Transaction, accounts map[string]dom
 		out = append(out, TransactionView{Transaction: tx, AccountName: name, AccountType: accountType})
 	}
 	return out
+}
+
+// enrichPassThroughViews attaches the linked partner label and tooltip used by
+// the transaction-table pass-through badge.
+func (s *Server) enrichPassThroughViews(ctx context.Context, views []TransactionView) {
+	ids := make([]int64, 0, len(views))
+	for _, view := range views {
+		if view.PairedTransactionID != nil {
+			ids = append(ids, *view.PairedTransactionID)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	partners, err := s.store.GetTransactionsByIDs(ctx, ids)
+	if err != nil {
+		s.logger.Error("load pass-through partners", "error", err)
+		return
+	}
+	for index := range views {
+		pairedID := views[index].PairedTransactionID
+		if pairedID == nil {
+			continue
+		}
+		partner, ok := partners[*pairedID]
+		if !ok {
+			continue
+		}
+		views[index].PassThroughLabel = fmt.Sprintf("⇄ Pass-through (Linked to #%d)", partner.ID)
+		amount := formatMoney(partner.AmountMinor, partner.Currency)
+		if partner.AmountMinor > 0 {
+			amount = "+" + amount
+		}
+		name := strings.TrimSpace(partner.Counterparty)
+		if name == "" {
+			name = strings.TrimSpace(partner.Description)
+		}
+		if name == "" {
+			name = "linked account"
+		}
+		views[index].PassThroughTooltip = fmt.Sprintf("Offset by %s from %s on %s",
+			amount, name, partner.BookingDate.UTC().Format("02 Jan"))
+	}
 }
 
 func alertViews(alerts []domain.Alert, accounts map[string]domain.Account) []AlertView {

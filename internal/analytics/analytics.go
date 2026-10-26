@@ -9,6 +9,7 @@ import (
 
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/treasury"
+	"github.com/RedRiotTank/Fiscus/pkg/transfers"
 )
 
 const (
@@ -86,8 +87,15 @@ func bookedInCurrency(transactions []domain.Transaction, currency string) []doma
 
 func spendingTransactions(transactions []domain.Transaction, currency string) []domain.Transaction {
 	booked := bookedInCurrency(transactions, currency)
-	pairs := treasury.PairTransfers(booked, 3)
-	return treasury.ExcludeTransfers(booked, pairs)
+	filtered := make([]domain.Transaction, 0, len(booked))
+	for _, tx := range booked {
+		if transfers.IsExcluded(tx) {
+			continue
+		}
+		filtered = append(filtered, tx)
+	}
+	pairs := treasury.PairTransfers(filtered, 3)
+	return treasury.ExcludeTransfers(filtered, pairs)
 }
 
 func currencyBalance(accounts []domain.Account, currency string) int64 {

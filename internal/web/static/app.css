@@ -2551,6 +2551,12 @@ select {
   border-color: rgba(192, 132, 252, 0.6);
 }
 
+.badge.category.cat-passthrough {
+  --cat-bg: rgba(148, 163, 184, 0.16);
+  --cat-fg: #cbd5e1;
+  --cat-border: rgba(148, 163, 184, 0.42);
+}
+
 .badge.category.cat-bizum {
   --cat-bg: rgba(192, 132, 252, 0.14);
   --cat-fg: #d8b4fe;
@@ -2561,6 +2567,27 @@ select {
   background: rgba(192, 132, 252, 0.14);
   color: #d8b4fe;
   border-color: rgba(192, 132, 252, 0.32);
+}
+
+.badge.passthrough {
+  background: rgba(148, 163, 184, 0.16);
+  color: #cbd5e1;
+  border-color: rgba(148, 163, 184, 0.42);
+  font-size: 0.64rem;
+  letter-spacing: 0.01em;
+  cursor: help;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .transactions-table .tx-category .category-quick-badge {

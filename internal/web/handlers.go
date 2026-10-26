@@ -62,6 +62,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	transactions = filterTransactions(transactions, allowedAccountIDs(data.Accounts, data.Workspace.View), data.Workspace.View)
 	data.Transactions = transactionViews(transactions, accountMap(data.Accounts))
+	s.enrichPassThroughViews(ctx, data.Transactions)
 	s.render(w, "dashboard", data)
 }
 
@@ -172,6 +173,7 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.Transactions = transactionViews(transactions, accountMap(accounts))
+	s.enrichPassThroughViews(ctx, data.Transactions)
 	categoriesSeen := make([]string, 0, len(data.Transactions))
 	for _, transaction := range data.Transactions {
 		categoriesSeen = append(categoriesSeen, transaction.Category)
@@ -318,7 +320,7 @@ func matchesTransactionFacets(tx domain.Transaction, flow, category string, cate
 	}
 	switch storage.NormalizeCategoryFacet(category) {
 	case storage.CategoryFacetP2P:
-		return transactionCategoryIn(tx.Category, []string{"transfers / p2p", "bizum", "transfers / bizum", "p2p"})
+		return transactionCategoryIn(tx.Category, []string{"transfers / p2p", "bizum", "transfers / bizum", "p2p", "transfers / pass-through", "pass-through"})
 	case storage.CategoryFacetHousing:
 		return transactionCategoryIn(tx.Category, []string{"housing / rent", "housing", "rent", "renta", "alquiler", "mortgage", "hipoteca"})
 	case storage.CategoryFacetUtilities:
@@ -904,7 +906,14 @@ func (s *Server) handleRecategorize(w http.ResponseWriter, r *http.Request) {
 		s.syncNotice(w, http.StatusInternalServerError, "error", "Could not re-run category rules.")
 		return
 	}
-	message := fmt.Sprintf("Examined %d transactions; updated %d.", result.Examined, result.Changed)
+	paired, err := s.store.NeutralizePassThroughs(r.Context(), 3)
+	if err != nil {
+		s.logger.Error("neutralize pass-through transfers", "error", err)
+		s.syncNotice(w, http.StatusInternalServerError, "error", "Could not neutralize pass-through transfers.")
+		return
+	}
+	message := fmt.Sprintf("Examined %d transactions; updated %d; neutralized %d pass-through pair(s).",
+		result.Examined, result.Changed, paired)
 	s.syncNotice(w, http.StatusOK, "success", message)
 }
 

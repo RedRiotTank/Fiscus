@@ -21,6 +21,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/reconciliation"
 	"github.com/RedRiotTank/Fiscus/internal/search"
 	"github.com/RedRiotTank/Fiscus/internal/tax"
+	"github.com/RedRiotTank/Fiscus/pkg/transfers"
 )
 
 var (
@@ -201,6 +202,11 @@ func runServe(args []string, stdout, stderr io.Writer) error {
 		return err
 	} else if changed > 0 {
 		logger.Info("applied default category rules", "changed", changed)
+	}
+	if paired, err := store.NeutralizePassThroughs(appCtx, transfers.DefaultWindowDays); err != nil {
+		return err
+	} else if paired > 0 {
+		logger.Info("neutralized pass-through transfers", "pairs", paired)
 	}
 
 	metrics := observability.New(version)

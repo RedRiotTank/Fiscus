@@ -47,6 +47,7 @@ var knownCategoryStyles = []struct {
 	{names: []string{"emergency fund"}, style: categoryStyle{Class: "cat-emergency", Color: "#2dd4bf"}},
 	{names: []string{"investments", "investment"}, style: categoryStyle{Class: "cat-investments", Color: "#22d3ee"}},
 	{names: []string{"savings", "saving"}, style: categoryStyle{Class: "cat-savings", Color: "#14b8a6"}},
+	{names: []string{"transfers / pass-through", "pass-through", "pass through", "transfers / internal offset"}, style: categoryStyle{Class: "cat-passthrough", Color: "#94a3b8"}},
 	{names: []string{"transfers / bizum", "bizum", "transfers / p2p", "p2p"}, style: categoryStyle{Class: "cat-bizum", Color: "#c084fc"}},
 	{names: []string{"transfer", "transfers"}, style: categoryStyle{Class: "cat-transfer", Color: "#64748b"}},
 	{names: []string{"uncategorized", "uncategorised", ""}, style: categoryStyle{Class: "cat-uncategorized", Color: "#94a3b8"}},

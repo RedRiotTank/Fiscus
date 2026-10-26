@@ -12,6 +12,7 @@ import (
 
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/money"
+	"github.com/RedRiotTank/Fiscus/pkg/transfers"
 )
 
 // RuleExpectedInflow is the alert rule name for missing monthly inflows.
@@ -124,6 +125,9 @@ func inflowReceived(transactions []domain.Transaction, inflow Inflow) bool {
 			continue
 		}
 		if !strings.EqualFold(strings.TrimSpace(tx.Currency), inflow.Currency) {
+			continue
+		}
+		if transfers.IsExcluded(tx) {
 			continue
 		}
 		text := strings.ToLower(strings.TrimSpace(tx.Counterparty + " " + tx.Description))

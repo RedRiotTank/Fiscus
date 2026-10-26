@@ -23,6 +23,7 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"github.com/RedRiotTank/Fiscus/internal/tax"
 	"github.com/RedRiotTank/Fiscus/internal/treasury"
+	"github.com/RedRiotTank/Fiscus/pkg/transfers"
 )
 
 func commandContext(timeout time.Duration) (context.Context, context.CancelFunc) {
@@ -525,6 +526,15 @@ func runRecategorize(args []string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("recategorize: %w", err)
 	}
 	printRecategorizeResult(stdout, result, apply)
+	if apply {
+		paired, err := store.NeutralizePassThroughs(ctx, transfers.DefaultWindowDays)
+		if err != nil {
+			return fmt.Errorf("recategorize: neutralize pass-through transfers: %w", err)
+		}
+		if paired > 0 {
+			_, _ = fmt.Fprintf(stdout, "Neutralized %d pass-through pair(s).\n", paired)
+		}
+	}
 	return nil
 }
 

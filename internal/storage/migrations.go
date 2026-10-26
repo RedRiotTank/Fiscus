@@ -320,6 +320,15 @@ var migrations = []migration{
 			   AND source LIKE 'housing:%'`,
 		},
 	},
+	{
+		version: 19,
+		statements: []string{
+			`ALTER TABLE transactions ADD COLUMN paired_transaction_id INTEGER`,
+			`ALTER TABLE transactions ADD COLUMN budget_excluded INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE transactions ADD COLUMN pass_through_suppressed INTEGER NOT NULL DEFAULT 0`,
+			`CREATE INDEX IF NOT EXISTS idx_transactions_pass_through ON transactions(budget_excluded, booking_date)`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and

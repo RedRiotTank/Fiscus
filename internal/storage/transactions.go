@@ -9,10 +9,12 @@ import (
 	"time"
 
 	"github.com/RedRiotTank/Fiscus/internal/domain"
+	"github.com/RedRiotTank/Fiscus/pkg/transfers"
 )
 
 const transactionColumns = `id, account_id, external_id, amount_minor, currency, booking_date,
-	value_date, counterparty, description, category, notes, status, created_at, updated_at`
+	value_date, counterparty, description, category, notes, status, created_at, updated_at,
+	paired_transaction_id, budget_excluded, pass_through_suppressed`
 
 // FlowFacet is the direction half of the transaction filter toolbar.
 type FlowFacet string
@@ -127,7 +129,7 @@ var (
 		"groceries", "grocery", "supermarket", "supermercado",
 	}
 	p2pFacetCategories = []string{
-		"transfers / p2p", "bizum", "transfers / bizum", "p2p",
+		"transfers / p2p", "bizum", "transfers / bizum", "p2p", "transfers / pass-through", "pass-through",
 	}
 	cashFacetCategories = []string{
 		"cash / atm", "cash", "atm", "cajero", "reintegro",
@@ -263,18 +265,28 @@ func normalizeLimit(limit int) int {
 
 func scanTransaction(row rowScanner) (domain.Transaction, error) {
 	var (
-		t         domain.Transaction
-		booking   string
-		valueDate sql.NullString
-		createdAt string
-		updatedAt string
+		t          domain.Transaction
+		booking    string
+		valueDate  sql.NullString
+		createdAt  string
+		updatedAt  string
+		pairedID   sql.NullInt64
+		excluded   int
+		suppressed int
 	)
 	if err := row.Scan(
 		&t.ID, &t.AccountID, &t.ExternalID, &t.AmountMinor, &t.Currency, &booking,
 		&valueDate, &t.Counterparty, &t.Description, &t.Category, &t.Notes, &t.Status, &createdAt, &updatedAt,
+		&pairedID, &excluded, &suppressed,
 	); err != nil {
 		return domain.Transaction{}, err
 	}
+	if pairedID.Valid {
+		id := pairedID.Int64
+		t.PairedTransactionID = &id
+	}
+	t.IsBudgetExcluded = excluded != 0
+	t.PassThroughSuppressed = suppressed != 0
 	var err error
 	if t.BookingDate, err = decodeTime(booking); err != nil {
 		return domain.Transaction{}, err
@@ -371,7 +383,10 @@ func (s *Store) UpsertTransaction(ctx context.Context, t *domain.Transaction) (i
 		_, execErr := tx.ExecContext(ctx, `
 			UPDATE transactions SET
 				amount_minor = ?, currency = ?, booking_date = ?, value_date = ?,
-				counterparty = ?, description = ?, category = ?, notes = ?, status = ?, updated_at = ?
+				counterparty = ?, description = ?,
+				category = CASE WHEN budget_excluded = 1 OR LOWER(TRIM(category)) LIKE '%pass-through%'
+					THEN category ELSE ? END,
+				notes = ?, status = ?, updated_at = ?
 			WHERE id = ?`,
 			t.AmountMinor, t.Currency, encodeTime(t.BookingDate), encodeNullTime(t.ValueDate),
 			t.Counterparty, t.Description, t.Category, t.Notes, t.Status, encodeTime(t.UpdatedAt), existingID,
@@ -405,8 +420,9 @@ func (s *Store) GetTransaction(ctx context.Context, id int64) (domain.Transactio
 	return t, nil
 }
 
-// UpdateTransactionCategory changes a transaction's category. It is used by
-// interactive categorization flows such as Telegram inline keyboards.
+// UpdateTransactionCategory changes a transaction's category. Manually moving
+// one leg away from Transfers / Pass-through unpairs both legs and restores
+// them to active budget aggregation.
 func (s *Store) UpdateTransactionCategory(ctx context.Context, id int64, category string) error {
 	if id <= 0 {
 		return ErrNotFound
@@ -415,18 +431,77 @@ func (s *Store) UpdateTransactionCategory(ctx context.Context, id int64, categor
 	if category == "" {
 		category = "Uncategorized"
 	}
-	res, err := s.db.ExecContext(ctx,
-		`UPDATE transactions SET category = ?, updated_at = ? WHERE id = ?`,
-		category, encodeTime(nowUTC()), id)
-	if err != nil {
-		return fmt.Errorf("storage: update transaction category: %w", err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("storage: update transaction category: %w", err)
-	}
-	if n == 0 {
+	var (
+		current  string
+		pairedID sql.NullInt64
+	)
+	err := s.db.QueryRowContext(ctx,
+		`SELECT category, paired_transaction_id FROM transactions WHERE id = ?`, id).
+		Scan(&current, &pairedID)
+	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("storage: inspect transaction category: %w", err)
+	}
+
+	now := encodeTime(nowUTC())
+	if pairedID.Valid && !transfers.IsPassThroughCategory(category) {
+		return s.unpairPassThrough(ctx, id, pairedID.Int64, category, now)
+	}
+
+	excluded := 0
+	suppressed := 0
+	if transfers.IsPassThroughCategory(category) {
+		excluded = 1
+		suppressed = 1
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE transactions SET
+			category = ?,
+			budget_excluded = ?,
+			pass_through_suppressed = CASE WHEN ? = 1 THEN 0 ELSE pass_through_suppressed END,
+			updated_at = ?
+		WHERE id = ?`,
+		category, excluded, suppressed, now, id); err != nil {
+		return fmt.Errorf("storage: update transaction category: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) unpairPassThrough(ctx context.Context, id, partnerID int64, category, updatedAt string) error {
+	sqlTx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("storage: begin unpair pass-through: %w", err)
+	}
+	defer func() { _ = sqlTx.Rollback() }()
+
+	if _, err := sqlTx.ExecContext(ctx, `
+		UPDATE transactions SET
+			category = ?, paired_transaction_id = NULL, budget_excluded = 0,
+			pass_through_suppressed = 1, updated_at = ?
+		WHERE id = ?`, category, updatedAt, id); err != nil {
+		return fmt.Errorf("storage: unpair pass-through transaction: %w", err)
+	}
+
+	partnerCategory := ""
+	if err := sqlTx.QueryRowContext(ctx,
+		`SELECT category FROM transactions WHERE id = ?`, partnerID).Scan(&partnerCategory); err != nil &&
+		!errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("storage: inspect pass-through partner: %w", err)
+	}
+	if transfers.IsPassThroughCategory(partnerCategory) {
+		partnerCategory = "Transfers / P2P"
+	}
+	if _, err := sqlTx.ExecContext(ctx, `
+		UPDATE transactions SET
+			category = ?, paired_transaction_id = NULL, budget_excluded = 0,
+			pass_through_suppressed = 1, updated_at = ?
+		WHERE id = ?`, partnerCategory, updatedAt, partnerID); err != nil {
+		return fmt.Errorf("storage: unpair pass-through partner: %w", err)
+	}
+	if err := sqlTx.Commit(); err != nil {
+		return fmt.Errorf("storage: commit unpair pass-through: %w", err)
 	}
 	return nil
 }
@@ -533,6 +608,10 @@ func (s *Store) SpendingByCategory(ctx context.Context, from, to time.Time) ([]C
 			COALESCE(SUM(-amount_minor), 0)
 		FROM transactions
 		WHERE amount_minor < 0 AND status = ? AND booking_date >= ? AND booking_date < ?
+		  AND budget_excluded = 0
+		  AND LOWER(TRIM(category)) NOT LIKE '%pass-through%'
+		  AND LOWER(TRIM(category)) NOT LIKE '%pass through%'
+		  AND LOWER(TRIM(category)) NOT LIKE '%internal offset%'
 		GROUP BY 1, 2
 		ORDER BY 1 ASC, 2 ASC`,
 		domain.TransactionStatusBooked, encodeTime(from), encodeTime(to),
@@ -629,7 +708,13 @@ func (s *Store) CountTransactionsMatching(ctx context.Context, filter Transactio
 // category and currency, restricted to accountIDs. An empty slice includes all
 // accounts.
 func (s *Store) SpendingByCategoryForAccounts(ctx context.Context, from, to time.Time, accountIDs []string) ([]CategorySpending, error) {
-	where := []string{"amount_minor < 0", "status = ?", "booking_date >= ?", "booking_date < ?"}
+	where := []string{
+		"amount_minor < 0", "status = ?", "booking_date >= ?", "booking_date < ?",
+		"budget_excluded = 0",
+		"LOWER(TRIM(category)) NOT LIKE '%pass-through%'",
+		"LOWER(TRIM(category)) NOT LIKE '%pass through%'",
+		"LOWER(TRIM(category)) NOT LIKE '%internal offset%'",
+	}
 	args := []any{domain.TransactionStatusBooked, encodeTime(from), encodeTime(to)}
 	if clause, clauseArgs := accountIDsClause(accountIDs); clause != "" {
 		where = append(where, clause)

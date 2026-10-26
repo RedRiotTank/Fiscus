@@ -15,6 +15,9 @@
       <label for="remember-{{.Transaction.ID}}" title="Uncheck for a one-off variable utility bill or a single transfer">Remember for all transfers to this person</label>
     </span>
   </form>
+  {{if .PassThroughLabel}}
+    <span class="badge passthrough" title="{{.PassThroughTooltip}}">{{.PassThroughLabel}}<span class="visually-hidden">{{.PassThroughTooltip}}</span></span>
+  {{end}}
   {{if .Suggestion}}
     <button type="button" class="category-confirm-chip"
       hx-patch="/api/transactions/{{.Transaction.ID}}/category"

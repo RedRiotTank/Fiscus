@@ -136,6 +136,9 @@ func ComputeAdvisory(transactions []domain.Transaction, activeBudgets []Budget, 
 		if tx.Status != domain.TransactionStatusBooked {
 			continue
 		}
+		if isExcludedTransaction(tx) {
+			continue
+		}
 		if tx.BookingDate.Before(windowStart) || tx.BookingDate.After(now) {
 			continue
 		}
@@ -221,6 +224,9 @@ func MonthlyIncomeMinor(transactions []domain.Transaction, currency string, from
 		if tx.AmountMinor <= 0 {
 			continue
 		}
+		if isExcludedTransaction(tx) {
+			continue
+		}
 		if _, internal := internalIDs[tx.ID]; internal {
 			continue
 		}
@@ -258,6 +264,9 @@ func computeCurrencyAdvisory(
 		if tx.AmountMinor <= 0 {
 			continue
 		}
+		if isExcludedTransaction(tx) {
+			continue
+		}
 		if _, internal := internalIDs[tx.ID]; internal {
 			continue
 		}
@@ -282,6 +291,9 @@ func computeCurrencyAdvisory(
 	categoryDisplay := make(map[string]string)
 	for _, tx := range currencyTransactions {
 		if tx.AmountMinor >= 0 {
+			continue
+		}
+		if isExcludedTransaction(tx) {
 			continue
 		}
 		if _, internal := internalIDs[tx.ID]; internal {
@@ -330,6 +342,9 @@ func computeCurrencyAdvisory(
 		monthlySpendByBucket[BucketForCategory(categoryDisplay[key])] += mu
 	}
 	for _, pair := range pairs {
+		if isExcludedTransaction(pair.Debit) || isExcludedTransaction(pair.Credit) {
+			continue
+		}
 		if currencyOf(pair.Debit.Currency) == currency {
 			monthlySpendByBucket[BucketSavings] += -pair.Debit.AmountMinor / int64(months)
 		}
@@ -454,6 +469,9 @@ func netHousingReimbursements(seriesByCategory map[string][]int64, transactions 
 	}
 	for _, tx := range transactions {
 		if currencyOf(tx.Currency) != currency || !housing.IsReimbursement(tx) {
+			continue
+		}
+		if isExcludedTransaction(tx) {
 			continue
 		}
 		index := monthIndex(firstMonth, tx.BookingDate)
@@ -621,6 +639,9 @@ func bucketOrder(bucket string) int {
 }
 
 func excludedIncomeCategory(category string) bool {
+	if isExcludedCategory(category) {
+		return true
+	}
 	switch strings.ToLower(strings.TrimSpace(category)) {
 	case "transfer", "transfers", "transfers / p2p", "p2p", "housing", "housing / rent", "rent",
 		"mortgage", "alquiler", "renta", "loan", "loans", "financing", "tax", "taxes", "vat", "irpf":
@@ -631,6 +652,9 @@ func excludedIncomeCategory(category string) bool {
 }
 
 func excludedSpendingCategory(category string) bool {
+	if isExcludedCategory(category) {
+		return true
+	}
 	switch strings.ToLower(strings.TrimSpace(category)) {
 	case "transfer", "transfers", "transfers / p2p", "p2p", "loan", "loans", "financing",
 		"tax", "taxes", "vat", "irpf":

@@ -62,6 +62,9 @@ func netHousingWithRule(spending []storage.CategorySpending, transactions []doma
 		if tx.Status != domain.TransactionStatusBooked || !strings.EqualFold(currencyOf(tx.Currency), currency) {
 			continue
 		}
+		if isExcludedTransaction(tx) {
+			continue
+		}
 		if housing.IsMasterPayment(tx, rule) {
 			masterOutflow += -tx.AmountMinor
 			if !housing.IsCategory(tx.Category) {
@@ -144,6 +147,9 @@ func netHousingFallback(spending []storage.CategorySpending, transactions []doma
 			housing.IsCategory(tx.Category) {
 			continue
 		}
+		if isExcludedTransaction(tx) {
+			continue
+		}
 		currency := currencyOf(tx.Currency)
 		category := canonicalSpendingCategory(tx.Category)
 		adjustments[key{category: category, currency: currency}] += -tx.AmountMinor
@@ -161,6 +167,9 @@ func netHousingFallback(spending []storage.CategorySpending, transactions []doma
 
 	for _, tx := range transactions {
 		if tx.Status != domain.TransactionStatusBooked || !housing.IsReimbursement(tx) {
+			continue
+		}
+		if isExcludedTransaction(tx) {
 			continue
 		}
 		grossHousing[currencyOf(tx.Currency)] -= tx.AmountMinor

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/RedRiotTank/Fiscus/internal/domain"
+	"github.com/RedRiotTank/Fiscus/pkg/transfers"
 )
 
 // CategoryShift aggregates proposed category changes with the same source and
@@ -71,6 +72,9 @@ func (s *Store) recategorize(ctx context.Context, classify func(domain.Transacti
 			return RecategorizeResult{}, fmt.Errorf("storage: scan transaction for recategorization: %w", scanErr)
 		}
 		result.Examined++
+		if transfers.IsExcluded(tx) || transfers.IsPassThroughCategory(tx.Category) {
+			continue
+		}
 		next := strings.TrimSpace(classify(tx))
 		if next == "" || next == tx.Category {
 			continue

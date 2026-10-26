@@ -20,13 +20,13 @@ func TestTransactionFacetQueryBuilderCombinesFlowAndCategory(t *testing.T) {
 	}{
 		{name: "inflows", filter: TransactionFilter{Flow: FlowInflows}, wantSQL: []string{"amount_minor > 0"}},
 		{name: "outflows", filter: TransactionFilter{Flow: FlowOutflows}, wantSQL: []string{"amount_minor < 0"}},
-		{name: "p2p", filter: TransactionFilter{Category: CategoryFacetP2P}, wantSQL: []string{"LOWER(TRIM(category)) IN"}, wantArgs: 4},
+		{name: "p2p", filter: TransactionFilter{Category: CategoryFacetP2P}, wantSQL: []string{"LOWER(TRIM(category)) IN"}, wantArgs: 6},
 		{name: "needs", filter: TransactionFilter{Category: CategoryFacetNeeds, Categories: []string{"Utilities & Telecom", "Groceries"}}, wantSQL: []string{"LOWER(TRIM(category)) IN"}, wantArgs: 2},
 		{name: "wants empty", filter: TransactionFilter{Category: CategoryFacetWants}, wantSQL: []string{"1 = 0"}},
-		{name: "wants p2p aliases", filter: TransactionFilter{Category: CategoryFacetWants, Categories: []string{"Transfers / P2P"}}, wantSQL: []string{"LOWER(TRIM(category)) IN"}, wantArgs: 4},
-		{name: "exact p2p aliases", filter: TransactionFilter{CategoryName: "Transfers / P2P"}, wantSQL: []string{"LOWER(TRIM(category)) IN"}, wantArgs: 4},
+		{name: "wants p2p aliases", filter: TransactionFilter{Category: CategoryFacetWants, Categories: []string{"Transfers / P2P"}}, wantSQL: []string{"LOWER(TRIM(category)) IN"}, wantArgs: 6},
+		{name: "exact p2p aliases", filter: TransactionFilter{CategoryName: "Transfers / P2P"}, wantSQL: []string{"LOWER(TRIM(category)) IN"}, wantArgs: 6},
 		{name: "outflows housing", filter: TransactionFilter{Flow: FlowOutflows, Category: CategoryFacetHousing}, wantSQL: []string{"amount_minor < 0", "LOWER(TRIM(category)) IN"}, wantArgs: 7},
-		{name: "inflows p2p", filter: TransactionFilter{Flow: FlowInflows, Category: CategoryFacetP2P}, wantSQL: []string{"amount_minor > 0", "LOWER(TRIM(category)) IN"}, wantArgs: 4},
+		{name: "inflows p2p", filter: TransactionFilter{Flow: FlowInflows, Category: CategoryFacetP2P}, wantSQL: []string{"amount_minor > 0", "LOWER(TRIM(category)) IN"}, wantArgs: 6},
 		{name: "all", filter: TransactionFilter{Flow: FlowAll, Category: CategoryFacetAll}, rejectSQL: "amount_minor"},
 	}
 	for _, test := range tests {

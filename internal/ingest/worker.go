@@ -96,6 +96,11 @@ type UncategorizedNotifier interface {
 	NotifyUncategorized(ctx context.Context, tx domain.Transaction) error
 }
 
+// PassThroughNeutralizer detects offsetting mirror transfers after ingestion.
+type PassThroughNeutralizer interface {
+	NeutralizePassThroughs(ctx context.Context, windowDays int) (int, error)
+}
+
 // Observer receives sync telemetry. Implementations must be safe for concurrent
 // use. A nil observer disables observation.
 type Observer interface {
@@ -862,6 +867,13 @@ func (w *Worker) syncTransactions(ctx context.Context, account domain.Account, c
 		if _, err := w.evaluator.OnTransaction(ctx, tx, account); err != nil {
 			w.logger.Error("alert rule evaluation failed",
 				"account_id", account.ID, "transaction_id", tx.ExternalID, "error", err)
+		}
+	}
+	if neutralizer, ok := w.store.(PassThroughNeutralizer); ok {
+		if paired, err := neutralizer.NeutralizePassThroughs(ctx, 3); err != nil {
+			w.logger.Error("pass-through neutralization failed", "account_id", account.ID, "error", err)
+		} else if paired > 0 {
+			w.logger.Info("neutralized pass-through transfers", "account_id", account.ID, "pairs", paired)
 		}
 	}
 	return inserted, nil

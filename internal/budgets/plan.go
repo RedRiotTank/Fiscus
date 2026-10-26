@@ -229,6 +229,9 @@ func BuildPlan(profile Profile, allocations []Allocation, spending []storage.Cat
 	}
 	byCategory := make(map[string]int64, len(spending))
 	for _, item := range spending {
+		if isExcludedCategory(item.Category) {
+			continue
+		}
 		category := strings.ToLower(canonicalSpendingCategory(item.Category))
 		currency := strings.ToUpper(strings.TrimSpace(item.Currency))
 		if currency == "" {

@@ -59,6 +59,8 @@ type Store interface {
 	SpendingByCategory(ctx context.Context, from, to time.Time) ([]storage.CategorySpending, error)
 	SpendingByCategoryForAccounts(ctx context.Context, from, to time.Time, accountIDs []string) ([]storage.CategorySpending, error)
 	ListTransactionsBetween(ctx context.Context, from, to time.Time) ([]domain.Transaction, error)
+	GetTransactionsByIDs(ctx context.Context, ids []int64) (map[int64]domain.Transaction, error)
+	NeutralizePassThroughs(ctx context.Context, windowDays int) (int, error)
 	UpdateTransactionNotes(ctx context.Context, id int64, notes string) error
 	SetAccountType(ctx context.Context, accountID, accountType string) error
 	Recategorize(ctx context.Context, classify func(domain.Transaction) string, apply bool) (storage.RecategorizeResult, error)
