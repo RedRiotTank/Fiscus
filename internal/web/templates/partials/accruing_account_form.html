@@ -21,7 +21,11 @@
         <input name="anchor_balance" type="text" inputmode="decimal" value="{{.AnchorBalance}}" placeholder="3450.00" required>
       </label>
       <label>Anchor date
-        <input name="anchor_date" type="date" value="{{.AnchorDate}}" required>
+        <div class="accruing-date-row">
+          <input name="anchor_date" type="date" value="{{.AnchorDate}}" required>
+          <button class="button ghost small" type="button" data-accruing-today>Today</button>
+        </div>
+        <span class="muted small">Use today when entering your current balance.</span>
       </label>
       <label>APY / TAE (%)
         <input name="apy_percent" type="number" step="0.01" min="0" max="100" value="{{.APYPercent}}" placeholder="3.10" required>

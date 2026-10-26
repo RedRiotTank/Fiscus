@@ -3173,3 +3173,13 @@ select {
   align-items: center;
   gap: 6px;
 }
+
+.accruing-date-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.accruing-date-row input {
+  flex: 1;
+}

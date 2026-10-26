@@ -20,6 +20,16 @@
   }
 
   document.addEventListener('click', function (event) {
+    if (event.target && event.target.closest && event.target.closest('[data-accruing-today]')) {
+      var form = event.target.closest('form');
+      var input = form && form.querySelector('input[name="anchor_date"]');
+      if (input) {
+        var today = new Date();
+        var local = new Date(today.getTime() - today.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+        input.value = local;
+      }
+      return;
+    }
     if (event.target && event.target.closest && event.target.closest('[data-accruing-close]')) {
       closeDialog();
       return;
