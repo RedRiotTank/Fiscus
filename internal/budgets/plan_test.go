@@ -148,6 +148,29 @@ func TestBuildPlanCountsAccruingSavingsTransfersUnderSavings(t *testing.T) {
 	}
 }
 
+func TestSavingsTransferDoesNotInflateWantsSpend(t *testing.T) {
+	t.Parallel()
+	allocations := []Allocation{
+		{Category: "Restaurants & Delivery", Pillar: PillarWants, PercentBPS: 1200},
+		{Category: CategoryP2P, Pillar: PillarWants, PercentBPS: DefaultP2PWantsBPS},
+		{Category: CategoryAccruingSavings, Pillar: PillarSavings, PercentBPS: DefaultAccruingSavingsBPS},
+	}
+	spending := []storage.CategorySpending{
+		{Category: "Restaurants & Delivery", Currency: "EUR", Minor: 10_513},
+		{Category: CategoryAccruingSavings, Currency: "EUR", Minor: 100_000},
+	}
+	plan := BuildPlan(personalProfile(), allocations, spending, 280_000, 0, 280_000, time.Now())
+	if plan.Pillars[1].Label != "Wants" || plan.Pillars[1].SpentMinor != 10_513 {
+		t.Fatalf("wants spend = %+v, want 10513", plan.Pillars[1])
+	}
+	if plan.Pillars[2].Label != "Savings & Investment" || plan.Pillars[2].SpentMinor != 100_000 {
+		t.Fatalf("savings spend = %+v, want 100000", plan.Pillars[2])
+	}
+	if BucketForCategory(CategoryAccruingSavings) != BucketSavings {
+		t.Fatalf("savings category bucket = %q", BucketForCategory(CategoryAccruingSavings))
+	}
+}
+
 func TestEnsureAccruingSavingsAllocationRebalancesSavingsPillar(t *testing.T) {
 	t.Parallel()
 	allocations := []Allocation{

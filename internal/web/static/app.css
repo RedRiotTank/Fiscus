@@ -3163,3 +3163,7 @@ select {
   color: var(--muted);
   font-size: 0.64rem;
 }
+
+.savings-prompt {
+  margin: 0 0 14px;
+}

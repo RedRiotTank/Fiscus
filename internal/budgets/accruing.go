@@ -8,7 +8,7 @@ import (
 const (
 	// CategoryAccruingSavings is the budget category for transfers that fund a
 	// manual accruing savings account.
-	CategoryAccruingSavings = "Savings / Accruing"
+	CategoryAccruingSavings = "Savings & Investments"
 	// DefaultAccruingSavingsBPS reserves 5% of income when an accruing account
 	// exists and the plan has no explicit savings-transfer category.
 	DefaultAccruingSavingsBPS = 500

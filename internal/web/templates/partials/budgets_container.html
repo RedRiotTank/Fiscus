@@ -1,5 +1,6 @@
 {{define "budgets_container"}}
 <div class="page-stack" id="budgets-container">
+  {{template "savings_prompt" .}}
   <nav class="month-nav" aria-label="Budget month navigation">
     <a class="button ghost small month-nav-arrow" href="{{.BudgetPrevHref}}"
       hx-get="{{.BudgetPrevHref}}" hx-target="#budgets-container" hx-swap="outerHTML" hx-push-url="true"

@@ -10,6 +10,7 @@ import (
 
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/pkg/accrual"
+	"github.com/RedRiotTank/Fiscus/pkg/categorizer"
 )
 
 const accruingAccountColumns = `id, workspace_id, name, currency, anchor_balance_cents,
@@ -137,16 +138,26 @@ func (s *Store) LinkAccruingTransfers(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if len(accounts) == 0 {
-		return 0, nil
-	}
 	synced, err := s.ListAccounts(ctx)
 	if err != nil {
 		return 0, err
 	}
 	workspaceByAccount := make(map[string]string, len(synced))
+	kindByAccount := make(map[string]string, len(synced))
+	type accountHint struct {
+		id   string
+		text string
+	}
+	hints := make([]accountHint, 0, len(synced)*2)
 	for _, account := range synced {
 		workspaceByAccount[account.ID] = domain.NormalizeAccountType(account.Type)
+		kindByAccount[account.ID] = domain.NormalizeAccountKind(account.Kind)
+		for _, value := range []string{account.Name, account.IBAN, account.ID} {
+			value = strings.ToLower(strings.TrimSpace(value))
+			if len(value) >= 3 {
+				hints = append(hints, accountHint{id: account.ID, text: value})
+			}
+		}
 	}
 	transactions, err := s.ListTransactionsBetween(ctx,
 		time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -156,6 +167,80 @@ func (s *Store) LinkAccruingTransfers(ctx context.Context) (int, error) {
 	}
 	changed := 0
 	seen := make(map[int64]struct{})
+	apply := func(tx domain.Transaction, category string, excluded bool) error {
+		if _, done := seen[tx.ID]; done {
+			return nil
+		}
+		seen[tx.ID] = struct{}{}
+		if strings.EqualFold(tx.Category, category) && tx.IsBudgetExcluded == excluded {
+			return nil
+		}
+		if err := s.UpdateTransactionCategory(ctx, tx.ID, category); err != nil {
+			return err
+		}
+		changed++
+		return nil
+	}
+
+	usedSavingsTransfers := make(map[int64]struct{})
+	// Generic savings routing: savings patterns, account names/hints, or an
+	// exact offsetting movement into an account marked savings/investment.
+	for _, tx := range transactions {
+		if tx.Status != domain.TransactionStatusBooked || tx.AmountMinor == 0 {
+			continue
+		}
+		text := strings.TrimSpace(tx.Counterparty + " " + tx.Description)
+		lowerText := strings.ToLower(text)
+		kind := kindByAccount[tx.AccountID]
+		matched := kind == domain.AccountKindSavings || kind == domain.AccountKindInvestment ||
+			categorizer.IsSavingsTransferText(text)
+		if !matched {
+			for _, hint := range hints {
+				if hint.id != tx.AccountID && strings.Contains(lowerText, hint.text) {
+					matched = true
+					break
+				}
+			}
+		}
+		if !matched && kind == domain.AccountKindChecking {
+			for _, candidate := range transactions {
+				candidateKind := kindByAccount[candidate.AccountID]
+				if candidateKind != domain.AccountKindSavings && candidateKind != domain.AccountKindInvestment {
+					continue
+				}
+				if candidate.Status != domain.TransactionStatusBooked || candidate.AmountMinor != -tx.AmountMinor {
+					continue
+				}
+				if !strings.EqualFold(candidate.Currency, tx.Currency) {
+					continue
+				}
+				if _, used := usedSavingsTransfers[candidate.ID]; used {
+					continue
+				}
+				distance := tx.BookingDate.Sub(candidate.BookingDate)
+				if distance < 0 {
+					distance = -distance
+				}
+				if distance > 72*time.Hour {
+					continue
+				}
+				usedSavingsTransfers[candidate.ID] = struct{}{}
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		category, excluded := accrual.CategoryForTransaction(tx.AmountMinor)
+		if kind == domain.AccountKindSavings || kind == domain.AccountKindInvestment {
+			category, excluded = accrual.CategoryWithdrawal, true
+		}
+		if err := apply(tx, category, excluded); err != nil {
+			return changed, err
+		}
+	}
+
 	for _, account := range accounts {
 		if !account.IsActive {
 			continue
@@ -185,15 +270,9 @@ func (s *Store) LinkAccruingTransfers(ctx context.Context) (int, error) {
 				continue
 			}
 			category, excluded := accrual.CategoryForTransaction(tx.AmountMinor)
-			if strings.EqualFold(tx.Category, category) && tx.IsBudgetExcluded == excluded {
-				seen[tx.ID] = struct{}{}
-				continue
-			}
-			if err := s.UpdateTransactionCategory(ctx, tx.ID, category); err != nil {
+			if err := apply(tx, category, excluded); err != nil {
 				return changed, err
 			}
-			seen[tx.ID] = struct{}{}
-			changed++
 		}
 	}
 	return changed, nil

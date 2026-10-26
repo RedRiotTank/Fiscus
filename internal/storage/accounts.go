@@ -12,7 +12,7 @@ import (
 )
 
 const accountColumns = `id, connection_id, iban, name, owner_name, currency,
-	type, type_manual, balance_minor, balance_type, balance_updated_at, rate_limited_until,
+	type, type_manual, account_type, balance_minor, balance_type, balance_updated_at, rate_limited_until,
 	last_rate_limit_reason, created_at, updated_at`
 
 func scanAccount(row rowScanner) (domain.Account, error) {
@@ -27,12 +27,13 @@ func scanAccount(row rowScanner) (domain.Account, error) {
 	)
 	if err := row.Scan(
 		&a.ID, &a.ConnectionID, &a.IBAN, &a.Name, &a.OwnerName, &a.Currency,
-		&a.Type, &typeManual, &a.BalanceMinor, &a.BalanceType, &balanceAt, &rateLimited, &rateLimitNote,
+		&a.Type, &typeManual, &a.Kind, &a.BalanceMinor, &a.BalanceType, &balanceAt, &rateLimited, &rateLimitNote,
 		&createdAt, &updatedAt,
 	); err != nil {
 		return domain.Account{}, err
 	}
 	a.TypeManual = typeManual != 0
+	a.Kind = domain.NormalizeAccountKind(a.Kind)
 	var err error
 	if a.BalanceUpdatedAt, err = decodeNullTime(balanceAt); err != nil {
 		return domain.Account{}, err
@@ -73,11 +74,12 @@ func (s *Store) UpsertAccount(ctx context.Context, a *domain.Account) error {
 	}
 
 	typeHint := nullableString(a.Type)
+	kindHint := domain.NormalizeAccountKind(a.Kind)
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO accounts (
 			id, connection_id, iban, name, owner_name, currency,
-			type, balance_minor, balance_type, balance_updated_at, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, 'personal'), ?, ?, ?, ?, ?)
+			type, account_type, balance_minor, balance_type, balance_updated_at, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, 'personal'), COALESCE(NULLIF(?, ''), 'checking'), ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			connection_id = excluded.connection_id,
 			iban = excluded.iban,
@@ -91,7 +93,7 @@ func (s *Store) UpsertAccount(ctx context.Context, a *domain.Account) error {
 			END,
 			updated_at = excluded.updated_at`,
 		a.ID, a.ConnectionID, a.IBAN, a.Name, a.OwnerName, a.Currency,
-		typeHint, a.BalanceMinor, a.BalanceType, encodeNullTime(a.BalanceUpdatedAt),
+		typeHint, kindHint, a.BalanceMinor, a.BalanceType, encodeNullTime(a.BalanceUpdatedAt),
 		encodeTime(a.CreatedAt), encodeTime(a.UpdatedAt),
 		typeHint, typeHint,
 	)
@@ -129,6 +131,29 @@ func (s *Store) SetAccountType(ctx context.Context, accountID, accountType strin
 	n, err := res.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("storage: set account type: %w", err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetAccountKind assigns the liquidity role (checking, savings, or investment)
+// to an account. Unknown accounts return ErrNotFound.
+func (s *Store) SetAccountKind(ctx context.Context, accountID, kind string) error {
+	if accountID == "" {
+		return errors.New("storage: account ID is required")
+	}
+	kind = domain.NormalizeAccountKind(kind)
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE accounts SET account_type = ?, updated_at = ? WHERE id = ?`,
+		kind, encodeTime(nowUTC()), accountID)
+	if err != nil {
+		return fmt.Errorf("storage: set account kind: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("storage: set account kind: %w", err)
 	}
 	if n == 0 {
 		return ErrNotFound

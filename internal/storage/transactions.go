@@ -129,7 +129,7 @@ var (
 		"groceries", "grocery", "supermarket", "supermercado",
 	}
 	p2pFacetCategories = []string{
-		"transfers / p2p", "bizum", "transfers / bizum", "p2p", "transfers / pass-through", "pass-through",
+		"transfers / p2p", "bizum", "transfers / bizum", "transfers / bizums", "bizums", "p2p", "transfers / pass-through", "pass-through",
 	}
 	cashFacetCategories = []string{
 		"cash / atm", "cash", "atm", "cajero", "reintegro",
@@ -222,7 +222,8 @@ func canonicalFilterCategories(categories []string) []string {
 		seen[category] = struct{}{}
 		out = append(out, category)
 		switch category {
-		case "transfers / p2p", "transfers/p2p", "p2p", "transfers / bizum", "transfers/bizum", "bizum":
+		case "transfers / p2p", "transfers/p2p", "p2p", "transfers / bizum", "transfers/bizum",
+			"transfers / bizums", "transfers/bizums", "bizum", "bizums":
 			p2p = true
 		}
 	}
@@ -261,6 +262,17 @@ func normalizeLimit(limit int) int {
 		return 1000
 	}
 	return limit
+}
+
+func canonicalTransactionCategory(category string) string {
+	switch strings.ToLower(strings.TrimSpace(category)) {
+	case "transfers / bizum", "transfers / bizums", "transfers/bizum", "transfers/bizums", "bizum", "bizums":
+		return "Transfers / P2P"
+	case "savings / accruing", "transfers / savings":
+		return "Savings & Investments"
+	default:
+		return category
+	}
 }
 
 func scanTransaction(row rowScanner) (domain.Transaction, error) {
@@ -323,6 +335,7 @@ func (s *Store) UpsertTransaction(ctx context.Context, t *domain.Transaction) (i
 	if strings.TrimSpace(t.Category) == "" {
 		t.Category = "Uncategorized"
 	}
+	t.Category = canonicalTransactionCategory(t.Category)
 	if t.BookingDate.IsZero() {
 		t.BookingDate = nowUTC()
 	}
@@ -431,6 +444,7 @@ func (s *Store) UpdateTransactionCategory(ctx context.Context, id int64, categor
 	if category == "" {
 		category = "Uncategorized"
 	}
+	category = canonicalTransactionCategory(category)
 	var (
 		current  string
 		pairedID sql.NullInt64

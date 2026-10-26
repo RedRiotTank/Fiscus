@@ -350,6 +350,61 @@ var migrations = []migration{
 			`CREATE INDEX IF NOT EXISTS idx_accruing_accounts_workspace ON accruing_accounts(workspace_id, currency)`,
 		},
 	},
+	{
+		version: 21,
+		statements: []string{
+			`ALTER TABLE accounts ADD COLUMN account_type TEXT NOT NULL DEFAULT 'checking'`,
+			`CREATE INDEX IF NOT EXISTS idx_accounts_account_type ON accounts(account_type)`,
+		},
+	},
+	{
+		version: 22,
+		statements: []string{
+			`UPDATE transactions SET category = 'Transfers / P2P'
+			 WHERE LOWER(TRIM(category)) IN
+			   ('transfers / bizum', 'transfers / bizums', 'transfers/bizum', 'transfers/bizums', 'bizum', 'bizums')`,
+			`UPDATE learned_rules SET category = 'Transfers / P2P'
+			 WHERE LOWER(TRIM(category)) IN
+			   ('transfers / bizum', 'transfers / bizums', 'transfers/bizum', 'transfers/bizums', 'bizum', 'bizums')`,
+			`UPDATE OR REPLACE budget_allocations SET category = 'Transfers / P2P'
+			 WHERE LOWER(TRIM(category)) IN
+			   ('transfers / bizum', 'transfers / bizums', 'transfers/bizum', 'transfers/bizums', 'bizum', 'bizums')`,
+			`UPDATE OR REPLACE budget_overrides SET category = 'Transfers / P2P'
+			 WHERE LOWER(TRIM(category)) IN
+			   ('transfers / bizum', 'transfers / bizums', 'transfers/bizum', 'transfers/bizums', 'bizum', 'bizums')`,
+			`UPDATE recurring_bill_rules SET category = 'Transfers / P2P'
+			 WHERE LOWER(TRIM(category)) IN
+			   ('transfers / bizum', 'transfers / bizums', 'transfers/bizum', 'transfers/bizums', 'bizum', 'bizums')`,
+			`UPDATE transactions SET category = 'Savings & Investments'
+			 WHERE LOWER(TRIM(category)) IN ('savings / accruing', 'transfers / savings')`,
+			`UPDATE learned_rules SET category = 'Savings & Investments'
+			 WHERE LOWER(TRIM(category)) IN ('savings / accruing', 'transfers / savings')`,
+			`UPDATE transactions SET category = 'Savings & Investments'
+			 WHERE amount_minor < 0
+			   AND LOWER(TRIM(category)) IN
+			     ('transfers / p2p', 'p2p', 'transfers / bizum', 'transfers / bizums', 'transfers/bizum', 'transfers/bizums', 'bizum', 'bizums')
+			   AND (LOWER(counterparty) LIKE '%cuenta remunerada%'
+			     OR LOWER(description) LIKE '%cuenta remunerada%'
+			     OR LOWER(counterparty) LIKE '%flexible%' OR LOWER(description) LIKE '%flexible%'
+			     OR LOWER(counterparty) LIKE '%ahorro%' OR LOWER(description) LIKE '%ahorro%'
+			     OR LOWER(counterparty) LIKE '%deposito%' OR LOWER(description) LIKE '%deposito%'
+			     OR LOWER(counterparty) LIKE '%depósito%' OR LOWER(description) LIKE '%depósito%'
+			     OR LOWER(counterparty) LIKE '%vault%' OR LOWER(description) LIKE '%vault%'
+			     OR LOWER(counterparty) LIKE '%savings%' OR LOWER(description) LIKE '%savings%')`,
+			`UPDATE transactions SET category = 'Transfers / Pass-through', budget_excluded = 1
+			 WHERE amount_minor > 0
+			   AND LOWER(TRIM(category)) IN
+			     ('transfers / p2p', 'p2p', 'transfers / bizum', 'transfers / bizums', 'transfers/bizum', 'transfers/bizums', 'bizum', 'bizums')
+			   AND (LOWER(counterparty) LIKE '%cuenta remunerada%'
+			     OR LOWER(description) LIKE '%cuenta remunerada%'
+			     OR LOWER(counterparty) LIKE '%flexible%' OR LOWER(description) LIKE '%flexible%'
+			     OR LOWER(counterparty) LIKE '%ahorro%' OR LOWER(description) LIKE '%ahorro%'
+			     OR LOWER(counterparty) LIKE '%deposito%' OR LOWER(description) LIKE '%deposito%'
+			     OR LOWER(counterparty) LIKE '%depósito%' OR LOWER(description) LIKE '%depósito%'
+			     OR LOWER(counterparty) LIKE '%vault%' OR LOWER(description) LIKE '%vault%'
+			     OR LOWER(counterparty) LIKE '%savings%' OR LOWER(description) LIKE '%savings%')`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and

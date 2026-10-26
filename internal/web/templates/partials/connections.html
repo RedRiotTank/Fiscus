@@ -65,6 +65,11 @@
                             <option value="personal" {{if eq .Type "personal"}}selected{{end}}>Personal</option>
                             <option value="business" {{if eq .Type "business"}}selected{{end}}>Business</option>
                           </select>
+                          <select name="account_type" aria-label="Account type for {{if .Name}}{{.Name}}{{else}}{{.ID}}{{end}}">
+                            <option value="checking" {{if eq .Kind "checking"}}selected{{end}}>Checking</option>
+                            <option value="savings" {{if eq .Kind "savings"}}selected{{end}}>Savings</option>
+                            <option value="investment" {{if eq .Kind "investment"}}selected{{end}}>Investment</option>
+                          </select>
                         </form>
                         {{if .TypeManual}}<span class="muted small">manual</span>{{end}}
                       </td>

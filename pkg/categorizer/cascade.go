@@ -199,13 +199,22 @@ func (c *Cascade) Classify(input Input) Result {
 	// counterparty name.
 	if input.AmountMinor <= 0 {
 		text := input.text()
-		if IsP2PText(text) {
+		if !IsSavingsTransferText(text) && IsP2PText(text) {
 			if category, ok := DiningConceptCategory(text); ok {
 				return Result{
 					Category: category, Tier: TierExact, Confidence: 1,
 					Matched: "p2p-dining-concept", Candidate: category, CandidateConfidence: 1,
 				}
 			}
+		}
+	}
+	// Savings transfers are more specific than generic Bizum/P2P rules and
+	// must always land in the Savings pillar. Inflows are neutral withdrawals.
+	if IsSavingsTransferText(input.text()) {
+		category, _ := SavingsTransferCategory(input.AmountMinor)
+		return Result{
+			Category: category, Tier: TierExact, Confidence: 1,
+			Matched: "savings-transfer", Candidate: category, CandidateConfidence: 1,
 		}
 	}
 	for _, field := range input.fields() {

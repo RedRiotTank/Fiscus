@@ -138,7 +138,7 @@ func TestTransactionsPageRendersBizumBadge(t *testing.T) {
 	tx := domain.Transaction{
 		AccountID: "acc-1", ExternalID: "bizum-1", AmountMinor: -2500, Currency: "EUR",
 		BookingDate: now.Add(-time.Hour), Counterparty: "Bizum Juan Pérez",
-		Description: "Bizum enviado", Category: "Transfers / Bizum",
+		Description: "Bizum enviado", Category: "Transfers / P2P",
 		Status: domain.TransactionStatusBooked,
 	}
 	if _, _, err := f.store.UpsertTransaction(context.Background(), &tx); err != nil {
@@ -149,7 +149,7 @@ func TestTransactionsPageRendersBizumBadge(t *testing.T) {
 		t.Fatalf("transactions status = %d", page.Code)
 	}
 	body := page.Body.String()
-	for _, want := range []string{"badge bizum", "Transfers / Bizum", "category-select", "Remember for all transfers to this person"} {
+	for _, want := range []string{"badge bizum", "Transfers / P2P", "category-select", "Remember for all transfers to this person"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("transaction page missing %q", want)
 		}

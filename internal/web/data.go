@@ -61,6 +61,7 @@ type PageData struct {
 	FlowFilters             []FacetView
 	CategoryFilters         []FacetView
 	FixedBills              []FixedBillView
+	SavingsPrompt           *SavingsPromptView
 	Alerts                  []AlertView
 	Connections             []ConnectionView
 	Reconciliations         map[string]domain.Reconciliation
@@ -118,6 +119,17 @@ type AccruingAccountFormView struct {
 	CompoundingFrequency  string
 	Error                 string
 	Editing               bool
+}
+
+// SavingsPromptView suggests initializing a detected unlinked savings target.
+type SavingsPromptView struct {
+	Target       string
+	AmountMinor  int64
+	Count        int
+	Currency     string
+	Workspace    string
+	AnchorDate   string
+	MatchKeyword string
 }
 
 // HousingSetupView supplies the budget-page housing prompt, detection banner,
@@ -474,6 +486,11 @@ func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 	data.AccruingAccounts = accruing
 	data.Summary = summarizeAccountsAndAccruing(accounts, accruing)
 	data.TotalAccounts = len(accounts) + len(accruing)
+	prompt, err := s.detectSavingsPrompt(ctx, data.Workspace.View, accounts, accruing, now)
+	if err != nil {
+		return err
+	}
+	data.SavingsPrompt = prompt
 	monthStart := firstOfMonth(now)
 	if !data.BudgetMonth.IsZero() {
 		monthStart = firstOfMonth(data.BudgetMonth)

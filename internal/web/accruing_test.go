@@ -14,6 +14,74 @@ import (
 	"github.com/RedRiotTank/Fiscus/pkg/accrual"
 )
 
+func TestSavingsSetupPromptDetection(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	ctx := context.Background()
+	now := f.server.now().UTC()
+	transaction := domain.Transaction{
+		AccountID: "acc-1", ExternalID: "savings-prompt-1", AmountMinor: -100_000, Currency: "EUR",
+		BookingDate: now, Counterparty: "Ismael Díaz", Description: "To Cuenta Remunerada",
+		Category: "Transfers / P2P", Status: domain.TransactionStatusBooked,
+	}
+	if _, _, err := f.store.UpsertTransaction(ctx, &transaction); err != nil {
+		t.Fatalf("UpsertTransaction: %v", err)
+	}
+	page := f.request(t, http.MethodGet, "/accounts?workspace=personal", true, nil)
+	if page.Code != http.StatusOK {
+		t.Fatalf("accounts page = %d", page.Code)
+	}
+	body := page.Body.String()
+	for _, want := range []string{
+		"Transfers to", "Cuenta Remunerada", "detected", "€1,000.00",
+		"Set up savings account", "name=",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("savings prompt missing %q", want)
+		}
+	}
+	budgetsPage := f.request(t, http.MethodGet, "/budgets?workspace=personal", true, nil)
+	if budgetsPage.Code != http.StatusOK {
+		t.Fatalf("budgets page = %d", budgetsPage.Code)
+	}
+	if !strings.Contains(budgetsPage.Body.String(), "Cuenta Remunerada") {
+		t.Errorf("budgets page missing savings prompt")
+	}
+}
+
+func TestAccountKindEndpointTogglesCheckingSavings(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	form := url.Values{"account_type": {"savings"}}
+	req := httptest.NewRequest(http.MethodPost, "/api/accounts/acc-1/account-type", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set(syncRequestHeader, "1")
+	req.SetBasicAuth("admin", "secret")
+	rec := httptest.NewRecorder()
+	f.handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("account kind POST = %d %s", rec.Code, rec.Body.String())
+	}
+	account, err := f.store.GetAccount(context.Background(), "acc-1")
+	if err != nil || account.Kind != domain.AccountKindSavings {
+		t.Fatalf("savings account kind = %q err=%v", account.Kind, err)
+	}
+	form = url.Values{"account_type": {"checking"}}
+	req = httptest.NewRequest(http.MethodPost, "/api/accounts/acc-1/type", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set(syncRequestHeader, "1")
+	req.SetBasicAuth("admin", "secret")
+	rec = httptest.NewRecorder()
+	f.handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("legacy account kind POST = %d %s", rec.Code, rec.Body.String())
+	}
+	account, err = f.store.GetAccount(context.Background(), "acc-1")
+	if err != nil || account.Kind != domain.AccountKindChecking {
+		t.Fatalf("checking account kind = %q err=%v", account.Kind, err)
+	}
+}
+
 func TestAccruingAccountSetupAndAccountsPage(t *testing.T) {
 	t.Parallel()
 	f := newWebFixture(t)
@@ -151,7 +219,7 @@ func TestAccruingTransfersLinkToSavingsAndIncomeNeutralWithdrawal(t *testing.T) 
 	if budgetsPage.Code != http.StatusOK {
 		t.Fatalf("budgets page = %d", budgetsPage.Code)
 	}
-	for _, want := range []string{"Savings / Accruing", "€250.00 of"} {
+	for _, want := range []string{"Savings &amp; Investments", "€250.00 of"} {
 		if !strings.Contains(budgetsPage.Body.String(), want) {
 			t.Errorf("budget page missing accruing savings mapping %q", want)
 		}

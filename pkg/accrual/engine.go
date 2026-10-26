@@ -14,7 +14,7 @@ import (
 
 const (
 	// CategorySavings is assigned to outflows that fund an accruing account.
-	CategorySavings = "Savings / Accruing"
+	CategorySavings = "Savings & Investments"
 	// CategoryWithdrawal marks inflows from an accruing account as a neutral
 	// internal bridge rather than income.
 	CategoryWithdrawal = "Transfers / Pass-through"

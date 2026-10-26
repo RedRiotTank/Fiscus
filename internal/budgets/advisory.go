@@ -616,10 +616,12 @@ func BucketForCategory(category string) string {
 		return BucketNeeds
 	case "restaurants", "dining", "bars", "cafes", "cafés", "coffee",
 		"entertainment", "ocio", "leisure", "subscriptions", "shopping",
-		"travel", "meals", "health & fitness", "bizum", "transfers / bizum":
+		"travel", "meals", "health & fitness", "bizum", "bizums",
+		"transfers / bizum", "transfers / bizums", "transfers / p2p", "p2p":
 		return BucketWants
 	case "savings", "saving", "investments", "investment", "emergency fund",
-		"savings / accruing", "accruing savings":
+		"savings / accruing", "accruing savings", "savings & investments",
+		"savings & investment", "transfers / savings":
 		return BucketSavings
 	default:
 		return BucketUnallocated
@@ -644,7 +646,9 @@ func excludedIncomeCategory(category string) bool {
 		return true
 	}
 	switch strings.ToLower(strings.TrimSpace(category)) {
-	case "transfer", "transfers", "transfers / p2p", "p2p", "housing", "housing / rent", "rent",
+	case "transfer", "transfers", "transfers / p2p", "p2p",
+		"transfers / bizum", "transfers / bizums", "bizum", "bizums",
+		"housing", "housing / rent", "rent",
 		"mortgage", "alquiler", "renta", "loan", "loans", "financing", "tax", "taxes", "vat", "irpf":
 		return true
 	default:
@@ -657,7 +661,8 @@ func excludedSpendingCategory(category string) bool {
 		return true
 	}
 	switch strings.ToLower(strings.TrimSpace(category)) {
-	case "transfer", "transfers", "transfers / p2p", "p2p", "loan", "loans", "financing",
+	case "transfer", "transfers", "transfers / p2p", "p2p",
+		"transfers / bizum", "transfers / bizums", "bizum", "bizums", "loan", "loans", "financing",
 		"tax", "taxes", "vat", "irpf":
 		return true
 	default:

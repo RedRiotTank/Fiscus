@@ -10,11 +10,13 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/money"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
 	"github.com/RedRiotTank/Fiscus/pkg/accrual"
+	"github.com/RedRiotTank/Fiscus/pkg/categorizer"
 )
 
 func (s *Server) listAccruingAccounts(ctx context.Context, workspace string) ([]domain.AccruingAccount, error) {
@@ -96,6 +98,15 @@ func formValueAny(r *http.Request, names ...string) string {
 	return ""
 }
 
+func firstQueryValue(r *http.Request, names ...string) string {
+	for _, name := range names {
+		if value := strings.TrimSpace(r.URL.Query().Get(name)); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func normalizeMoneyInput(raw string) string {
 	raw = strings.TrimSpace(raw)
 	raw = strings.NewReplacer("€", "", "$", "", "£", "", " ", "").Replace(raw)
@@ -133,6 +144,126 @@ func summarizeAccountsAndAccruing(accounts []domain.Account, accruing []Accruing
 	return summary
 }
 
+func (s *Server) detectSavingsPrompt(ctx context.Context, workspace string, synced []domain.Account, accruing []AccruingAccountView, now time.Time) (*SavingsPromptView, error) {
+	allowed := make(map[string]domain.Account, len(synced))
+	hints := make([]string, 0, len(synced)*2)
+	for _, account := range synced {
+		allowed[account.ID] = account
+		for _, value := range []string{account.Name, account.IBAN, account.ID} {
+			value = strings.ToLower(strings.TrimSpace(value))
+			if len(value) >= 3 {
+				hints = append(hints, value)
+			}
+		}
+	}
+	transactions, err := s.store.ListTransactionsBetween(ctx, now.AddDate(-1, 0, 0), now.Add(24*time.Hour))
+	if err != nil {
+		return nil, err
+	}
+	type aggregate struct {
+		target   string
+		amount   int64
+		count    int
+		currency string
+		earliest time.Time
+	}
+	groups := make(map[string]aggregate)
+	for _, tx := range transactions {
+		account, ok := allowed[tx.AccountID]
+		if !ok || tx.Status != domain.TransactionStatusBooked || tx.AmountMinor >= 0 {
+			continue
+		}
+		if domain.NormalizeAccountKind(account.Kind) != domain.AccountKindChecking {
+			continue
+		}
+		text := strings.TrimSpace(tx.Counterparty + " " + tx.Description)
+		match, ok := categorizer.SavingsMatch(text)
+		if !ok {
+			continue
+		}
+		target := normalizedSavingsTarget(match)
+		if target == "" {
+			continue
+		}
+		configured := false
+		for _, existing := range accruing {
+			existingName := strings.ToLower(strings.TrimSpace(existing.Name))
+			targetName := strings.ToLower(target)
+			if existingName != "" && (strings.Contains(existingName, targetName) || strings.Contains(targetName, existingName)) {
+				configured = true
+				break
+			}
+			re, compileErr := accrual.CompilePattern(existing.TransferMatchPattern)
+			if compileErr == nil && re != nil && re.MatchString(text) {
+				configured = true
+				break
+			}
+		}
+		if configured {
+			continue
+		}
+		for _, hint := range hints {
+			if strings.Contains(strings.ToLower(text), hint) || strings.EqualFold(target, hint) {
+				configured = true
+				break
+			}
+		}
+		if configured {
+			continue
+		}
+		key := strings.ToLower(target) + "\x00" + strings.ToUpper(strings.TrimSpace(tx.Currency))
+		current := groups[key]
+		if current.target == "" {
+			current.target = target
+			current.currency = strings.ToUpper(strings.TrimSpace(tx.Currency))
+			current.earliest = tx.BookingDate
+		}
+		current.amount += -tx.AmountMinor
+		current.count++
+		if tx.BookingDate.Before(current.earliest) {
+			current.earliest = tx.BookingDate
+		}
+		groups[key] = current
+	}
+	if len(groups) == 0 {
+		return nil, nil
+	}
+	best := aggregate{}
+	for _, group := range groups {
+		if group.amount > best.amount || (group.amount == best.amount && group.target < best.target) {
+			best = group
+		}
+	}
+	if best.target == "" {
+		return nil, nil
+	}
+	if best.currency == "" {
+		best.currency = "EUR"
+	}
+	promptWorkspace := workspace
+	if promptWorkspace != domain.WorkspaceBusiness {
+		promptWorkspace = domain.WorkspacePersonal
+	}
+	return &SavingsPromptView{
+		Target: best.target, AmountMinor: best.amount, Count: best.count,
+		Currency: best.currency, Workspace: promptWorkspace,
+		AnchorDate: best.earliest.UTC().Format("2006-01-02"), MatchKeyword: best.target,
+	}, nil
+}
+
+func normalizedSavingsTarget(value string) string {
+	value = strings.TrimSpace(value)
+	fields := strings.Fields(value)
+	for index, field := range fields {
+		runes := []rune(strings.ToLower(field))
+		if len(runes) > 0 {
+			runes[0] = unicode.ToUpper(runes[0])
+		}
+		fields[index] = string(runes)
+	}
+	return strings.Join(fields, " ")
+}
+
 func (s *Server) handleAccounts(w http.ResponseWriter, r *http.Request) {
 	data := s.baseData(r, "Accounts", "accounts")
 	ctx := r.Context()
@@ -150,6 +281,12 @@ func (s *Server) handleAccounts(w http.ResponseWriter, r *http.Request) {
 	data.AccruingAccounts = views
 	data.Summary = summarizeAccountsAndAccruing(accounts, views)
 	data.TotalAccounts = len(accounts) + len(views)
+	prompt, err := s.detectSavingsPrompt(ctx, data.Workspace.View, accounts, views, s.now().UTC())
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	data.SavingsPrompt = prompt
 	if err := s.loadReconciliations(ctx, &data); err != nil {
 		s.fail(w, r, err)
 		return
@@ -177,6 +314,21 @@ func (s *Server) handleAccruingAccountNew(w http.ResponseWriter, r *http.Request
 		AnchorDate: s.now().UTC().Format("2006-01-02"), APYPercent: "3.10",
 		TransferMatchKeyword:  "Cuenta Remunerada",
 		TaxWithholdingPercent: "0", CompoundingFrequency: domain.AccruingDaily,
+	}
+	if name := strings.TrimSpace(r.URL.Query().Get("name")); name != "" {
+		form.Name = name
+	}
+	if balance := firstQueryValue(r, "anchor_balance", "opening_balance", "balance"); balance != "" {
+		form.AnchorBalance = balance
+	}
+	if anchorDate := firstQueryValue(r, "anchor_date", "date"); anchorDate != "" {
+		form.AnchorDate = anchorDate
+	}
+	if keyword := firstQueryValue(r, "transfer_match_keyword", "keyword", "transfer_match_pattern"); keyword != "" {
+		form.TransferMatchKeyword = keyword
+	}
+	if apy := firstQueryValue(r, "apy_percent", "apy", "tae"); apy != "" {
+		form.APYPercent = apy
 	}
 	s.renderPartialData(w, "accruing_account_form", form)
 }

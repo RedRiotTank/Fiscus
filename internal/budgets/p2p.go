@@ -18,7 +18,7 @@ const (
 func IsP2PCategory(category string) bool {
 	switch strings.ToLower(strings.TrimSpace(category)) {
 	case "transfers / p2p", "transfers/p2p", "p2p",
-		"transfers / bizum", "transfers/bizum", "bizum":
+		"transfers / bizum", "transfers/bizum", "transfers / bizums", "transfers/bizums", "bizum", "bizums":
 		return true
 	default:
 		return false

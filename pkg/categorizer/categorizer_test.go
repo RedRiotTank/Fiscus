@@ -163,6 +163,34 @@ func TestCascadeExplicitRulesWin(t *testing.T) {
 	}
 }
 
+func TestCascadeRoutesSavingsTransfersToSavingsPillar(t *testing.T) {
+	t.Parallel()
+	cascade, err := NewCascade(Config{})
+	if err != nil {
+		t.Fatalf("NewCascade: %v", err)
+	}
+	outflow := cascade.Classify(Input{Counterparty: "To Cuenta Remunerada", AmountMinor: -100_000})
+	if outflow.Category != CategorySavings || outflow.Tier != TierExact {
+		t.Fatalf("savings outflow = %+v, want Savings & Investments", outflow)
+	}
+	inflow := cascade.Classify(Input{Counterparty: "From Cuenta Remunerada", AmountMinor: 25_000})
+	if inflow.Category != "Transfers / Pass-through" || inflow.Tier != TierExact {
+		t.Fatalf("savings inflow = %+v, want neutral pass-through", inflow)
+	}
+}
+
+func TestCascadeBizumUsesCanonicalP2PCategory(t *testing.T) {
+	t.Parallel()
+	cascade, err := NewCascade(Config{})
+	if err != nil {
+		t.Fatalf("NewCascade: %v", err)
+	}
+	result := cascade.Classify(Input{Counterparty: "Bizum Juan", AmountMinor: -1_500})
+	if result.Category != CategoryP2P {
+		t.Fatalf("Bizum category = %q, want %q", result.Category, CategoryP2P)
+	}
+}
+
 func TestCascadeP2PDiningConceptsRouteToRestaurants(t *testing.T) {
 	t.Parallel()
 	cascade, err := NewCascade(Config{})

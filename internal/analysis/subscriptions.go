@@ -310,8 +310,8 @@ func isSubscriptionCategory(category string) bool {
 	switch category {
 	case "groceries", "restaurants", "restaurants & delivery", "dining", "shopping",
 		"leisure & shopping", "rent", "housing", "housing / rent", "transfer", "transfers",
-		"transfers / bizum", "bizum", "transfers / p2p", "p2p", "emergency fund", "savings", "saving",
-		"savings / accruing", "accruing savings",
+		"transfers / bizum", "transfers / bizums", "bizum", "bizums", "transfers / p2p", "p2p", "emergency fund", "savings", "saving",
+		"savings / accruing", "accruing savings", "savings & investments", "transfers / savings",
 		"investments", "investment", "bank fees", "payroll", "meals", "travel",
 		"transport", "hardware", "office", "office & equipment", "tax reserve",
 		"taxes", "tax", "utilities & telecom", "utilities", "utility", "telecom",

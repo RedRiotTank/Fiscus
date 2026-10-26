@@ -67,6 +67,7 @@ type Store interface {
 	NeutralizePassThroughs(ctx context.Context, windowDays int) (int, error)
 	UpdateTransactionNotes(ctx context.Context, id int64, notes string) error
 	SetAccountType(ctx context.Context, accountID, accountType string) error
+	SetAccountKind(ctx context.Context, accountID, kind string) error
 	Recategorize(ctx context.Context, classify func(domain.Transaction) string, apply bool) (storage.RecategorizeResult, error)
 	Ping(ctx context.Context) error
 	SchemaVersion(ctx context.Context) (int, error)
@@ -266,6 +267,7 @@ func (s *Server) routes() http.Handler {
 	app.HandleFunc("PATCH /api/transactions/{id}/notes", s.handleTransactionNotes)
 	app.HandleFunc("PATCH /api/transactions/{id}/category", s.handleTransactionCategory)
 	app.HandleFunc("POST /api/accounts/{id}/type", s.handleAccountType)
+	app.HandleFunc("POST /api/accounts/{id}/account-type", s.handleAccountType)
 	app.HandleFunc("GET /subscriptions", s.handleSubscriptions)
 	app.HandleFunc("GET /alerts", s.handleAlerts)
 	app.HandleFunc("GET /connections", s.handleConnections)

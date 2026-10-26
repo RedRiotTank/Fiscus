@@ -43,6 +43,25 @@ const (
 	AccountTypeBusiness = "business"
 )
 
+// AccountKind classifies an account's liquidity role.
+const (
+	AccountKindChecking   = "checking"
+	AccountKindSavings    = "savings"
+	AccountKindInvestment = "investment"
+)
+
+// NormalizeAccountKind returns a valid account kind, defaulting to checking.
+func NormalizeAccountKind(kind string) string {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case AccountKindSavings:
+		return AccountKindSavings
+	case AccountKindInvestment:
+		return AccountKindInvestment
+	default:
+		return AccountKindChecking
+	}
+}
+
 // NormalizeWorkspaceProfile returns a valid configured profile, defaulting to
 // hybrid for unknown values.
 func NormalizeWorkspaceProfile(profile string) string {
@@ -112,6 +131,7 @@ type Account struct {
 	OwnerName           string
 	Currency            string
 	Type                string
+	Kind                string
 	TypeManual          bool
 	BalanceMinor        int64
 	BalanceType         string

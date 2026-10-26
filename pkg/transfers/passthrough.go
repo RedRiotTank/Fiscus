@@ -133,7 +133,7 @@ func involvesTransfer(debit, credit domain.Transaction) bool {
 func isTransferCategory(category string) bool {
 	switch strings.ToLower(strings.TrimSpace(category)) {
 	case "transfers", "transfer", "transfers / p2p", "p2p",
-		"transfers / bizum", "bizum", "savings", "saving", "internal transfer":
+		"transfers / bizum", "transfers / bizums", "bizum", "bizums", "savings", "saving", "internal transfer":
 		return true
 	default:
 		return false

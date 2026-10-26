@@ -72,6 +72,10 @@ func (c *Classifier) Classify(tx domain.Transaction) string {
 		return DefaultCategory
 	}
 	text := strings.TrimSpace(tx.Counterparty + " " + tx.Description)
+	if categorizer.IsSavingsTransferText(text) {
+		category, _ := categorizer.SavingsTransferCategory(tx.AmountMinor)
+		return category
+	}
 	if tx.AmountMinor <= 0 && categorizer.IsP2PText(text) {
 		if category, ok := categorizer.DiningConceptCategory(text); ok {
 			return category

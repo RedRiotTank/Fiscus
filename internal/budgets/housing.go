@@ -19,6 +19,10 @@ func canonicalSpendingCategory(category string) string {
 	if IsP2PCategory(category) {
 		return CategoryP2P
 	}
+	switch strings.ToLower(strings.TrimSpace(category)) {
+	case "savings / accruing", "transfers / savings", "savings and investments", "savings & investment":
+		return CategoryAccruingSavings
+	}
 	category = strings.TrimSpace(category)
 	if category == "" {
 		return "Uncategorized"

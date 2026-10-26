@@ -10,7 +10,9 @@ const (
 	CategoryUncategorized = "Uncategorized"
 	CategoryHousing       = "Housing / Rent"
 	CategoryP2P           = "Transfers / P2P"
-	CategoryBizum         = "Transfers / Bizum"
+	// CategoryBizum is a deprecated alias. Bizum is a payment channel badge,
+	// not a separate budget category.
+	CategoryBizum         = CategoryP2P
 	CategoryCash          = "Cash / ATM"
 	CategorySubscriptions = "Subscriptions"
 	CategoryLeisure       = "Leisure & Shopping"
@@ -19,6 +21,7 @@ const (
 	CategoryUtilities     = "Utilities & Telecom"
 	CategoryBankFees      = "Bank Fees"
 	CategoryGroceries     = "Groceries"
+	CategorySavings       = "Savings & Investments"
 )
 
 // CatalogEntry is one high-confidence deterministic merchant rule. Keywords
@@ -145,7 +148,7 @@ func containsTokens(haystack, needle []string) bool {
 // significant: specific phrases precede broader merchant families.
 func DefaultCatalog() []CatalogEntry {
 	return []CatalogEntry{
-		{Category: CategoryBizum, Keywords: []string{"bizum"}},
+		{Category: CategoryP2P, Keywords: []string{"bizum"}},
 		{Category: CategoryCash, Keywords: []string{"cash at", "cajero", "reintegro", "atm withdrawal"}},
 		{Category: CategorySubscriptions, Keywords: []string{
 			"amazon prime", "amazon web services", "aws", "netflix", "spotify", "google",

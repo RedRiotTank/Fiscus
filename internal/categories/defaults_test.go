@@ -23,7 +23,7 @@ func TestDefaultRulesCategorizeSpanishMerchants(t *testing.T) {
 		"Amazon Prime*nk9ae7fn4":        "Subscriptions",
 		"Amazon Marketplace purchase":   "Leisure & Shopping",
 		"Comisión mantenimiento cuenta": "Bank Fees",
-		"BIZUM Juan Pérez":              "Transfers / Bizum",
+		"BIZUM Juan Pérez":              "Transfers / P2P",
 		"Cash at La Caixa 6277":         "Cash / ATM",
 		"Cash at 121006277":             "Cash / ATM",
 		"Cajero Santander":              "Cash / ATM",
@@ -57,7 +57,7 @@ func TestCategoriesIncludesDefaults(t *testing.T) {
 		DefaultCategory: false, "Groceries": false, "Subscriptions": false,
 		"Leisure & Shopping": false, "Restaurants & Delivery": false,
 		"Transport": false, "Utilities & Telecom": false, "Bank Fees": false,
-		"Transfers / Bizum": false, CategoryHousing: false, CategoryP2P: false,
+		"Transfers / P2P": false, CategoryHousing: false,
 		"Cash / ATM": false,
 	}
 	for _, category := range categories {

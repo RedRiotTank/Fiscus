@@ -52,6 +52,101 @@ func TestAccruingAccountPersistence(t *testing.T) {
 	}
 }
 
+func TestCanonicalTransactionCategoryAliases(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"Transfers / Bizum":   "Transfers / P2P",
+		"Transfers / Bizums":  "Transfers / P2P",
+		"bizum":               "Transfers / P2P",
+		"Savings / Accruing":  "Savings & Investments",
+		"Transfers / Savings": "Savings & Investments",
+		"Groceries":           "Groceries",
+	}
+	for input, want := range cases {
+		if got := canonicalTransactionCategory(input); got != want {
+			t.Errorf("canonicalTransactionCategory(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestLinkGenericSavingsTransfersWithoutAccruingAccount(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	ctx := context.Background()
+	connection := seedConnection(t, store)
+	checking := seedAccount(t, store, connection.ID)
+	savings := domain.Account{
+		ID: "acc-savings", ConnectionID: connection.ID, Name: "Revolut Savings",
+		Currency: "EUR", Kind: domain.AccountKindSavings,
+	}
+	if err := store.UpsertAccount(ctx, &savings); err != nil {
+		t.Fatalf("UpsertAccount savings: %v", err)
+	}
+	loadedSavings, err := store.GetAccount(ctx, savings.ID)
+	if err != nil || loadedSavings.Kind != domain.AccountKindSavings {
+		t.Fatalf("savings kind = %q err=%v", loadedSavings.Kind, err)
+	}
+	if err := store.SetAccountKind(ctx, savings.ID, domain.AccountKindInvestment); err != nil {
+		t.Fatalf("SetAccountKind: %v", err)
+	}
+	loadedSavings, _ = store.GetAccount(ctx, savings.ID)
+	if loadedSavings.Kind != domain.AccountKindInvestment {
+		t.Fatalf("updated kind = %q", loadedSavings.Kind)
+	}
+	if err := store.SetAccountKind(ctx, savings.ID, domain.AccountKindSavings); err != nil {
+		t.Fatalf("restore kind: %v", err)
+	}
+
+	day := time.Date(2026, 3, 5, 9, 0, 0, 0, time.UTC)
+	transactions := []domain.Transaction{
+		{AccountID: checking.ID, ExternalID: "generic-savings-out", AmountMinor: -100_000, Currency: "EUR",
+			BookingDate: day, Counterparty: "Cuenta Remunerada", Description: "To Cuenta Remunerada",
+			Category: "Transfers / P2P", Status: domain.TransactionStatusBooked},
+		{AccountID: checking.ID, ExternalID: "generic-savings-in", AmountMinor: 25_000, Currency: "EUR",
+			BookingDate: day, Counterparty: "Cuenta Remunerada", Description: "From Cuenta Remunerada",
+			Category: "Transfers / P2P", Status: domain.TransactionStatusBooked},
+		{AccountID: checking.ID, ExternalID: "account-name-out", AmountMinor: -50_000, Currency: "EUR",
+			BookingDate: day, Counterparty: "Bridge", Description: "Transfer",
+			Category: "Transfers / P2P", Status: domain.TransactionStatusBooked},
+		{AccountID: savings.ID, ExternalID: "savings-side-in", AmountMinor: 50_000, Currency: "EUR",
+			BookingDate: day, Counterparty: "Everyday", Description: "From Everyday",
+			Category: "Transfers / P2P", Status: domain.TransactionStatusBooked},
+		{AccountID: savings.ID, ExternalID: "savings-interest", AmountMinor: 100, Currency: "EUR",
+			BookingDate: day, Counterparty: "Interest", Description: "Interest",
+			Category: "Uncategorized", Status: domain.TransactionStatusBooked},
+	}
+	for index := range transactions {
+		if _, _, err := store.UpsertTransaction(ctx, &transactions[index]); err != nil {
+			t.Fatalf("UpsertTransaction: %v", err)
+		}
+	}
+	linked, err := store.LinkAccruingTransfers(ctx)
+	if err != nil {
+		t.Fatalf("LinkAccruingTransfers: %v", err)
+	}
+	if linked != len(transactions) {
+		t.Fatalf("linked = %d, want %d", linked, len(transactions))
+	}
+	for index, want := range []struct {
+		category string
+		excluded bool
+	}{
+		{accrual.CategorySavings, false},
+		{accrual.CategoryWithdrawal, true},
+		{accrual.CategorySavings, false},
+		{accrual.CategoryWithdrawal, true},
+		{accrual.CategoryWithdrawal, true},
+	} {
+		loaded, err := store.GetTransaction(ctx, transactions[index].ID)
+		if err != nil {
+			t.Fatalf("GetTransaction %d: %v", index, err)
+		}
+		if loaded.Category != want.category || loaded.IsBudgetExcluded != want.excluded {
+			t.Errorf("transaction %d = %+v, want %s excluded=%v", index, loaded, want.category, want.excluded)
+		}
+	}
+}
+
 func TestLinkAccruingTransfersCategoriesAndBudgetDirection(t *testing.T) {
 	t.Parallel()
 	store := newTestStore(t)

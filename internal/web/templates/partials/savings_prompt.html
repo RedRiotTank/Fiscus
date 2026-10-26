@@ -1,0 +1,14 @@
+{{define "savings_prompt"}}
+{{with .SavingsPrompt}}
+  <article class="budget-message info savings-prompt">
+    <span class="badge severity-info">Savings detected</span>
+    <div>
+      <strong>Transfers to '{{.Target}}' detected ({{money .AmountMinor .Currency}}).</strong>
+      <p>Would you like to initialize this as an Accruing Savings Account to project daily APY/TAE yields and track balance?</p>
+      <button class="button small"
+        hx-get="/api/accounts/accruing/new?workspace={{.Workspace}}&name={{urlquery .Target}}&anchor_balance={{moneyInput .AmountMinor .Currency}}&anchor_date={{.AnchorDate}}&transfer_match_keyword={{urlquery .MatchKeyword}}"
+        hx-target="#accruing-account-content" hx-swap="innerHTML">Set up savings account</button>
+    </div>
+  </article>
+{{end}}
+{{end}}

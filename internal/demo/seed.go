@@ -308,7 +308,7 @@ func (b *builder) seedPersonalMonth(month time.Time, monthKey string, monthIndex
 	b.add("shopping-"+monthKey, accountSantander, b.date(month, 16), -b.amount(28_000, 32_000), "EUR",
 		"Amazon", "Household shopping", "Leisure & Shopping", domain.TransactionStatusBooked, "")
 	b.add("bizum-"+monthKey, accountSantander, b.date(month, 21), -2_500, "EUR",
-		"Bizum Juan Pérez", "Dinner split", "Transfers / Bizum", domain.TransactionStatusBooked, "")
+		"Bizum Juan Pérez", "Dinner split", "Transfers / P2P", domain.TransactionStatusBooked, "")
 
 	if monthIndex == 1 || monthIndex == 4 {
 		b.add("bank-fee-"+monthKey, accountSantander, b.date(month, 1), -1_500, "EUR",

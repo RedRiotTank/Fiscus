@@ -320,7 +320,7 @@ func matchesTransactionFacets(tx domain.Transaction, flow, category string, cate
 	}
 	switch storage.NormalizeCategoryFacet(category) {
 	case storage.CategoryFacetP2P:
-		return transactionCategoryIn(tx.Category, []string{"transfers / p2p", "bizum", "transfers / bizum", "p2p", "transfers / pass-through", "pass-through"})
+		return transactionCategoryIn(tx.Category, []string{"transfers / p2p", "bizum", "transfers / bizum", "transfers / bizums", "bizums", "p2p", "transfers / pass-through", "pass-through"})
 	case storage.CategoryFacetHousing:
 		return transactionCategoryIn(tx.Category, []string{"housing / rent", "housing", "rent", "renta", "alquiler", "mortgage", "hipoteca"})
 	case storage.CategoryFacetUtilities:
@@ -366,7 +366,7 @@ func transactionCategoryIn(category string, allowed []string) bool {
 func isP2PCategoryName(category string) bool {
 	switch strings.ToLower(strings.TrimSpace(category)) {
 	case "transfers / p2p", "transfers/p2p", "p2p",
-		"transfers / bizum", "transfers/bizum", "bizum":
+		"transfers / bizum", "transfers/bizum", "transfers / bizums", "transfers/bizums", "bizum", "bizums":
 		return true
 	default:
 		return false
@@ -462,18 +462,64 @@ func (s *Server) handleAccountType(w http.ResponseWriter, r *http.Request) {
 	}
 	accountID := strings.TrimSpace(r.PathValue("id"))
 	accountType := strings.ToLower(strings.TrimSpace(r.FormValue("type")))
-	if accountID == "" || (accountType != domain.AccountTypePersonal && accountType != domain.AccountTypeBusiness) {
+	kind := strings.ToLower(strings.TrimSpace(r.FormValue("account_type")))
+	if kind == "" {
+		kind = strings.ToLower(strings.TrimSpace(r.FormValue("kind")))
+	}
+	if kind == "" {
+		switch accountType {
+		case domain.AccountKindChecking, domain.AccountKindSavings, domain.AccountKindInvestment:
+			kind = accountType
+			accountType = ""
+		}
+	}
+	if accountID == "" {
+		http.Error(w, "Invalid account", http.StatusBadRequest)
+		return
+	}
+	updated := false
+	if accountType != "" {
+		if accountType != domain.AccountTypePersonal && accountType != domain.AccountTypeBusiness {
+			http.Error(w, "Invalid workspace type", http.StatusBadRequest)
+			return
+		}
+		if err := s.store.SetAccountType(r.Context(), accountID, accountType); err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				http.NotFound(w, r)
+				return
+			}
+			s.logger.Error("update account workspace", "account_id", accountID, "error", err)
+			http.Error(w, "Could not update workspace", http.StatusInternalServerError)
+			return
+		}
+		updated = true
+	}
+	if kind != "" {
+		switch kind {
+		case domain.AccountKindChecking, domain.AccountKindSavings, domain.AccountKindInvestment:
+		default:
+			http.Error(w, "Invalid account type", http.StatusBadRequest)
+			return
+		}
+		if err := s.store.SetAccountKind(r.Context(), accountID, kind); err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				http.NotFound(w, r)
+				return
+			}
+			s.logger.Error("update account kind", "account_id", accountID, "error", err)
+			http.Error(w, "Could not update account type", http.StatusInternalServerError)
+			return
+		}
+		updated = true
+	}
+	if !updated {
 		http.Error(w, "Invalid account or workspace type", http.StatusBadRequest)
 		return
 	}
-	if err := s.store.SetAccountType(r.Context(), accountID, accountType); err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			http.NotFound(w, r)
-			return
+	if kind != "" {
+		if _, err := s.store.LinkAccruingTransfers(r.Context()); err != nil {
+			s.logger.Error("link savings transfers after account type change", "account_id", accountID, "error", err)
 		}
-		s.logger.Error("update account workspace", "account_id", accountID, "error", err)
-		http.Error(w, "Could not update workspace", http.StatusInternalServerError)
-		return
 	}
 	if r.Header.Get("HX-Request") == "true" {
 		w.Header().Set("HX-Refresh", "true")
