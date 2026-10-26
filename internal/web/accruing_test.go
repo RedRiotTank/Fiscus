@@ -21,7 +21,7 @@ func TestSavingsSetupPromptDetection(t *testing.T) {
 	now := f.server.now().UTC()
 	transaction := domain.Transaction{
 		AccountID: "acc-1", ExternalID: "savings-prompt-1", AmountMinor: -100_000, Currency: "EUR",
-		BookingDate: now, Counterparty: "Ismael Díaz", Description: "To Cuenta Remunerada",
+		BookingDate: now, Counterparty: "Ismael Díaz", Description: "To Cuenta\u00a0Remunerada",
 		Category: "Transfers / P2P", Status: domain.TransactionStatusBooked,
 	}
 	if _, _, err := f.store.UpsertTransaction(ctx, &transaction); err != nil {

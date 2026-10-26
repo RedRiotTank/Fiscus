@@ -405,6 +405,51 @@ var migrations = []migration{
 			     OR LOWER(counterparty) LIKE '%savings%' OR LOWER(description) LIKE '%savings%')`,
 		},
 	},
+	{
+		version: 23,
+		statements: []string{
+			// Some banks use non-breaking or narrow spaces inside transfer names.
+			// Normalize whitespace before repairing salary and pass-through rows.
+			`UPDATE transactions SET category = 'Payroll', budget_excluded = 0
+			 WHERE amount_minor > 0
+			   AND LOWER(TRIM(category)) IN
+			     ('transfers / p2p', 'p2p', 'transfers / pass-through', 'pass-through', 'uncategorized')
+			   AND (
+			     REPLACE(REPLACE(LOWER(counterparty || ' ' || description), char(160), ' '), char(8239), ' ') LIKE '%nomina%'
+			     OR REPLACE(REPLACE(LOWER(counterparty || ' ' || description), char(160), ' '), char(8239), ' ') LIKE '%nómina%'
+			     OR REPLACE(REPLACE(LOWER(counterparty || ' ' || description), char(160), ' '), char(8239), ' ') LIKE '%payroll%'
+			     OR REPLACE(REPLACE(LOWER(counterparty || ' ' || description), char(160), ' '), char(8239), ' ') LIKE '%salary%'
+			     OR REPLACE(REPLACE(LOWER(counterparty || ' ' || description), char(160), ' '), char(8239), ' ') LIKE '%salario%'
+			     OR REPLACE(REPLACE(LOWER(counterparty || ' ' || description), char(160), ' '), char(8239), ' ') LIKE '%sueldo%'
+			   )`,
+			`UPDATE transactions SET category = 'Savings & Investments', budget_excluded = 0
+			 WHERE amount_minor < 0
+			   AND LOWER(TRIM(category)) IN
+			     ('transfers / p2p', 'p2p', 'transfers / pass-through', 'pass-through', 'uncategorized')
+			   AND (
+			     REPLACE(REPLACE(LOWER(counterparty || ' ' || description), char(160), ' '), char(8239), ' ') LIKE '%cuenta remunerada%'
+			     OR REPLACE(REPLACE(LOWER(counterparty || ' ' || description), char(160), ' '), char(8239), ' ') LIKE '%flexible%'
+			     OR REPLACE(REPLACE(LOWER(counterparty || ' ' || description), char(160), ' '), char(8239), ' ') LIKE '%ahorro%'
+			     OR REPLACE(REPLACE(LOWER(counterparty || ' ' || description), char(160), ' '), char(8239), ' ') LIKE '%deposito%'
+			     OR REPLACE(REPLACE(LOWER(counterparty || ' ' || description), char(160), ' '), char(8239), ' ') LIKE '%depósito%'
+			     OR REPLACE(REPLACE(LOWER(counterparty || ' ' || description), char(160), ' '), char(8239), ' ') LIKE '%vault%'
+			     OR REPLACE(REPLACE(LOWER(counterparty || ' ' || description), char(160), ' '), char(8239), ' ') LIKE '%savings%'
+			   )`,
+			`UPDATE transactions SET category = 'Transfers / Pass-through', budget_excluded = 1
+			 WHERE amount_minor > 0
+			   AND LOWER(TRIM(category)) IN
+			     ('transfers / p2p', 'p2p', 'transfers / pass-through', 'pass-through', 'uncategorized')
+			   AND (
+			     REPLACE(REPLACE(LOWER(counterparty || ' ' || description), char(160), ' '), char(8239), ' ') LIKE '%cuenta remunerada%'
+			     OR REPLACE(REPLACE(LOWER(counterparty || ' ' || description), char(160), ' '), char(8239), ' ') LIKE '%flexible%'
+			     OR REPLACE(REPLACE(LOWER(counterparty || ' ' || description), char(160), ' '), char(8239), ' ') LIKE '%ahorro%'
+			     OR REPLACE(REPLACE(LOWER(counterparty || ' ' || description), char(160), ' '), char(8239), ' ') LIKE '%deposito%'
+			     OR REPLACE(REPLACE(LOWER(counterparty || ' ' || description), char(160), ' '), char(8239), ' ') LIKE '%depósito%'
+			     OR REPLACE(REPLACE(LOWER(counterparty || ' ' || description), char(160), ' '), char(8239), ' ') LIKE '%vault%'
+			     OR REPLACE(REPLACE(LOWER(counterparty || ' ' || description), char(160), ' '), char(8239), ' ') LIKE '%savings%'
+			   )`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and

@@ -1,9 +1,6 @@
 package categorizer
 
-import (
-	"regexp"
-	"strings"
-)
+import "regexp"
 
 // p2pSignalPattern recognises Bizum transfers and Revolut's inline
 // "From Name" / "To Name" direction markers.
@@ -16,13 +13,13 @@ var diningConceptPattern = regexp.MustCompile(`(?i)\b(?:uber\s*eats|glovo|just\s
 // IsP2PText reports whether a transaction description looks like a Bizum or
 // Revolut peer-to-peer transfer.
 func IsP2PText(text string) bool {
-	return p2pSignalPattern.MatchString(strings.TrimSpace(text))
+	return p2pSignalPattern.MatchString(normalizeWhitespace(text))
 }
 
 // DiningConceptCategory maps outbound P2P dining notes to Restaurants &
 // Delivery. It returns false for unrelated transfer concepts.
 func DiningConceptCategory(text string) (string, bool) {
-	if !diningConceptPattern.MatchString(text) {
+	if !diningConceptPattern.MatchString(normalizeWhitespace(text)) {
 		return "", false
 	}
 	return CategoryRestaurants, true

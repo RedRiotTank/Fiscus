@@ -173,9 +173,29 @@ func TestCascadeRoutesSavingsTransfersToSavingsPillar(t *testing.T) {
 	if outflow.Category != CategorySavings || outflow.Tier != TierExact {
 		t.Fatalf("savings outflow = %+v, want Savings & Investments", outflow)
 	}
+	nbspOutflow := cascade.Classify(Input{Description: "To Cuenta\u00a0Remunerada", AmountMinor: -100_000})
+	if nbspOutflow.Category != CategorySavings {
+		t.Fatalf("NBSP savings outflow = %+v, want Savings & Investments", nbspOutflow)
+	}
 	inflow := cascade.Classify(Input{Counterparty: "From Cuenta Remunerada", AmountMinor: 25_000})
 	if inflow.Category != "Transfers / Pass-through" || inflow.Tier != TierExact {
 		t.Fatalf("savings inflow = %+v, want neutral pass-through", inflow)
+	}
+}
+
+func TestCascadeDetectsPayrollBeforeBayes(t *testing.T) {
+	t.Parallel()
+	cascade, err := NewCascade(Config{})
+	if err != nil {
+		t.Fatalf("NewCascade: %v", err)
+	}
+	result := cascade.Classify(Input{
+		Counterparty: "IZERTIS KEIFI, S.L.U",
+		Description:  "Transferencia nomina | Payment from Izertis Keifi, S.l.u",
+		AmountMinor:  203_549,
+	})
+	if result.Category != CategoryPayroll || result.Tier != TierExact {
+		t.Fatalf("salary = %+v, want exact Payroll", result)
 	}
 }
 

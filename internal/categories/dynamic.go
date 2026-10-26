@@ -140,6 +140,12 @@ func (d *DynamicClassifier) seedHistory(ctx context.Context) {
 		if category == "" || strings.EqualFold(category, DefaultCategory) {
 			continue
 		}
+		// Neutral transfer buckets are structural fallbacks, not merchant
+		// training examples. Seeding them teaches Bayes to swallow salaries and
+		// other unrelated inflows.
+		if strings.EqualFold(category, categorizer.CategoryP2P) || strings.EqualFold(category, "Transfers / Pass-through") {
+			continue
+		}
 		d.cascade.Seed(categorizerInput(tx), category, 1)
 	}
 }

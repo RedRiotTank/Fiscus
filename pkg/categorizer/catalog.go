@@ -22,6 +22,7 @@ const (
 	CategoryBankFees      = "Bank Fees"
 	CategoryGroceries     = "Groceries"
 	CategorySavings       = "Savings & Investments"
+	CategoryPayroll       = "Payroll"
 )
 
 // CatalogEntry is one high-confidence deterministic merchant rule. Keywords
@@ -148,6 +149,7 @@ func containsTokens(haystack, needle []string) bool {
 // significant: specific phrases precede broader merchant families.
 func DefaultCatalog() []CatalogEntry {
 	return []CatalogEntry{
+		{Category: CategoryPayroll, Keywords: []string{"nomina", "nómina", "payroll", "salary", "salario", "sueldo"}},
 		{Category: CategoryP2P, Keywords: []string{"bizum"}},
 		{Category: CategoryCash, Keywords: []string{"cash at", "cajero", "reintegro", "atm withdrawal"}},
 		{Category: CategorySubscriptions, Keywords: []string{
