@@ -172,7 +172,7 @@ func TestAccruingBudgetCategoryOverridesGenericSavings(t *testing.T) {
 
 	accruing := domain.AccruingAccount{
 		ID: "accrual-emergency", WorkspaceID: domain.WorkspacePersonal, Name: "Cuenta Remunerada",
-		Currency: "EUR", AnchorBalanceCents: 100_000, AnchorDate: day,
+		Currency: "EUR", AnchorBalanceCents: 100_000, AnchorDate: day.AddDate(0, 0, 10),
 		APYRateBasisPoints: 310, CompoundingFrequency: domain.AccruingDaily,
 		TransferMatchPattern: `(?i)cuenta\s*remunerada`, BudgetCategory: "Emergency Fund", IsActive: true,
 	}

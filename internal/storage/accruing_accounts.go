@@ -198,9 +198,6 @@ func (s *Store) LinkAccruingTransfers(ctx context.Context) (int, error) {
 			if matcher.account.Currency != "" && !strings.EqualFold(tx.Currency, matcher.account.Currency) {
 				continue
 			}
-			if tx.BookingDate.Before(matcher.account.AnchorDate) {
-				continue
-			}
 			text := accrual.NormalizeText(tx.Counterparty + " " + tx.Description)
 			if matcher.re.MatchString(text) {
 				return true
@@ -297,9 +294,6 @@ func (s *Store) LinkAccruingTransfers(ctx context.Context) (int, error) {
 				continue
 			}
 			if account.Currency != "" && !strings.EqualFold(tx.Currency, account.Currency) {
-				continue
-			}
-			if tx.BookingDate.Before(account.AnchorDate) {
 				continue
 			}
 			if _, done := seen[tx.ID]; done {
