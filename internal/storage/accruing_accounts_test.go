@@ -18,7 +18,7 @@ func TestAccruingAccountPersistence(t *testing.T) {
 		Currency: "EUR", AnchorBalanceCents: 345_000,
 		AnchorDate:         time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
 		APYRateBasisPoints: 310, CompoundingFrequency: domain.AccruingDaily,
-		TaxWithholdingBPS: 1900, TransferMatchPattern: `(?i)cuenta\s*remunerada`, IsActive: true,
+		TaxWithholdingBPS: 1900, TransferMatchPattern: `(?i)cuenta\s*remunerada`, BudgetCategory: "Emergency Fund", IsActive: true,
 	}
 	if err := store.SaveAccruingAccount(ctx, &account); err != nil {
 		t.Fatalf("SaveAccruingAccount: %v", err)
@@ -28,7 +28,7 @@ func TestAccruingAccountPersistence(t *testing.T) {
 		t.Fatalf("GetAccruingAccount: %v", err)
 	}
 	if loaded.AnchorBalanceCents != 345_000 || loaded.APYRateBasisPoints != 310 ||
-		loaded.TaxWithholdingBPS != 1900 || !loaded.IsActive ||
+		loaded.TaxWithholdingBPS != 1900 || loaded.BudgetCategory != "Emergency Fund" || !loaded.IsActive ||
 		loaded.CompoundingFrequency != domain.AccruingDaily {
 		t.Fatalf("loaded account = %+v", loaded)
 	}
@@ -147,6 +147,47 @@ func TestLinkGenericSavingsTransfersWithoutAccruingAccount(t *testing.T) {
 	}
 }
 
+func TestAccruingBudgetCategoryOverridesGenericSavings(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	ctx := context.Background()
+	connection := seedConnection(t, store)
+	account := seedAccount(t, store, connection.ID)
+	day := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	tx := domain.Transaction{
+		AccountID: account.ID, ExternalID: "savings-target-out", AmountMinor: -100_000, Currency: "EUR",
+		BookingDate: day, Description: "To Cuenta\u00a0Remunerada", Category: "Transfers / P2P",
+		Status: domain.TransactionStatusBooked,
+	}
+	if _, _, err := store.UpsertTransaction(ctx, &tx); err != nil {
+		t.Fatalf("UpsertTransaction: %v", err)
+	}
+	if _, err := store.LinkAccruingTransfers(ctx); err != nil {
+		t.Fatalf("generic LinkAccruingTransfers: %v", err)
+	}
+	generic, err := store.GetTransaction(ctx, tx.ID)
+	if err != nil || generic.Category != accrual.CategorySavings {
+		t.Fatalf("generic category = %q err=%v", generic.Category, err)
+	}
+
+	accruing := domain.AccruingAccount{
+		ID: "accrual-emergency", WorkspaceID: domain.WorkspacePersonal, Name: "Cuenta Remunerada",
+		Currency: "EUR", AnchorBalanceCents: 100_000, AnchorDate: day,
+		APYRateBasisPoints: 310, CompoundingFrequency: domain.AccruingDaily,
+		TransferMatchPattern: `(?i)cuenta\s*remunerada`, BudgetCategory: "Emergency Fund", IsActive: true,
+	}
+	if err := store.SaveAccruingAccount(ctx, &accruing); err != nil {
+		t.Fatalf("SaveAccruingAccount: %v", err)
+	}
+	if _, err := store.LinkAccruingTransfers(ctx); err != nil {
+		t.Fatalf("specific LinkAccruingTransfers: %v", err)
+	}
+	updated, err := store.GetTransaction(ctx, tx.ID)
+	if err != nil || updated.Category != "Emergency Fund" || updated.IsBudgetExcluded {
+		t.Fatalf("mapped category = %q excluded=%v err=%v", updated.Category, updated.IsBudgetExcluded, err)
+	}
+}
+
 func TestLinkAccruingTransfersCategoriesAndBudgetDirection(t *testing.T) {
 	t.Parallel()
 	store := newTestStore(t)
@@ -158,7 +199,7 @@ func TestLinkAccruingTransfersCategoriesAndBudgetDirection(t *testing.T) {
 		Currency: "EUR", AnchorBalanceCents: 100_000,
 		AnchorDate:         time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
 		APYRateBasisPoints: 310, CompoundingFrequency: domain.AccruingDaily,
-		TransferMatchPattern: `(?i)cuenta\s*remunerada`, IsActive: true,
+		TransferMatchPattern: `(?i)cuenta\s*remunerada`, BudgetCategory: "Emergency Fund", IsActive: true,
 	}
 	if err := store.SaveAccruingAccount(ctx, &accruing); err != nil {
 		t.Fatalf("SaveAccruingAccount: %v", err)
@@ -195,7 +236,7 @@ func TestLinkAccruingTransfersCategoriesAndBudgetDirection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTransaction inflow: %v", err)
 	}
-	if outflow.Category != accrual.CategorySavings || outflow.IsBudgetExcluded {
+	if outflow.Category != "Emergency Fund" || outflow.IsBudgetExcluded {
 		t.Fatalf("savings outflow = %+v", outflow)
 	}
 	if inflow.Category != accrual.CategoryWithdrawal || !inflow.IsBudgetExcluded {
@@ -207,7 +248,7 @@ func TestLinkAccruingTransfersCategoriesAndBudgetDirection(t *testing.T) {
 	}
 	var savingsSpend int64
 	for _, item := range spending {
-		if item.Category == accrual.CategorySavings {
+		if item.Category == "Emergency Fund" {
 			savingsSpend += item.Minor
 		}
 	}

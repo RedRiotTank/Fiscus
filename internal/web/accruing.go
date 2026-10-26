@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/RedRiotTank/Fiscus/internal/budgets"
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/internal/money"
 	"github.com/RedRiotTank/Fiscus/internal/storage"
@@ -87,6 +88,56 @@ func frequencyLabel(frequency string) string {
 		return "Monthly"
 	}
 	return "Daily"
+}
+
+func (s *Server) savingsCategoryOptions(ctx context.Context, workspace, currency string) []string {
+	seen := map[string]struct{}{
+		budgets.CategoryAccruingSavings: {},
+		"Emergency Fund":                {},
+		"Investments":                   {},
+	}
+	allocations, err := s.workspaceBudgetAllocations(ctx, workspace, currency)
+	if err == nil {
+		for _, allocation := range allocations {
+			if allocation.Pillar == budgets.PillarSavings {
+				category := strings.TrimSpace(allocation.Category)
+				if category != "" {
+					seen[category] = struct{}{}
+				}
+			}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for category := range seen {
+		out = append(out, category)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func ensureCategoryOption(options []string, category string) []string {
+	category = strings.TrimSpace(category)
+	if category == "" {
+		return options
+	}
+	for _, option := range options {
+		if strings.EqualFold(option, category) {
+			return options
+		}
+	}
+	options = append(options, category)
+	sort.Strings(options)
+	return options
+}
+
+func needsGenericAccruingSavingsBar(accounts []AccruingAccountView) bool {
+	for _, account := range accounts {
+		category := strings.TrimSpace(account.BudgetCategory)
+		if category == "" || strings.EqualFold(category, budgets.CategoryAccruingSavings) {
+			return true
+		}
+	}
+	return false
 }
 
 func formValueAny(r *http.Request, names ...string) string {
@@ -176,7 +227,7 @@ func (s *Server) detectSavingsPrompt(ctx context.Context, workspace string, sync
 		if domain.NormalizeAccountKind(account.Kind) != domain.AccountKindChecking {
 			continue
 		}
-		text := strings.TrimSpace(tx.Counterparty + " " + tx.Description)
+		text := accrual.NormalizeText(tx.Counterparty + " " + tx.Description)
 		match, ok := categorizer.SavingsMatch(text)
 		if !ok {
 			continue
@@ -330,6 +381,13 @@ func (s *Server) handleAccruingAccountNew(w http.ResponseWriter, r *http.Request
 	if apy := firstQueryValue(r, "apy_percent", "apy", "tae"); apy != "" {
 		form.APYPercent = apy
 	}
+	if category := firstQueryValue(r, "budget_category", "savings_category"); category != "" {
+		form.BudgetCategory = category
+	}
+	if form.BudgetCategory == "" {
+		form.BudgetCategory = budgets.CategoryAccruingSavings
+	}
+	form.CategoryOptions = ensureCategoryOption(s.savingsCategoryOptions(r.Context(), workspace, currency), form.BudgetCategory)
 	s.renderPartialData(w, "accruing_account_form", form)
 }
 
@@ -340,7 +398,9 @@ func (s *Server) handleAccruingAccountEdit(w http.ResponseWriter, r *http.Reques
 		http.NotFound(w, r)
 		return
 	}
-	s.renderPartialData(w, "accruing_account_form", accruingFormFromAccount(account))
+	form := accruingFormFromAccount(account)
+	form.CategoryOptions = ensureCategoryOption(s.savingsCategoryOptions(r.Context(), account.WorkspaceID, account.Currency), form.BudgetCategory)
+	s.renderPartialData(w, "accruing_account_form", form)
 }
 
 func (s *Server) handleAccruingAccountSave(w http.ResponseWriter, r *http.Request) {
@@ -363,6 +423,7 @@ func (s *Server) handleAccruingAccountSave(w http.ResponseWriter, r *http.Reques
 		TransferMatchKeyword:  strings.TrimSpace(formValueAny(r, "transfer_match_keyword", "transfer_match_pattern", "keyword")),
 		TaxWithholdingPercent: strings.TrimSpace(formValueAny(r, "tax_withholding_percent", "tax_withholding", "tax_rate")),
 		CompoundingFrequency:  strings.ToLower(strings.TrimSpace(formValueAny(r, "compounding_frequency", "frequency"))),
+		BudgetCategory:        strings.TrimSpace(formValueAny(r, "budget_category", "savings_category")),
 	}
 	if form.ID == "" {
 		form.ID = strings.TrimSpace(r.PathValue("id"))
@@ -408,6 +469,9 @@ func (s *Server) handleAccruingAccountSave(w http.ResponseWriter, r *http.Reques
 		if form.CompoundingFrequency == "" {
 			form.CompoundingFrequency = existing.CompoundingFrequency
 		}
+		if form.BudgetCategory == "" {
+			form.BudgetCategory = existing.BudgetCategory
+		}
 	}
 	if form.Workspace != domain.WorkspaceBusiness {
 		form.Workspace = domain.WorkspacePersonal
@@ -418,6 +482,10 @@ func (s *Server) handleAccruingAccountSave(w http.ResponseWriter, r *http.Reques
 	if form.CompoundingFrequency != domain.AccruingMonthly {
 		form.CompoundingFrequency = domain.AccruingDaily
 	}
+	if form.BudgetCategory == "" {
+		form.BudgetCategory = budgets.CategoryAccruingSavings
+	}
+	form.CategoryOptions = ensureCategoryOption(s.savingsCategoryOptions(r.Context(), form.Workspace, form.Currency), form.BudgetCategory)
 
 	account, parseErr := accruingAccountFromForm(form, s.now().UTC())
 	if parseErr != nil {
@@ -506,6 +574,7 @@ func accruingAccountFromForm(form AccruingAccountFormView, now time.Time) (domai
 		CompoundingFrequency: frequency,
 		TaxWithholdingBPS:    tax,
 		TransferMatchPattern: pattern,
+		BudgetCategory:       strings.TrimSpace(form.BudgetCategory),
 		IsActive:             true,
 	}, nil
 }
@@ -518,7 +587,8 @@ func accruingFormFromAccount(account domain.AccruingAccount) AccruingAccountForm
 		APYPercent:            bpsInput(account.APYRateBasisPoints),
 		TransferMatchKeyword:  account.TransferMatchPattern,
 		TaxWithholdingPercent: bpsInput(account.TaxWithholdingBPS),
-		CompoundingFrequency:  account.CompoundingFrequency, Editing: true,
+		CompoundingFrequency:  account.CompoundingFrequency,
+		BudgetCategory:        account.BudgetCategory, Editing: true,
 	}
 }
 

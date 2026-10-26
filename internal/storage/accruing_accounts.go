@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 
 const accruingAccountColumns = `id, workspace_id, name, currency, anchor_balance_cents,
 	anchor_date, apy_rate_basis_points, compounding_frequency, tax_withholding_bps,
-	transfer_match_pattern, is_active, created_at, updated_at`
+	transfer_match_pattern, budget_category, is_active, created_at, updated_at`
 
 // GetAccruingAccount returns one manually tracked savings account.
 func (s *Store) GetAccruingAccount(ctx context.Context, id string) (domain.AccruingAccount, error) {
@@ -83,6 +84,13 @@ func (s *Store) SaveAccruingAccount(ctx context.Context, account *domain.Accruin
 	if _, err := accrual.CompilePattern(account.TransferMatchPattern); err != nil {
 		return err
 	}
+	account.BudgetCategory = strings.TrimSpace(account.BudgetCategory)
+	switch strings.ToLower(account.BudgetCategory) {
+	case "", "savings", "savings / accruing", "transfers / savings":
+		account.BudgetCategory = accrual.CategorySavings
+	case "emergency fund":
+		account.BudgetCategory = "Emergency Fund"
+	}
 	now := nowUTC()
 	created := account.CreatedAt.IsZero()
 	if created {
@@ -99,8 +107,8 @@ func (s *Store) SaveAccruingAccount(ctx context.Context, account *domain.Accruin
 		INSERT INTO accruing_accounts (
 			id, workspace_id, name, currency, anchor_balance_cents, anchor_date,
 			apy_rate_basis_points, compounding_frequency, tax_withholding_bps,
-			transfer_match_pattern, is_active, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			transfer_match_pattern, budget_category, is_active, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			workspace_id = excluded.workspace_id,
 			name = excluded.name,
@@ -111,12 +119,14 @@ func (s *Store) SaveAccruingAccount(ctx context.Context, account *domain.Accruin
 			compounding_frequency = excluded.compounding_frequency,
 			tax_withholding_bps = excluded.tax_withholding_bps,
 			transfer_match_pattern = excluded.transfer_match_pattern,
+			budget_category = excluded.budget_category,
 			is_active = excluded.is_active,
 			updated_at = excluded.updated_at`,
 		account.ID, account.WorkspaceID, account.Name, account.Currency,
 		account.AnchorBalanceCents, account.AnchorDate.Format("2006-01-02"),
 		account.APYRateBasisPoints, account.CompoundingFrequency, account.TaxWithholdingBPS,
-		account.TransferMatchPattern, active, encodeTime(account.CreatedAt), encodeTime(account.UpdatedAt)); err != nil {
+		account.TransferMatchPattern, account.BudgetCategory, active,
+		encodeTime(account.CreatedAt), encodeTime(account.UpdatedAt)); err != nil {
 		return fmt.Errorf("storage: save accruing account: %w", err)
 	}
 	return nil
@@ -165,6 +175,39 @@ func (s *Store) LinkAccruingTransfers(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	type accruingMatcher struct {
+		account domain.AccruingAccount
+		re      *regexp.Regexp
+	}
+	matchers := make([]accruingMatcher, 0, len(accounts))
+	for _, account := range accounts {
+		if !account.IsActive {
+			continue
+		}
+		re, compileErr := accrual.CompilePattern(account.TransferMatchPattern)
+		if compileErr != nil || re == nil {
+			continue
+		}
+		matchers = append(matchers, accruingMatcher{account: account, re: re})
+	}
+	matchesAccruingAccount := func(tx domain.Transaction) bool {
+		for _, matcher := range matchers {
+			if workspaceByAccount[tx.AccountID] != matcher.account.WorkspaceID {
+				continue
+			}
+			if matcher.account.Currency != "" && !strings.EqualFold(tx.Currency, matcher.account.Currency) {
+				continue
+			}
+			if tx.BookingDate.Before(matcher.account.AnchorDate) {
+				continue
+			}
+			text := accrual.NormalizeText(tx.Counterparty + " " + tx.Description)
+			if matcher.re.MatchString(text) {
+				return true
+			}
+		}
+		return false
+	}
 	changed := 0
 	seen := make(map[int64]struct{})
 	apply := func(tx domain.Transaction, category string, excluded bool) error {
@@ -189,7 +232,10 @@ func (s *Store) LinkAccruingTransfers(ctx context.Context) (int, error) {
 		if tx.Status != domain.TransactionStatusBooked || tx.AmountMinor == 0 {
 			continue
 		}
-		text := strings.TrimSpace(tx.Counterparty + " " + tx.Description)
+		if matchesAccruingAccount(tx) {
+			continue
+		}
+		text := accrual.NormalizeText(tx.Counterparty + " " + tx.Description)
 		lowerText := strings.ToLower(text)
 		kind := kindByAccount[tx.AccountID]
 		matched := kind == domain.AccountKindSavings || kind == domain.AccountKindInvestment ||
@@ -241,14 +287,8 @@ func (s *Store) LinkAccruingTransfers(ctx context.Context) (int, error) {
 		}
 	}
 
-	for _, account := range accounts {
-		if !account.IsActive {
-			continue
-		}
-		re, err := accrual.CompilePattern(account.TransferMatchPattern)
-		if err != nil || re == nil {
-			continue
-		}
+	for _, matcher := range matchers {
+		account := matcher.account
 		for _, tx := range transactions {
 			if tx.Status != domain.TransactionStatusBooked || tx.AmountMinor == 0 {
 				continue
@@ -265,11 +305,18 @@ func (s *Store) LinkAccruingTransfers(ctx context.Context) (int, error) {
 			if _, done := seen[tx.ID]; done {
 				continue
 			}
-			text := strings.TrimSpace(tx.Counterparty + " " + tx.Description)
-			if !re.MatchString(text) {
+			text := accrual.NormalizeText(tx.Counterparty + " " + tx.Description)
+			if !matcher.re.MatchString(text) {
 				continue
 			}
-			category, excluded := accrual.CategoryForTransaction(tx.AmountMinor)
+			category := account.BudgetCategory
+			if strings.TrimSpace(category) == "" {
+				category = accrual.CategorySavings
+			}
+			excluded := false
+			if tx.AmountMinor > 0 {
+				category, excluded = accrual.CategoryWithdrawal, true
+			}
 			if err := apply(tx, category, excluded); err != nil {
 				return changed, err
 			}
@@ -294,7 +341,7 @@ func scanAccruingAccount(row accruingRowScanner) (domain.AccruingAccount, error)
 		&account.ID, &account.WorkspaceID, &account.Name, &account.Currency,
 		&account.AnchorBalanceCents, &anchorDate, &account.APYRateBasisPoints,
 		&account.CompoundingFrequency, &account.TaxWithholdingBPS,
-		&account.TransferMatchPattern, &active, &createdAt, &updatedAt,
+		&account.TransferMatchPattern, &account.BudgetCategory, &active, &createdAt, &updatedAt,
 	); err != nil {
 		return domain.AccruingAccount{}, err
 	}
@@ -315,6 +362,9 @@ func scanAccruingAccount(row accruingRowScanner) (domain.AccruingAccount, error)
 	}
 	if account.WorkspaceID == "" {
 		account.WorkspaceID = domain.WorkspacePersonal
+	}
+	if strings.TrimSpace(account.BudgetCategory) == "" {
+		account.BudgetCategory = accrual.CategorySavings
 	}
 	return account, nil
 }

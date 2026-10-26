@@ -450,6 +450,12 @@ var migrations = []migration{
 			   )`,
 		},
 	},
+	{
+		version: 24,
+		statements: []string{
+			`ALTER TABLE accruing_accounts ADD COLUMN budget_category TEXT NOT NULL DEFAULT 'Savings & Investments'`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and

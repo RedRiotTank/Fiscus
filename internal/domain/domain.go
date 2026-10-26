@@ -152,7 +152,7 @@ func coolingDown(until *time.Time, now time.Time) bool {
 }
 
 // AccruingAccount is a manually tracked savings account with an anchor
-// balance, APY/TAE, and optional tax withholding.
+// balance, APY/TAE, optional tax withholding, and a budget category mapping.
 type AccruingAccount struct {
 	ID                   string
 	WorkspaceID          string
@@ -164,6 +164,7 @@ type AccruingAccount struct {
 	CompoundingFrequency string
 	TaxWithholdingBPS    int
 	TransferMatchPattern string
+	BudgetCategory       string
 	IsActive             bool
 	CreatedAt            time.Time
 	UpdatedAt            time.Time

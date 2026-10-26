@@ -117,6 +117,8 @@ type AccruingAccountFormView struct {
 	TransferMatchKeyword  string
 	TaxWithholdingPercent string
 	CompoundingFrequency  string
+	BudgetCategory        string
+	CategoryOptions       []string
 	Error                 string
 	Editing               bool
 }

@@ -95,6 +95,7 @@ func TestAccruingAccountSetupAndAccountsPage(t *testing.T) {
 		"transfer_match_keyword":  {"Cuenta Remunerada"},
 		"tax_withholding_percent": {"19"},
 		"compounding_frequency":   {"daily"},
+		"budget_category":         {"Emergency Fund"},
 	}
 	req := httptest.NewRequest(http.MethodPost, "/api/accounts/accruing", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -113,7 +114,7 @@ func TestAccruingAccountSetupAndAccountsPage(t *testing.T) {
 	account := accounts[0]
 	if account.Name != "Revolut Cuenta Remunerada" || account.AnchorBalanceCents != 345_000 ||
 		account.APYRateBasisPoints != 310 || account.TaxWithholdingBPS != 1900 ||
-		account.TransferMatchPattern == "" {
+		account.TransferMatchPattern == "" || account.BudgetCategory != "Emergency Fund" {
 		t.Fatalf("saved account = %+v", account)
 	}
 
@@ -124,7 +125,7 @@ func TestAccruingAccountSetupAndAccountsPage(t *testing.T) {
 	body := page.Body.String()
 	for _, want := range []string{
 		"Revolut Cuenta Remunerada", "3.10% TAE · Daily", "Add savings account",
-		"Passive Yield", "Lifetime interest", "Reconcile", "€5,200.50",
+		"Passive Yield", "Lifetime interest", "Reconcile", "€5,200.50", "Budget: Emergency Fund",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("accounts page missing %q", want)
@@ -145,7 +146,7 @@ func TestAccruingAccountSetupAndAccountsPage(t *testing.T) {
 	if edit.Code != http.StatusOK {
 		t.Fatalf("edit account form = %d", edit.Code)
 	}
-	for _, want := range []string{"Reconcile savings account", "3450.00", "2026-03-10", "3.1"} {
+	for _, want := range []string{"Reconcile savings account", "3450.00", "2026-03-10", "3.1", "Emergency Fund"} {
 		if !strings.Contains(edit.Body.String(), want) {
 			t.Errorf("edit account form missing %q", want)
 		}

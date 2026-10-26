@@ -38,6 +38,13 @@
           <option value="monthly" {{if eq .CompoundingFrequency "monthly"}}selected{{end}}>Monthly</option>
         </select>
       </label>
+      <label>Budget category
+        <select name="budget_category">
+          {{range .CategoryOptions}}
+            <option value="{{.}}" {{if eq . $.BudgetCategory}}selected{{end}}>{{.}}</option>
+          {{end}}
+        </select>
+      </label>
     </div>
     <p class="muted small">Outflows matching the keyword increase savings principal and map to the Savings pillar. Inflows from savings reduce principal and are excluded from income.</p>
     <footer class="budget-dialog-foot">

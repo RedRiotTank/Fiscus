@@ -98,7 +98,7 @@ func (s *Server) loadBudgetPlan(ctx context.Context, data *PageData, spending []
 		}
 	}
 	stored.Allocations = budgets.EnsureP2PWantsAllocation(stored.Profile, stored.Allocations)
-	stored.Allocations = budgets.EnsureAccruingSavingsAllocation(stored.Profile, stored.Allocations, len(data.AccruingAccounts) > 0)
+	stored.Allocations = budgets.EnsureAccruingSavingsAllocation(stored.Profile, stored.Allocations, needsGenericAccruingSavingsBar(data.AccruingAccounts))
 	if len(stored.Allocations) == 0 {
 		data.BudgetEmpty = true
 		return nil

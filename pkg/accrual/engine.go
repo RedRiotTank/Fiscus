@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 )
@@ -175,7 +176,7 @@ func TransfersFromTransactions(account domain.AccruingAccount, transactions []do
 		if account.Currency != "" && tx.Currency != "" && !strings.EqualFold(tx.Currency, account.Currency) {
 			continue
 		}
-		text := strings.TrimSpace(tx.Counterparty + " " + tx.Description)
+		text := NormalizeText(tx.Counterparty + " " + tx.Description)
 		if !re.MatchString(text) {
 			continue
 		}
@@ -227,4 +228,17 @@ func CategoryForTransaction(amountMinor int64) (category string, budgetExcluded 
 func dateOnly(value time.Time) time.Time {
 	value = value.UTC()
 	return time.Date(value.Year(), value.Month(), value.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+// NormalizeText collapses Unicode whitespace (including NBSP) to single ASCII
+// spaces so bank descriptions and user keywords match consistently.
+func NormalizeText(text string) string {
+	text = strings.TrimSpace(text)
+	text = strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return ' '
+		}
+		return r
+	}, text)
+	return strings.Join(strings.Fields(text), " ")
 }

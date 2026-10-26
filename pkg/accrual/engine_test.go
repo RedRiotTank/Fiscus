@@ -91,6 +91,7 @@ func TestTransfersFromTransactionsUsesPatternAndDirection(t *testing.T) {
 	transactions := []domain.Transaction{
 		{ID: 1, Currency: "EUR", AmountMinor: -50_000, BookingDate: time.Date(2026, 10, 3, 0, 0, 0, 0, time.UTC), Counterparty: "Cuenta Remunerada", Description: "To savings", Status: domain.TransactionStatusBooked},
 		{ID: 2, Currency: "EUR", AmountMinor: 20_000, BookingDate: time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC), Counterparty: "Cuenta Remunerada", Description: "From savings", Status: domain.TransactionStatusBooked},
+		{ID: 5, Currency: "EUR", AmountMinor: -30_000, BookingDate: time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC), Counterparty: "", Description: "To Cuenta\u00a0Remunerada", Status: domain.TransactionStatusBooked},
 		{ID: 3, Currency: "EUR", AmountMinor: -999, BookingDate: time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC), Counterparty: "Coffee", Description: "Coffee", Status: domain.TransactionStatusBooked},
 		{ID: 4, Currency: "EUR", AmountMinor: -10_000, BookingDate: time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC), Counterparty: "Cuenta Remunerada", Description: "Pending", Status: domain.TransactionStatusPending},
 	}
@@ -98,7 +99,7 @@ func TestTransfersFromTransactionsUsesPatternAndDirection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("TransfersFromTransactions: %v", err)
 	}
-	if len(transfers) != 2 || transfers[0].AmountMinor != 50_000 || transfers[1].AmountMinor != -20_000 {
+	if len(transfers) != 3 || transfers[0].AmountMinor != 50_000 || transfers[1].AmountMinor != -20_000 || transfers[2].AmountMinor != 30_000 {
 		t.Fatalf("transfers = %+v", transfers)
 	}
 }
