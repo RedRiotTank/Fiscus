@@ -58,8 +58,8 @@
               <td>
                 <form hx-post="/api/accounts/{{.ID}}/account-type" hx-trigger="change" hx-target="body" hx-swap="none">
                   <select name="account_type" aria-label="Account type for {{if .Name}}{{.Name}}{{else}}{{.ID}}{{end}}">
-                    <option value="checking" {{if eq .Kind "checking"}}selected{{end}}>Checking / Corriente</option>
-                    <option value="savings" {{if eq .Kind "savings"}}selected{{end}}>Savings / Ahorro</option>
+                    <option value="checking" {{if eq .Kind "checking"}}selected{{end}}>Checking</option>
+                    <option value="savings" {{if eq .Kind "savings"}}selected{{end}}>Savings</option>
                     <option value="investment" {{if eq .Kind "investment"}}selected{{end}}>Investment</option>
                   </select>
                 </form>
@@ -111,16 +111,22 @@
               <dd class="credit">+{{money .LifetimeInterestMinor .Currency}}</dd>
             </div>
             <div>
-              <dt>Opening anchor</dt>
+              <dt>Balance at anchor</dt>
               <dd>{{money .AnchorBalanceCents .Currency}}</dd>
             </div>
           </dl>
           {{if .TransferMatchPattern}}<p class="muted small mono accruing-pattern">link: {{.TransferMatchPattern}}</p>{{end}}
           <footer class="accruing-card-foot">
             <span class="badge workspace {{if eq .WorkspaceID "business"}}business{{else}}personal{{end}}">{{if eq .WorkspaceID "business"}}Business{{else}}Personal{{end}}</span>
-            <button class="button ghost small"
-              hx-get="/api/accounts/accruing/{{.ID}}/edit"
-              hx-target="#accruing-account-content" hx-swap="innerHTML">Reconcile</button>
+            <div class="accruing-card-actions">
+              <button class="button ghost small"
+                hx-get="/api/accounts/accruing/{{.ID}}/edit"
+                hx-target="#accruing-account-content" hx-swap="innerHTML">Reconcile</button>
+              <button class="button ghost small"
+                hx-post="/api/accounts/accruing/{{.ID}}/delete"
+                hx-confirm="Delete this savings account? Historical transactions will be re-linked."
+                hx-target="body" hx-swap="none">Delete</button>
+            </div>
           </footer>
         </article>
       {{end}}

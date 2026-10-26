@@ -298,7 +298,7 @@ func (s *Server) detectSavingsPrompt(ctx context.Context, workspace string, sync
 	return &SavingsPromptView{
 		Target: best.target, AmountMinor: best.amount, Count: best.count,
 		Currency: best.currency, Workspace: promptWorkspace,
-		AnchorDate: best.earliest.UTC().Format("2006-01-02"), MatchKeyword: best.target,
+		AnchorDate: now.UTC().Format("2006-01-02"), MatchKeyword: best.target,
 	}, nil
 }
 
@@ -361,7 +361,7 @@ func (s *Server) handleAccruingAccountNew(w http.ResponseWriter, r *http.Request
 		currency = "EUR"
 	}
 	form := AccruingAccountFormView{
-		Workspace: workspace, Currency: currency, Name: "Revolut Cuenta Remunerada",
+		Workspace: workspace, Currency: currency, Name: "Revolut Savings Account",
 		AnchorDate: s.now().UTC().Format("2006-01-02"), APYPercent: "3.10",
 		TransferMatchKeyword:  "Cuenta Remunerada",
 		TaxWithholdingPercent: "0", CompoundingFrequency: domain.AccruingDaily,
@@ -401,6 +401,32 @@ func (s *Server) handleAccruingAccountEdit(w http.ResponseWriter, r *http.Reques
 	form := accruingFormFromAccount(account)
 	form.CategoryOptions = ensureCategoryOption(s.savingsCategoryOptions(r.Context(), account.WorkspaceID, account.Currency), form.BudgetCategory)
 	s.renderPartialData(w, "accruing_account_form", form)
+}
+
+func (s *Server) handleAccruingAccountDelete(w http.ResponseWriter, r *http.Request) {
+	if !validSyncRequest(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	id := strings.TrimSpace(r.PathValue("id"))
+	if id == "" {
+		http.NotFound(w, r)
+		return
+	}
+	if err := s.store.DeleteAccruingAccount(r.Context(), id); err != nil {
+		s.logger.Error("delete accruing account", "accruing_account_id", id, "error", err)
+		http.Error(w, "Could not delete savings account", http.StatusInternalServerError)
+		return
+	}
+	if _, err := s.store.LinkAccruingTransfers(r.Context()); err != nil {
+		s.logger.Error("relink transfers after savings account deletion", "error", err)
+	}
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Refresh", "true")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	http.Redirect(w, r, "/accounts", http.StatusSeeOther)
 }
 
 func (s *Server) handleAccruingAccountSave(w http.ResponseWriter, r *http.Request) {

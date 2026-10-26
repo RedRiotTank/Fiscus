@@ -15,9 +15,9 @@
     <input type="hidden" name="currency" value="{{.Currency}}">
     <div class="accruing-form-grid">
       <label>Account name
-        <input name="name" type="text" value="{{.Name}}" maxlength="120" placeholder="Revolut Cuenta Remunerada" required>
+        <input name="name" type="text" value="{{.Name}}" maxlength="120" placeholder="Revolut Savings Account" required>
       </label>
-      <label>Opening balance ({{.Currency}})
+      <label>Current balance ({{.Currency}})
         <input name="anchor_balance" type="text" inputmode="decimal" value="{{.AnchorBalance}}" placeholder="3450.00" required>
       </label>
       <label>Anchor date
@@ -46,7 +46,7 @@
         </select>
       </label>
     </div>
-    <p class="muted small">Outflows matching the keyword increase savings principal and map to the Savings pillar. Inflows from savings reduce principal and are excluded from income.</p>
+    <p class="muted small">Enter the balance you actually hold on the anchor date; past movements are already included. Only later matching outflows increase principal, and later inflows reduce it without counting as income.</p>
     <footer class="budget-dialog-foot">
       <button class="button ghost" type="button" data-accruing-close>Cancel</button>
       <button class="button" type="submit">{{if .Editing}}Update anchor{{else}}Create account{{end}}</button>

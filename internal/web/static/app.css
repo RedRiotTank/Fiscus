@@ -3167,3 +3167,9 @@ select {
 .savings-prompt {
   margin: 0 0 14px;
 }
+
+.accruing-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

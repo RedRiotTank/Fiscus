@@ -82,6 +82,38 @@ func TestAccountKindEndpointTogglesCheckingSavings(t *testing.T) {
 	}
 }
 
+func TestAccruingAccountDeleteEndpoint(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	ctx := context.Background()
+	account := domain.AccruingAccount{
+		ID: "accrual-delete", WorkspaceID: domain.WorkspacePersonal, Name: "Revolut Savings Account",
+		Currency: "EUR", AnchorBalanceCents: 100_000,
+		AnchorDate:         time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC),
+		APYRateBasisPoints: 310, CompoundingFrequency: domain.AccruingDaily,
+		TransferMatchPattern: `(?i)cuenta\s*remunerada`, BudgetCategory: "Emergency Fund", IsActive: true,
+	}
+	if err := f.store.SaveAccruingAccount(ctx, &account); err != nil {
+		t.Fatalf("SaveAccruingAccount: %v", err)
+	}
+	page := f.request(t, http.MethodGet, "/accounts?workspace=personal", true, nil)
+	if !strings.Contains(page.Body.String(), "Delete") {
+		t.Fatalf("accounts page missing delete action")
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/accounts/accruing/"+account.ID+"/delete", nil)
+	req.Header.Set(syncRequestHeader, "1")
+	req.SetBasicAuth("admin", "secret")
+	rec := httptest.NewRecorder()
+	f.handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("delete account = %d %s", rec.Code, rec.Body.String())
+	}
+	accounts, err := f.store.ListAccruingAccounts(ctx)
+	if err != nil || len(accounts) != 0 {
+		t.Fatalf("accruing accounts after delete = %+v err=%v", accounts, err)
+	}
+}
+
 func TestAccruingAccountSetupAndAccountsPage(t *testing.T) {
 	t.Parallel()
 	f := newWebFixture(t)
@@ -136,7 +168,7 @@ func TestAccruingAccountSetupAndAccountsPage(t *testing.T) {
 	if modal.Code != http.StatusOK {
 		t.Fatalf("new account form = %d", modal.Code)
 	}
-	for _, want := range []string{`name="anchor_balance"`, `name="apy_percent"`, "Revolut Cuenta Remunerada"} {
+	for _, want := range []string{`name="anchor_balance"`, `name="apy_percent"`, "Revolut Savings Account"} {
 		if !strings.Contains(modal.Body.String(), want) {
 			t.Errorf("new account form missing %q", want)
 		}

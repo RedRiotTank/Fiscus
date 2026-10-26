@@ -37,6 +37,25 @@ func TestDailyCompoundingMatchesClosedForm(t *testing.T) {
 	}
 }
 
+func TestAnchorBalanceAlreadyIncludesAnchorDateMovements(t *testing.T) {
+	t.Parallel()
+	account := testAccount()
+	asOf := time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC)
+	without := Project(account, nil, asOf)
+	withAnchorDayTransfer := Project(account, []Transfer{{
+		Date: account.AnchorDate, AmountMinor: 100_000,
+	}}, asOf)
+	if withAnchorDayTransfer.BalanceMinor != without.BalanceMinor {
+		t.Fatalf("anchor-day movement double-counted: %d vs %d", withAnchorDayTransfer.BalanceMinor, without.BalanceMinor)
+	}
+	afterAnchor := Project(account, []Transfer{{
+		Date: account.AnchorDate.AddDate(0, 0, 1), AmountMinor: 100_000,
+	}}, asOf)
+	if afterAnchor.BalanceMinor <= without.BalanceMinor {
+		t.Fatalf("post-anchor movement was not applied: %d vs %d", afterAnchor.BalanceMinor, without.BalanceMinor)
+	}
+}
+
 func TestMidStreamTransferCompoundsForRemainingDays(t *testing.T) {
 	t.Parallel()
 	account := testAccount()
@@ -92,6 +111,7 @@ func TestTransfersFromTransactionsUsesPatternAndDirection(t *testing.T) {
 		{ID: 1, Currency: "EUR", AmountMinor: -50_000, BookingDate: time.Date(2026, 10, 3, 0, 0, 0, 0, time.UTC), Counterparty: "Cuenta Remunerada", Description: "To savings", Status: domain.TransactionStatusBooked},
 		{ID: 2, Currency: "EUR", AmountMinor: 20_000, BookingDate: time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC), Counterparty: "Cuenta Remunerada", Description: "From savings", Status: domain.TransactionStatusBooked},
 		{ID: 5, Currency: "EUR", AmountMinor: -30_000, BookingDate: time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC), Counterparty: "", Description: "To Cuenta\u00a0Remunerada", Status: domain.TransactionStatusBooked},
+		{ID: 6, Currency: "EUR", AmountMinor: -40_000, BookingDate: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), Counterparty: "Cuenta Remunerada", Description: "Anchor day movement", Status: domain.TransactionStatusBooked},
 		{ID: 3, Currency: "EUR", AmountMinor: -999, BookingDate: time.Date(2026, 10, 6, 0, 0, 0, 0, time.UTC), Counterparty: "Coffee", Description: "Coffee", Status: domain.TransactionStatusBooked},
 		{ID: 4, Currency: "EUR", AmountMinor: -10_000, BookingDate: time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC), Counterparty: "Cuenta Remunerada", Description: "Pending", Status: domain.TransactionStatusPending},
 	}

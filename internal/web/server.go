@@ -38,6 +38,7 @@ type Store interface {
 	GetAccruingAccount(ctx context.Context, id string) (domain.AccruingAccount, error)
 	ListAccruingAccounts(ctx context.Context) ([]domain.AccruingAccount, error)
 	SaveAccruingAccount(ctx context.Context, account *domain.AccruingAccount) error
+	DeleteAccruingAccount(ctx context.Context, id string) error
 	LinkAccruingTransfers(ctx context.Context) (int, error)
 	RecentTransactions(ctx context.Context, limit int) ([]domain.Transaction, error)
 	ListTransactions(ctx context.Context, filter storage.TransactionFilter) ([]domain.Transaction, error)
@@ -275,6 +276,8 @@ func (s *Server) routes() http.Handler {
 	app.HandleFunc("GET /api/accounts/accruing/new", s.handleAccruingAccountNew)
 	app.HandleFunc("GET /api/accounts/accruing/{id}/edit", s.handleAccruingAccountEdit)
 	app.HandleFunc("POST /api/accounts/accruing", s.handleAccruingAccountSave)
+	app.HandleFunc("POST /api/accounts/accruing/{id}/delete", s.handleAccruingAccountDelete)
+	app.HandleFunc("DELETE /api/accounts/accruing/{id}", s.handleAccruingAccountDelete)
 	app.HandleFunc("POST /api/accounts/accruing/{id}/reconcile", s.handleAccruingAccountSave)
 	app.HandleFunc("GET /analytics", s.handleAnalytics)
 	app.HandleFunc("GET /api/analytics/spending", s.handleAnalyticsSpending)

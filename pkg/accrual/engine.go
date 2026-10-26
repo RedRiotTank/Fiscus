@@ -105,7 +105,9 @@ func Project(account domain.AccruingAccount, transfers []Transfer, asOf time.Tim
 	byDay := make(map[string]float64, len(transfers))
 	for _, transfer := range transfers {
 		day := dateOnly(transfer.Date)
-		if day.Before(anchor) {
+		// The anchor balance is the balance already held at the end of the
+		// anchor date, so movements on or before that date are already included.
+		if !day.After(anchor) {
 			continue
 		}
 		byDay[day.Format("2006-01-02")] += float64(transfer.AmountMinor)
@@ -180,7 +182,7 @@ func TransfersFromTransactions(account domain.AccruingAccount, transactions []do
 		if !re.MatchString(text) {
 			continue
 		}
-		if dateOnly(tx.BookingDate).Before(dateOnly(account.AnchorDate)) {
+		if !dateOnly(tx.BookingDate).After(dateOnly(account.AnchorDate)) {
 			continue
 		}
 		out = append(out, Transfer{Date: dateOnly(tx.BookingDate), AmountMinor: -tx.AmountMinor})
