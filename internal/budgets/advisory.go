@@ -618,7 +618,8 @@ func BucketForCategory(category string) string {
 		"entertainment", "ocio", "leisure", "subscriptions", "shopping",
 		"travel", "meals", "health & fitness", "bizum", "transfers / bizum":
 		return BucketWants
-	case "savings", "investments", "investment", "emergency fund":
+	case "savings", "saving", "investments", "investment", "emergency fund",
+		"savings / accruing", "accruing savings":
 		return BucketSavings
 	default:
 		return BucketUnallocated

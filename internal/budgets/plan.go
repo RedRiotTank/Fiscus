@@ -245,7 +245,9 @@ func BuildPlan(profile Profile, allocations []Allocation, spending []storage.Cat
 	pillarCategories := map[Pillar][]CategoryPlan{
 		PillarNeeds: {}, PillarWants: {}, PillarSavings: {},
 	}
+	allocatedCategories := make(map[string]struct{}, len(allocations))
 	for _, allocation := range allocations {
+		allocatedCategories[strings.ToLower(canonicalSpendingCategory(allocation.Category))] = struct{}{}
 		limit := roundBudgetMinor(baseline * int64(allocation.PercentBPS) / 10000)
 		spent := byCategory[strings.ToLower(canonicalSpendingCategory(allocation.Category))]
 		percent := int64(0)
@@ -276,6 +278,20 @@ func BuildPlan(profile Profile, allocations []Allocation, spending []storage.Cat
 		plan.AllocatedBPS += allocation.PercentBPS
 		plan.AllocatedMinor += limit
 		plan.TotalSpentMinor += spent
+	}
+	// Accruing savings transfers should remain visible under Savings even when
+	// the user has not explicitly allocated a category for them yet.
+	accruingKey := strings.ToLower(CategoryAccruingSavings)
+	if _, allocated := allocatedCategories[accruingKey]; !allocated {
+		if spent := byCategory[accruingKey]; spent > 0 {
+			category := CategoryPlan{
+				Category: CategoryAccruingSavings, Pillar: PillarSavings,
+				SpentMinor: spent, RemainingMinor: -spent, Percent: 100, Tone: ToneWarning,
+			}
+			plan.Categories = append(plan.Categories, category)
+			pillarCategories[PillarSavings] = append(pillarCategories[PillarSavings], category)
+			plan.TotalSpentMinor += spent
+		}
 	}
 	plan.UnallocatedBPS = 10000 - plan.AllocatedBPS
 	plan.UnallocatedMinor = baseline - plan.AllocatedMinor

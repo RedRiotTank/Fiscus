@@ -35,6 +35,10 @@ var assets embed.FS
 // Store is the read surface required by the dashboard.
 type Store interface {
 	ListAccounts(ctx context.Context) ([]domain.Account, error)
+	GetAccruingAccount(ctx context.Context, id string) (domain.AccruingAccount, error)
+	ListAccruingAccounts(ctx context.Context) ([]domain.AccruingAccount, error)
+	SaveAccruingAccount(ctx context.Context, account *domain.AccruingAccount) error
+	LinkAccruingTransfers(ctx context.Context) (int, error)
 	RecentTransactions(ctx context.Context, limit int) ([]domain.Transaction, error)
 	ListTransactions(ctx context.Context, filter storage.TransactionFilter) ([]domain.Transaction, error)
 	GetTransaction(ctx context.Context, id int64) (domain.Transaction, error)
@@ -222,7 +226,7 @@ func (s *Server) templateFuncs() template.FuncMap {
 
 func (s *Server) parseTemplates() error {
 	s.pages = make(map[string]*template.Template)
-	for _, page := range []string{"dashboard", "transactions", "budgets", "subscriptions", "alerts", "connections", "analytics", "error"} {
+	for _, page := range []string{"dashboard", "transactions", "budgets", "subscriptions", "alerts", "connections", "accounts", "analytics", "error"} {
 		tmpl, err := template.New("layout").Funcs(s.templateFuncs()).ParseFS(assets,
 			"templates/layout.html",
 			"templates/partials/*.html",
@@ -265,6 +269,11 @@ func (s *Server) routes() http.Handler {
 	app.HandleFunc("GET /subscriptions", s.handleSubscriptions)
 	app.HandleFunc("GET /alerts", s.handleAlerts)
 	app.HandleFunc("GET /connections", s.handleConnections)
+	app.HandleFunc("GET /accounts", s.handleAccounts)
+	app.HandleFunc("GET /api/accounts/accruing/new", s.handleAccruingAccountNew)
+	app.HandleFunc("GET /api/accounts/accruing/{id}/edit", s.handleAccruingAccountEdit)
+	app.HandleFunc("POST /api/accounts/accruing", s.handleAccruingAccountSave)
+	app.HandleFunc("POST /api/accounts/accruing/{id}/reconcile", s.handleAccruingAccountSave)
 	app.HandleFunc("GET /analytics", s.handleAnalytics)
 	app.HandleFunc("GET /api/analytics/spending", s.handleAnalyticsSpending)
 	app.HandleFunc("GET /api/analytics/pace", s.handleAnalyticsPace)

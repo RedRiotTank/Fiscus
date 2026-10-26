@@ -912,8 +912,14 @@ func (s *Server) handleRecategorize(w http.ResponseWriter, r *http.Request) {
 		s.syncNotice(w, http.StatusInternalServerError, "error", "Could not neutralize pass-through transfers.")
 		return
 	}
-	message := fmt.Sprintf("Examined %d transactions; updated %d; neutralized %d pass-through pair(s).",
-		result.Examined, result.Changed, paired)
+	linked, err := s.store.LinkAccruingTransfers(r.Context())
+	if err != nil {
+		s.logger.Error("link accruing transfers", "error", err)
+		s.syncNotice(w, http.StatusInternalServerError, "error", "Could not link accruing savings transfers.")
+		return
+	}
+	message := fmt.Sprintf("Examined %d transactions; updated %d; neutralized %d pass-through pair(s); linked %d savings transfer(s).",
+		result.Examined, result.Changed, paired, linked)
 	s.syncNotice(w, http.StatusOK, "success", message)
 }
 

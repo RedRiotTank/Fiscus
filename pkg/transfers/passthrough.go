@@ -59,7 +59,7 @@ func Detect(transactions []domain.Transaction, windowDays int) []Match {
 		if tx.Status != domain.TransactionStatusBooked || tx.AmountMinor == 0 {
 			continue
 		}
-		if tx.PassThroughSuppressed || tx.PairedTransactionID != nil {
+		if tx.PassThroughSuppressed || tx.PairedTransactionID != nil || tx.IsBudgetExcluded {
 			continue
 		}
 		if tx.AmountMinor < 0 {

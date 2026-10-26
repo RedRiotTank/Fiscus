@@ -130,6 +130,56 @@ func TestEnsureP2PWantsAllocationRebalancesOldPlan(t *testing.T) {
 	}
 }
 
+func TestBuildPlanCountsAccruingSavingsTransfersUnderSavings(t *testing.T) {
+	t.Parallel()
+	allocations := []Allocation{
+		{Category: CategoryAccruingSavings, Pillar: PillarSavings, PercentBPS: DefaultAccruingSavingsBPS},
+	}
+	spending := []storage.CategorySpending{
+		{Category: CategoryAccruingSavings, Currency: "EUR", Minor: 25_000},
+	}
+	plan := BuildPlan(personalProfile(), allocations, spending, 280_000, 0, 280_000, time.Now())
+	if len(plan.Categories) != 1 || plan.Categories[0].SpentMinor != 25_000 ||
+		plan.Categories[0].Pillar != PillarSavings {
+		t.Fatalf("accruing category = %+v", plan.Categories)
+	}
+	if plan.Pillars[2].Label != "Savings & Investment" || plan.Pillars[2].SpentMinor != 25_000 {
+		t.Fatalf("savings pillar = %+v", plan.Pillars[2])
+	}
+}
+
+func TestEnsureAccruingSavingsAllocationRebalancesSavingsPillar(t *testing.T) {
+	t.Parallel()
+	allocations := []Allocation{
+		{Category: "Housing / Rent", Pillar: PillarNeeds, PercentBPS: 3000},
+		{Category: "Groceries", Pillar: PillarNeeds, PercentBPS: 1200},
+		{Category: "Utilities & Telecom", Pillar: PillarNeeds, PercentBPS: 800},
+		{Category: "Restaurants & Delivery", Pillar: PillarWants, PercentBPS: 1200},
+		{Category: "Subscriptions", Pillar: PillarWants, PercentBPS: 500},
+		{Category: "Cash / ATM", Pillar: PillarWants, PercentBPS: 300},
+		{Category: "Leisure & Shopping", Pillar: PillarWants, PercentBPS: 700},
+		{Category: CategoryP2P, Pillar: PillarWants, PercentBPS: DefaultP2PWantsBPS},
+		{Category: "Emergency Fund", Pillar: PillarSavings, PercentBPS: 2000},
+	}
+	ensured := EnsureAccruingSavingsAllocation(personalProfile(), allocations, true)
+	total, savings := allocationTotalsByPillar(ensured, PillarSavings)
+	if total != 10000 || savings != 2000 {
+		t.Fatalf("allocation totals = total %d savings %d: %+v", total, savings, ensured)
+	}
+	found := false
+	for _, allocation := range ensured {
+		if allocation.Category == CategoryAccruingSavings {
+			found = true
+			if allocation.Pillar != PillarSavings || allocation.PercentBPS != DefaultAccruingSavingsBPS {
+				t.Fatalf("accruing allocation = %+v", allocation)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("accruing savings allocation missing: %+v", ensured)
+	}
+}
+
 func TestBuildPlanBusinessWorkspaceIsolation(t *testing.T) {
 	t.Parallel()
 	profile := Profile{

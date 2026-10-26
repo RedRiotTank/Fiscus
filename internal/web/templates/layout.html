@@ -20,6 +20,7 @@
   <script src="/static/budget-donut.js" defer></script>
   <script src="/static/budget-customize.js" defer></script>
   <script src="/static/budget-recurring.js" defer></script>
+  <script src="/static/accruing-accounts.js" defer></script>
   <script src="/static/transaction-filters.js" defer></script>
   <script src="/static/analytics-core.js" defer></script>
   <script src="/static/analytics-spending.js" defer></script>
@@ -57,6 +58,7 @@
         <a href="/transactions" class="{{if eq .Active "transactions"}}active{{end}}">Transactions</a>
         <a href="/budgets" class="{{if eq .Active "budgets"}}active{{end}}">Budgets</a>
         <a href="/subscriptions" class="{{if eq .Active "subscriptions"}}active{{end}}">Subscriptions</a>
+        <a href="/accounts" class="{{if eq .Active "accounts"}}active{{end}}">Accounts</a>
         <a href="/alerts" class="{{if eq .Active "alerts"}}active{{end}}">Alerts</a>
         <a href="/connections" class="{{if eq .Active "connections"}}active{{end}}">Connections</a>
       </nav>

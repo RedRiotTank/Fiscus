@@ -101,6 +101,12 @@ type PassThroughNeutralizer interface {
 	NeutralizePassThroughs(ctx context.Context, windowDays int) (int, error)
 }
 
+// AccruingTransferLinker applies manual savings-account categories after new
+// checking transactions arrive.
+type AccruingTransferLinker interface {
+	LinkAccruingTransfers(ctx context.Context) (int, error)
+}
+
 // Observer receives sync telemetry. Implementations must be safe for concurrent
 // use. A nil observer disables observation.
 type Observer interface {
@@ -867,6 +873,13 @@ func (w *Worker) syncTransactions(ctx context.Context, account domain.Account, c
 		if _, err := w.evaluator.OnTransaction(ctx, tx, account); err != nil {
 			w.logger.Error("alert rule evaluation failed",
 				"account_id", account.ID, "transaction_id", tx.ExternalID, "error", err)
+		}
+	}
+	if linker, ok := w.store.(AccruingTransferLinker); ok {
+		if linked, err := linker.LinkAccruingTransfers(ctx); err != nil {
+			w.logger.Error("accruing transfer linking failed", "account_id", account.ID, "error", err)
+		} else if linked > 0 {
+			w.logger.Info("linked accruing savings transfers", "account_id", account.ID, "transactions", linked)
 		}
 	}
 	if neutralizer, ok := w.store.(PassThroughNeutralizer); ok {

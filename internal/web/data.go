@@ -51,6 +51,7 @@ type PageData struct {
 	FeeTotals               []CurrencyAmountView
 	Treasury                []RunwayView
 	Accounts                []domain.Account
+	AccruingAccounts        []AccruingAccountView
 	Transactions            []TransactionView
 	Categories              []string
 	Housing                 *HousingSetupView
@@ -92,6 +93,31 @@ type CurrencySummary struct {
 	Currency string
 	Minor    int64
 	Accounts int
+}
+
+// AccruingAccountView augments a manual savings account with projected yield.
+type AccruingAccountView struct {
+	domain.AccruingAccount
+	BalanceMinor          int64
+	LifetimeInterestMinor int64
+	MonthInterestMinor    int64
+	TAELabel              string
+}
+
+// AccruingAccountFormView supplies the setup and reconcile modal.
+type AccruingAccountFormView struct {
+	ID                    string
+	Workspace             string
+	Name                  string
+	Currency              string
+	AnchorBalance         string
+	AnchorDate            string
+	APYPercent            string
+	TransferMatchKeyword  string
+	TaxWithholdingPercent string
+	CompoundingFrequency  string
+	Error                 string
+	Editing               bool
 }
 
 // HousingSetupView supplies the budget-page housing prompt, detection banner,
@@ -440,9 +466,14 @@ func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 		return err
 	}
 	data.Accounts = accounts
-	data.Summary = summarizeAccounts(accounts)
-	data.TotalAccounts = len(accounts)
 	now := s.now().UTC()
+	accruing, err := s.accruingAccountViews(ctx, data.Workspace.View, accounts, now)
+	if err != nil {
+		return err
+	}
+	data.AccruingAccounts = accruing
+	data.Summary = summarizeAccountsAndAccruing(accounts, accruing)
+	data.TotalAccounts = len(accounts) + len(accruing)
 	monthStart := firstOfMonth(now)
 	if !data.BudgetMonth.IsZero() {
 		monthStart = firstOfMonth(data.BudgetMonth)

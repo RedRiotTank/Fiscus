@@ -1,0 +1,125 @@
+{{define "content"}}
+<div class="page-head">
+  <div>
+    <p class="eyebrow">Balances</p>
+    <h1>Accounts</h1>
+    <p class="subtitle">Linked bank accounts and manually tracked savings accounts with projected daily accrual.</p>
+  </div>
+  <button class="button small"
+    hx-get="/api/accounts/accruing/new?workspace={{.Workspace.View}}{{if .Summary}}&currency={{(index .Summary 0).Currency}}{{end}}"
+    hx-target="#accruing-account-content" hx-swap="innerHTML">Add savings account</button>
+</div>
+
+{{if .Summary}}
+  <div class="summary-grid">
+    {{range .Summary}}
+      <article class="stat">
+        <span class="stat-label">{{.Currency}} net worth</span>
+        <strong class="stat-value">{{money .Minor .Currency}}</strong>
+        <span class="stat-meta">{{.Accounts}} account{{if ne .Accounts 1}}s{{end}} · synced + manual</span>
+      </article>
+    {{end}}
+  </div>
+{{end}}
+
+<section class="panel">
+  <header class="panel-head">
+    <div>
+      <h2>Linked bank accounts</h2>
+      <p class="panel-sub">Cached PSD2 balances from the latest sync</p>
+    </div>
+    <a class="link" href="/connections">Manage connections</a>
+  </header>
+  {{if .Accounts}}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Account</th>
+            <th scope="col">IBAN</th>
+            <th scope="col">Workspace</th>
+            <th scope="col" class="right">Balance</th>
+            <th scope="col">Reconciliation</th>
+            <th scope="col">Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Accounts}}
+            <tr>
+              <td>
+                <span class="account-name">{{if .Name}}{{.Name}}{{else}}{{.ID}}{{end}}</span>
+                {{if .OwnerName}}<span class="muted small">{{.OwnerName}}</span>{{end}}
+              </td>
+              <td class="mono">{{if .IBAN}}{{.IBAN}}{{else}}<span class="muted">—</span>{{end}}</td>
+              <td><span class="badge workspace {{if eq .Type "business"}}business{{else}}personal{{end}}">{{if eq .Type "business"}}Business{{else}}Personal{{end}}</span></td>
+              <td class="right amount {{if lt .BalanceMinor 0}}debit{{else}}credit{{end}}">{{money .BalanceMinor .Currency}}</td>
+              {{$rec := index $.Reconciliations .ID}}
+              <td><span class="badge {{reconciliationClass $rec}}">{{reconciliationLabel $rec}}</span></td>
+              <td class="nowrap muted">{{if .BalanceUpdatedAt}}{{ago .BalanceUpdatedAt}}{{else}}never{{end}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  {{else}}
+    <div class="empty compact"><p>No synced bank accounts yet.</p><a class="button ghost" href="/connections">Set up a connection</a></div>
+  {{end}}
+</section>
+
+<section class="panel">
+  <header class="panel-head">
+    <div>
+      <h2>Accruing savings</h2>
+      <p class="panel-sub">Manual principal anchors with daily compound APY/TAE</p>
+    </div>
+    <button class="button ghost small"
+      hx-get="/api/accounts/accruing/new?workspace={{.Workspace.View}}{{if .Summary}}&currency={{(index .Summary 0).Currency}}{{end}}"
+      hx-target="#accruing-account-content" hx-swap="innerHTML">New account</button>
+  </header>
+  {{if .AccruingAccounts}}
+    <div class="accruing-grid">
+      {{range .AccruingAccounts}}
+        <article class="accruing-card">
+          <header class="accruing-card-head">
+            <div>
+              <h3>{{.Name}}</h3>
+              <p class="muted small">Anchored {{date .AnchorDate}} · {{.Currency}}</p>
+            </div>
+            <span class="badge ok">{{.TAELabel}}</span>
+          </header>
+          <strong class="accruing-balance">{{money .BalanceMinor .Currency}}</strong>
+          <dl class="accruing-yield">
+            <div>
+              <dt>Passive Yield</dt>
+              <dd class="credit">+{{money .MonthInterestMinor .Currency}} in {{$.Now.Format "January 2006"}}</dd>
+            </div>
+            <div>
+              <dt>Lifetime interest</dt>
+              <dd class="credit">+{{money .LifetimeInterestMinor .Currency}}</dd>
+            </div>
+            <div>
+              <dt>Opening anchor</dt>
+              <dd>{{money .AnchorBalanceCents .Currency}}</dd>
+            </div>
+          </dl>
+          {{if .TransferMatchPattern}}<p class="muted small mono accruing-pattern">link: {{.TransferMatchPattern}}</p>{{end}}
+          <footer class="accruing-card-foot">
+            <span class="badge workspace {{if eq .WorkspaceID "business"}}business{{else}}personal{{end}}">{{if eq .WorkspaceID "business"}}Business{{else}}Personal{{end}}</span>
+            <button class="button ghost small"
+              hx-get="/api/accounts/accruing/{{.ID}}/edit"
+              hx-target="#accruing-account-content" hx-swap="innerHTML">Reconcile</button>
+          </footer>
+        </article>
+      {{end}}
+    </div>
+  {{else}}
+    <div class="empty compact">
+      <p>No manual savings accounts yet. Add one to track TAE accrual and transfer-linked principal.</p>
+    </div>
+  {{end}}
+</section>
+
+<dialog id="accruing-account-dialog" class="budget-dialog" aria-labelledby="accruing-account-title">
+  <div id="accruing-account-content"></div>
+</dialog>
+{{end}}

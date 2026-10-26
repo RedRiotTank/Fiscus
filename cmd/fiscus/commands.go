@@ -527,6 +527,11 @@ func runRecategorize(args []string, stdout, stderr io.Writer) error {
 	}
 	printRecategorizeResult(stdout, result, apply)
 	if apply {
+		if linked, err := store.LinkAccruingTransfers(ctx); err != nil {
+			return fmt.Errorf("recategorize: link accruing transfers: %w", err)
+		} else if linked > 0 {
+			_, _ = fmt.Fprintf(stdout, "Linked %d accruing savings transfer(s).\n", linked)
+		}
 		paired, err := store.NeutralizePassThroughs(ctx, transfers.DefaultWindowDays)
 		if err != nil {
 			return fmt.Errorf("recategorize: neutralize pass-through transfers: %w", err)

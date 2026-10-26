@@ -1,0 +1,49 @@
+{{define "accruing_account_form"}}
+<div class="budget-dialog-inner">
+  <header class="budget-dialog-head">
+    <div>
+      <p class="eyebrow">{{if .Editing}}Reconcile{{else}}Manual asset{{end}}</p>
+      <h2 id="accruing-account-title">{{if .Editing}}Reconcile savings account{{else}}Add accruing savings account{{end}}</h2>
+      <p>{{if .Editing}}Reset the principal anchor when the bank balance drifts by a few cents.{{else}}Track a savings account with an opening principal, APY/TAE, and optional transfer auto-linking.{{end}}</p>
+    </div>
+    <button class="icon-button" type="button" data-accruing-close aria-label="Close">×</button>
+  </header>
+  {{if .Error}}<p class="notice error" role="alert">{{.Error}}</p>{{end}}
+  <form hx-post="/api/accounts/accruing" hx-target="#accruing-account-content" hx-swap="innerHTML">
+    <input type="hidden" name="id" value="{{.ID}}">
+    <input type="hidden" name="workspace" value="{{.Workspace}}">
+    <input type="hidden" name="currency" value="{{.Currency}}">
+    <div class="accruing-form-grid">
+      <label>Account name
+        <input name="name" type="text" value="{{.Name}}" maxlength="120" placeholder="Revolut Cuenta Remunerada" required>
+      </label>
+      <label>Opening balance ({{.Currency}})
+        <input name="anchor_balance" type="text" inputmode="decimal" value="{{.AnchorBalance}}" placeholder="3450.00" required>
+      </label>
+      <label>Anchor date
+        <input name="anchor_date" type="date" value="{{.AnchorDate}}" required>
+      </label>
+      <label>APY / TAE (%)
+        <input name="apy_percent" type="number" step="0.01" min="0" max="100" value="{{.APYPercent}}" placeholder="3.10" required>
+      </label>
+      <label>Transfer match keyword
+        <input name="transfer_match_keyword" type="text" value="{{.TransferMatchKeyword}}" placeholder="Cuenta Remunerada">
+      </label>
+      <label>IRPF retention (%)
+        <input name="tax_withholding_percent" type="number" step="0.01" min="0" max="100" value="{{.TaxWithholdingPercent}}" placeholder="0">
+      </label>
+      <label>Compounding
+        <select name="compounding_frequency">
+          <option value="daily" {{if eq .CompoundingFrequency "daily"}}selected{{end}}>Daily</option>
+          <option value="monthly" {{if eq .CompoundingFrequency "monthly"}}selected{{end}}>Monthly</option>
+        </select>
+      </label>
+    </div>
+    <p class="muted small">Outflows matching the keyword increase savings principal and map to the Savings pillar. Inflows from savings reduce principal and are excluded from income.</p>
+    <footer class="budget-dialog-foot">
+      <button class="button ghost" type="button" data-accruing-close>Cancel</button>
+      <button class="button" type="submit">{{if .Editing}}Update anchor{{else}}Create account{{end}}</button>
+    </footer>
+  </form>
+</div>
+{{end}}

@@ -208,6 +208,11 @@ func runServe(args []string, stdout, stderr io.Writer) error {
 	} else if paired > 0 {
 		logger.Info("neutralized pass-through transfers", "pairs", paired)
 	}
+	if linked, err := store.LinkAccruingTransfers(appCtx); err != nil {
+		return err
+	} else if linked > 0 {
+		logger.Info("linked accruing savings transfers", "transactions", linked)
+	}
 
 	metrics := observability.New(version)
 	sink, err := buildEventSink(cfg, logger)

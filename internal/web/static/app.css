@@ -2985,8 +2985,7 @@ select {
   }
 }
 
-/* Budget month navigation and drill-down */
-.month-nav {
+/* Budget month navigation and drill-down */.month-nav {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -3040,4 +3039,127 @@ select {
   background: var(--panel);
   color: var(--text);
   font-size: 0.74rem;
+}
+
+/* Accruing savings accounts */
+.accruing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.accruing-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border-soft);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(20, 184, 166, 0.08), rgba(15, 23, 32, 0.55));
+}
+
+.accruing-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.accruing-card-head h3 {
+  margin: 0 0 3px;
+  font-size: 0.98rem;
+}
+
+.accruing-balance {
+  font-size: 1.55rem;
+  letter-spacing: -0.02em;
+}
+
+.accruing-yield {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.accruing-yield div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.accruing-yield dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.accruing-yield dd {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.accruing-pattern {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.accruing-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: auto;
+}
+
+.accruing-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.accruing-form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+@media (max-width: 720px) {
+  .accruing-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.accruing-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.accruing-strip-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 11px;
+  border: 1px solid rgba(20, 184, 166, 0.28);
+  border-radius: 999px;
+  background: rgba(20, 184, 166, 0.08);
+  color: inherit;
+  text-decoration: none;
+}
+
+.accruing-strip-item span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.accruing-strip-item small {
+  color: var(--muted);
+  font-size: 0.64rem;
 }

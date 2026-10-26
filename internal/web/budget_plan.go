@@ -98,6 +98,7 @@ func (s *Server) loadBudgetPlan(ctx context.Context, data *PageData, spending []
 		}
 	}
 	stored.Allocations = budgets.EnsureP2PWantsAllocation(stored.Profile, stored.Allocations)
+	stored.Allocations = budgets.EnsureAccruingSavingsAllocation(stored.Profile, stored.Allocations, len(data.AccruingAccounts) > 0)
 	if len(stored.Allocations) == 0 {
 		data.BudgetEmpty = true
 		return nil
@@ -286,6 +287,12 @@ func (s *Server) handleBudgetCustomize(w http.ResponseWriter, r *http.Request) {
 		stored.Allocations = budgets.DefaultAllocations(workspace)
 	}
 	stored.Allocations = budgets.EnsureP2PWantsAllocation(stored.Profile, stored.Allocations)
+	accruing, accruingErr := s.listAccruingAccounts(r.Context(), workspace)
+	if accruingErr != nil {
+		s.fail(w, r, accruingErr)
+		return
+	}
+	stored.Allocations = budgets.EnsureAccruingSavingsAllocation(stored.Profile, stored.Allocations, len(accruing) > 0)
 	editor := BudgetEditorView{
 		Workspace: workspace, Currency: currency,
 		Profile: stored.Profile, Allocations: stored.Allocations,

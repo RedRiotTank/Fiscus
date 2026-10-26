@@ -131,6 +131,30 @@ func coolingDown(until *time.Time, now time.Time) bool {
 	return until != nil && now.UTC().Before(until.UTC())
 }
 
+// AccruingAccount is a manually tracked savings account with an anchor
+// balance, APY/TAE, and optional tax withholding.
+type AccruingAccount struct {
+	ID                   string
+	WorkspaceID          string
+	Name                 string
+	Currency             string
+	AnchorBalanceCents   int64
+	AnchorDate           time.Time
+	APYRateBasisPoints   int
+	CompoundingFrequency string
+	TaxWithholdingBPS    int
+	TransferMatchPattern string
+	IsActive             bool
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+}
+
+// Accruing account compounding frequencies.
+const (
+	AccruingDaily   = "daily"
+	AccruingMonthly = "monthly"
+)
+
 // Transaction is a single booked or pending bank transaction.
 type Transaction struct {
 	ID           int64

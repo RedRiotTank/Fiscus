@@ -329,6 +329,27 @@ var migrations = []migration{
 			`CREATE INDEX IF NOT EXISTS idx_transactions_pass_through ON transactions(budget_excluded, booking_date)`,
 		},
 	},
+	{
+		version: 20,
+		statements: []string{
+			`CREATE TABLE IF NOT EXISTS accruing_accounts (
+				id TEXT PRIMARY KEY,
+				workspace_id TEXT NOT NULL DEFAULT 'personal',
+				name TEXT NOT NULL,
+				currency TEXT NOT NULL DEFAULT 'EUR',
+				anchor_balance_cents INTEGER NOT NULL DEFAULT 0,
+				anchor_date DATE NOT NULL,
+				apy_rate_basis_points INTEGER NOT NULL DEFAULT 0,
+				compounding_frequency TEXT NOT NULL DEFAULT 'daily',
+				tax_withholding_bps INTEGER NOT NULL DEFAULT 0,
+				transfer_match_pattern TEXT NOT NULL DEFAULT '',
+				is_active BOOLEAN NOT NULL DEFAULT TRUE,
+				created_at TIMESTAMP NOT NULL,
+				updated_at TIMESTAMP NOT NULL
+			)`,
+			`CREATE INDEX IF NOT EXISTS idx_accruing_accounts_workspace ON accruing_accounts(workspace_id, currency)`,
+		},
+	},
 }
 
 // Migrate applies all pending migrations. It is safe to call multiple times and

@@ -4,7 +4,7 @@
     <div class="summary-grid">
       {{range .Summary}}
         <article class="stat">
-          <span class="stat-label">{{.Currency}} available</span>
+          <span class="stat-label">{{.Currency}} net worth</span>
           <strong class="stat-value">{{money .Minor .Currency}}</strong>
           <span class="stat-meta">{{.Accounts}} account{{if ne .Accounts 1}}s{{end}} · consolidated</span>
         </article>
@@ -107,7 +107,7 @@
         <h2>Accounts</h2>
         <p class="panel-sub">Cached balances from the latest sync</p>
       </div>
-      <a class="link" href="/connections">Connections</a>
+      <a class="link" href="/accounts">All accounts</a>
     </header>
     {{if .Accounts}}
       <div class="table-wrap">
@@ -147,6 +147,19 @@
       <div class="empty">
         <p>No accounts yet. Link a bank to start monitoring balances.</p>
         <a class="button ghost" href="/connections">Set up a connection</a>
+      </div>
+    {{end}}
+    {{if .AccruingAccounts}}
+      <div class="accruing-strip">
+        {{range .AccruingAccounts}}
+          <a class="accruing-strip-item" href="/accounts">
+            <span>
+              <strong>{{.Name}}</strong>
+              <small>{{.TAELabel}}</small>
+            </span>
+            <strong class="amount credit">{{money .BalanceMinor .Currency}}</strong>
+          </a>
+        {{end}}
       </div>
     {{end}}
   </section>
