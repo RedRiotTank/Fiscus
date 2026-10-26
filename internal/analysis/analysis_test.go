@@ -140,6 +140,31 @@ func TestAnalyzeExcludesFixedHouseholdBillsFromSubscriptions(t *testing.T) {
 	}
 }
 
+func TestAnalyzeRecognizesEwekaInternetServicesSubscription(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
+	transactions := []domain.Transaction{
+		booked("acc-1", "Eweka Internet Services", "EUR", -950, "2026-08-23"),
+		booked("acc-1", "Eweka Internet Services", "EUR", -950, "2026-09-23"),
+		booked("acc-1", "Eweka Internet Services", "EUR", -950, "2026-10-24"),
+	}
+	for i := range transactions {
+		transactions[i].Category = "Subscriptions"
+	}
+	snapshot := Analyze(transactions, now)
+	if len(snapshot.Subscriptions) != 1 {
+		t.Fatalf("subscriptions = %+v", snapshot.Subscriptions)
+	}
+	subscription := snapshot.Subscriptions[0]
+	if subscription.Counterparty != "Eweka Internet Services" || subscription.AmountMinor != 950 ||
+		subscription.Frequency != Monthly || !subscription.Active {
+		t.Fatalf("Eweka subscription = %+v", subscription)
+	}
+	if subscription.IntervalDays < 28 || subscription.IntervalDays > 33 {
+		t.Fatalf("Eweka cadence = %d days", subscription.IntervalDays)
+	}
+}
+
 func TestAnalyzeIgnoresIrregularAndInactiveForCosts(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)

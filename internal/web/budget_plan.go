@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -38,8 +39,29 @@ type BudgetEditorView struct {
 
 func (s *Server) handleBudgets(w http.ResponseWriter, r *http.Request) {
 	data := s.baseData(r, "Budgets", "budgets")
+	now := s.now().UTC()
+	current := firstOfMonth(now)
+	selected := current
+	if raw := strings.TrimSpace(r.URL.Query().Get("month")); raw != "" {
+		if parsed, ok := parseMonthStart(raw); ok && !parsed.After(current) {
+			selected = parsed
+		}
+	}
+	data.BudgetMonth = selected
+	data.BudgetMonthValue = selected.Format("2006-01")
+	data.BudgetMonthLabel = selected.Format("January 2006")
+	data.BudgetIsCurrentMonth = selected.Equal(current)
+	data.BudgetPrevHref = budgetMonthURL(data.Workspace.View, selected.AddDate(0, -1, 0).Format("2006-01"))
+	if !data.BudgetIsCurrentMonth {
+		data.BudgetNextHref = budgetMonthURL(data.Workspace.View, selected.AddDate(0, 1, 0).Format("2006-01"))
+	}
+	data.BudgetCurrentHref = budgetMonthURL(data.Workspace.View, "")
 	if err := s.loadOverview(r.Context(), &data); err != nil {
 		s.fail(w, r, err)
+		return
+	}
+	if r.Header.Get("HX-Request") == "true" {
+		s.renderPartial(w, "budgets_container", data)
 		return
 	}
 	s.render(w, "budgets", data)
@@ -80,19 +102,28 @@ func (s *Server) loadBudgetPlan(ctx context.Context, data *PageData, spending []
 		return nil
 	}
 	now := s.now().UTC()
-	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	monthStart := firstOfMonth(now)
+	if !data.BudgetMonth.IsZero() {
+		monthStart = firstOfMonth(data.BudgetMonth)
+	}
+	monthEnd := monthStart.AddDate(0, 1, 0)
+	periodNow := now
+	historical := monthStart.Before(firstOfMonth(now))
+	if historical {
+		periodNow = monthEnd.Add(-time.Second)
+	}
 	cfg := budgets.NormalizeAdvisoryConfig(s.budgetAdvisory)
 	cfg.Enabled = true
 	windowStart := monthStart.AddDate(0, -(cfg.HeuristicWindowMonths - 1), 0)
-	transactions, err := s.store.ListTransactionsBetween(ctx, windowStart, now.Add(24*time.Hour))
+	transactions, err := s.store.ListTransactionsBetween(ctx, windowStart, monthEnd)
 	if err != nil {
 		return err
 	}
 	transactions = filterTransactions(transactions, allowedAccountIDs(data.Accounts, workspace), workspace)
-	if err := s.loadHousingSetup(ctx, data, workspace, currency, transactions, now); err != nil {
+	if err := s.loadHousingSetup(ctx, data, workspace, currency, transactions, periodNow); err != nil {
 		return err
 	}
-	if err := s.loadRecurringBills(ctx, data, workspace, currency, transactions, now); err != nil {
+	if err := s.loadRecurringBills(ctx, data, workspace, currency, transactions, periodNow); err != nil {
 		return err
 	}
 	if data.Recurring != nil && len(data.Recurring.Rules) > 0 {
@@ -110,7 +141,7 @@ func (s *Server) loadBudgetPlan(ctx context.Context, data *PageData, spending []
 			taxProvision[strings.ToUpper(shield.Currency)] += shield.TaxReserveMinor / 3
 		}
 	}
-	advisories := budgets.ComputeAdvisory(transactions, nil, cfg, taxProvision, now)
+	advisories := budgets.ComputeAdvisory(transactions, nil, cfg, taxProvision, periodNow)
 	baseline, tax, netAfterTax := int64(0), int64(0), int64(0)
 	for _, advisory := range advisories {
 		if advisory.Currency != currency {
@@ -127,6 +158,14 @@ func (s *Server) loadBudgetPlan(ctx context.Context, data *PageData, spending []
 		}
 		break
 	}
+	if historical {
+		monthlyIncome := budgets.MonthlyIncomeMinor(transactions, currency, monthStart, monthEnd)
+		if monthlyIncome > 0 {
+			baseline = monthlyIncome
+			tax = 0
+			netAfterTax = monthlyIncome
+		}
+	}
 	nominal := false
 	if baseline <= 0 {
 		baseline, nominal = nominalBudgetBaseline(0)
@@ -142,7 +181,7 @@ func (s *Server) loadBudgetPlan(ctx context.Context, data *PageData, spending []
 			}
 		}
 	}
-	plan := budgets.BuildPlan(stored.Profile, stored.Allocations, spending, baseline, tax, netAfterTax, now)
+	plan := budgets.BuildPlan(stored.Profile, stored.Allocations, spending, baseline, tax, netAfterTax, periodNow)
 	view := &BudgetPlanView{
 		Plan:               plan,
 		AllocatedPercent:   roundedBPSPercent(plan.AllocatedBPS),
@@ -166,7 +205,15 @@ func (s *Server) loadBudgetPlan(ctx context.Context, data *PageData, spending []
 		view.BaselineLabel = "Total net monthly income"
 		view.BaselineSubtitle = "Confirmed recurring inflows, net of transfers and internal movements"
 	}
-	view.Donut = buildBudgetDonutAt(plan, now)
+	if historical {
+		view.BaselineLabel = "Income in " + monthStart.Format("January 2006")
+		view.BaselineSubtitle = "Historical baseline and spending are scoped to the selected month"
+	}
+	chartNow := now
+	if historical {
+		chartNow = periodNow
+	}
+	view.Donut = buildBudgetDonutAt(plan, chartNow)
 	data.BudgetPlan = view
 	return nil
 }
@@ -466,6 +513,23 @@ func roundedBPSPercent(bps int) int64 {
 		return int64((bps - 50) / 100)
 	}
 	return int64((bps + 50) / 100)
+}
+
+func budgetDrilldownURL(month, category, workspace string) string {
+	values := url.Values{}
+	if month != "" {
+		values.Set("month", month)
+	}
+	if category != "" {
+		values.Set("category", category)
+	}
+	if workspace != "" && workspace != domain.WorkspaceAll {
+		values.Set("workspace", workspace)
+	}
+	if len(values) == 0 {
+		return "/transactions"
+	}
+	return "/transactions?" + values.Encode()
 }
 
 func (s *Server) redirectBudget(w http.ResponseWriter, r *http.Request, target string) {

@@ -188,6 +188,50 @@ func ComputeAdvisory(transactions []domain.Transaction, activeBudgets []Budget, 
 	return out
 }
 
+// MonthlyIncomeMinor sums genuine inflows in the selected month for one
+// currency. Internal transfers, housing reimbursements, and income-excluded
+// categories are removed so historical budget baselines stay period-bounded.
+func MonthlyIncomeMinor(transactions []domain.Transaction, currency string, from, to time.Time) int64 {
+	currency = currencyOf(currency)
+	monthTransactions := make([]domain.Transaction, 0, len(transactions))
+	for _, tx := range transactions {
+		if tx.Status != domain.TransactionStatusBooked {
+			continue
+		}
+		if tx.BookingDate.Before(from) || !tx.BookingDate.Before(to) {
+			continue
+		}
+		if currencyOf(tx.Currency) != currency {
+			continue
+		}
+		monthTransactions = append(monthTransactions, tx)
+	}
+	pairs := treasury.PairTransfers(monthTransactions, 3)
+	internalIDs := make(map[int64]struct{}, len(pairs)*2)
+	for _, pair := range pairs {
+		if pair.Debit.ID > 0 {
+			internalIDs[pair.Debit.ID] = struct{}{}
+		}
+		if pair.Credit.ID > 0 {
+			internalIDs[pair.Credit.ID] = struct{}{}
+		}
+	}
+	var total int64
+	for _, tx := range monthTransactions {
+		if tx.AmountMinor <= 0 {
+			continue
+		}
+		if _, internal := internalIDs[tx.ID]; internal {
+			continue
+		}
+		if housing.IsReimbursement(tx) || excludedIncomeCategory(tx.Category) {
+			continue
+		}
+		total += tx.AmountMinor
+	}
+	return total
+}
+
 func computeCurrencyAdvisory(
 	transactions []domain.Transaction,
 	internalIDs map[int64]struct{},

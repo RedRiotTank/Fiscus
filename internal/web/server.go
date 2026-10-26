@@ -214,6 +214,7 @@ func (s *Server) templateFuncs() template.FuncMap {
 		"categoryEditor":      categoryEditor,
 		"isBizum":             isBizum,
 		"isHousingCategory":   housing.IsCategory,
+		"budgetDrilldown":     budgetDrilldownURL,
 	}
 }
 

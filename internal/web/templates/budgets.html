@@ -3,10 +3,8 @@
   <div>
     <p class="eyebrow">Planning</p>
     <h1>Budgets</h1>
-    <p class="subtitle">Income-driven allocation, category targets, and month-to-date progress for {{.SpendingMonth}}.</p>
+    <p class="subtitle">Income-driven allocation, category targets, and historical progress for {{.SpendingMonth}}.</p>
   </div>
 </div>
-<div class="page-stack">
-  {{template "budget_panel" .}}
-</div>
+{{template "budgets_container" .}}
 {{end}}

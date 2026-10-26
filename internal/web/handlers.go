@@ -74,6 +74,17 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	data.FlowFacet = string(storage.NormalizeFlowFacet(query.Get("flow")))
 	data.CategoryFacet = string(storage.NormalizeCategoryFacet(query.Get("facet")))
+	data.FilterCategory = strings.TrimSpace(query.Get("category"))
+	var monthFrom, monthTo time.Time
+	if raw := strings.TrimSpace(query.Get("month")); raw != "" {
+		if parsed, ok := parseMonthStart(raw); ok {
+			monthFrom = parsed
+			monthTo = parsed.AddDate(0, 1, 0)
+			data.TransactionMonth = parsed.Format("2006-01")
+			data.TransactionMonthLabel = parsed.Format("January 2006")
+			data.TransactionMonthCurrent = parsed.Equal(firstOfMonth(s.now().UTC()))
+		}
+	}
 	if legacy := strings.TrimSpace(query.Get("filter")); legacy != "" {
 		legacyFlow, legacyCategory := storage.NormalizeLegacyFilter(legacy)
 		if strings.TrimSpace(query.Get("flow")) == "" {
@@ -132,10 +143,13 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 					}
 					transactions = filtered
 				}
-				if data.FlowFacet != string(storage.FlowAll) || data.CategoryFacet != string(storage.CategoryFacetAll) {
+				if data.FlowFacet != string(storage.FlowAll) ||
+					data.CategoryFacet != string(storage.CategoryFacetAll) ||
+					data.FilterCategory != "" || !monthFrom.IsZero() {
 					filtered := transactions[:0]
 					for _, tx := range transactions {
-						if matchesTransactionFacets(tx, data.FlowFacet, data.CategoryFacet, facetCategories) {
+						if matchesTransactionFacets(tx, data.FlowFacet, data.CategoryFacet, facetCategories) &&
+							matchesTransactionPeriod(tx, monthFrom, monthTo, data.FilterCategory) {
 							filtered = append(filtered, tx)
 						}
 					}
@@ -147,6 +161,9 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 			filter.Flow = storage.NormalizeFlowFacet(data.FlowFacet)
 			filter.Category = storage.NormalizeCategoryFacet(data.CategoryFacet)
 			filter.Categories = facetCategories
+			filter.CategoryName = data.FilterCategory
+			filter.MonthFrom = monthFrom
+			filter.MonthTo = monthTo
 			transactions, err = s.store.ListTransactions(ctx, filter)
 			if err != nil {
 				s.fail(w, r, err)
@@ -169,13 +186,16 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 		case searchMode:
 			total = len(transactions)
 			err = nil
-		case data.FlowFacet == string(storage.FlowAll) && data.CategoryFacet == string(storage.CategoryFacetAll):
+		case data.FlowFacet == string(storage.FlowAll) &&
+			data.CategoryFacet == string(storage.CategoryFacetAll) &&
+			data.FilterCategory == "" && monthFrom.IsZero():
 			total, err = s.store.CountTransactionsFiltered(ctx, accountIDs)
 		default:
 			total, err = s.store.CountTransactionsMatching(ctx, storage.TransactionFilter{
 				AccountID: data.FilterAccount, AccountIDs: accountIDs,
 				Flow:     storage.NormalizeFlowFacet(data.FlowFacet),
 				Category: storage.NormalizeCategoryFacet(data.CategoryFacet), Categories: facetCategories,
+				CategoryName: data.FilterCategory, MonthFrom: monthFrom, MonthTo: monthTo,
 			})
 		}
 		if err != nil {
@@ -184,8 +204,14 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	data.TotalTransactions = total
-	data.FlowFilters = buildFlowFacetViews(data.FilterAccount, data.SearchQuery, data.Limit, data.FlowFacet, data.CategoryFacet)
-	data.CategoryFilters = buildCategoryFacetViews(data.FilterAccount, data.SearchQuery, data.Limit, data.FlowFacet, data.CategoryFacet)
+	data.FlowFilters = buildFlowFacetViews(data.FilterAccount, data.SearchQuery, data.Limit, data.FlowFacet, data.CategoryFacet, data.FilterCategory, data.TransactionMonth)
+	data.CategoryFilters = buildCategoryFacetViews(data.FilterAccount, data.SearchQuery, data.Limit, data.FlowFacet, data.CategoryFacet, data.TransactionMonth)
+	if data.FilterCategory != "" {
+		data.CategoryFilters = append(data.CategoryFilters, FacetView{
+			Label: data.FilterCategory, Value: "category", Active: true,
+			Href: transactionListURL(data.FilterAccount, data.SearchQuery, data.FlowFacet, data.CategoryFacet, "", data.TransactionMonth, 1, data.Limit),
+		})
+	}
 	data.AttachmentNotice = attachmentNotice(r.URL.Query().Get("attachment"))
 	if err := s.loadAttachmentData(ctx, &data); err != nil {
 		s.fail(w, r, err)
@@ -204,7 +230,7 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "transactions", data)
 }
 
-func buildFlowFacetViews(account, query string, limit int, selectedFlow, category string) []FacetView {
+func buildFlowFacetViews(account, query string, limit int, selectedFlow, category, categoryName, month string) []FacetView {
 	specs := []struct {
 		label string
 		value storage.FlowFacet
@@ -216,7 +242,7 @@ func buildFlowFacetViews(account, query string, limit int, selectedFlow, categor
 	selectedFlow = string(storage.NormalizeFlowFacet(selectedFlow))
 	out := make([]FacetView, 0, len(specs))
 	for _, spec := range specs {
-		href := transactionListURL(account, query, string(spec.value), category, 1, limit)
+		href := transactionListURL(account, query, string(spec.value), category, categoryName, month, 1, limit)
 		out = append(out, FacetView{
 			Label: spec.label, Value: string(spec.value), Href: href,
 			Active: string(spec.value) == selectedFlow,
@@ -225,7 +251,7 @@ func buildFlowFacetViews(account, query string, limit int, selectedFlow, categor
 	return out
 }
 
-func buildCategoryFacetViews(account, query string, limit int, flow, selectedCategory string) []FacetView {
+func buildCategoryFacetViews(account, query string, limit int, flow, selectedCategory, month string) []FacetView {
 	specs := []struct {
 		label string
 		value storage.CategoryFacet
@@ -242,7 +268,8 @@ func buildCategoryFacetViews(account, query string, limit int, flow, selectedCat
 	selectedCategory = string(storage.NormalizeCategoryFacet(selectedCategory))
 	out := make([]FacetView, 0, len(specs))
 	for _, spec := range specs {
-		href := transactionListURL(account, query, flow, string(spec.value), 1, limit)
+		// Choosing a category facet replaces any exact category drill-down.
+		href := transactionListURL(account, query, flow, string(spec.value), "", month, 1, limit)
 		out = append(out, FacetView{
 			Label: spec.label, Value: string(spec.value), Href: href,
 			Active: string(spec.value) == selectedCategory,
@@ -251,7 +278,7 @@ func buildCategoryFacetViews(account, query string, limit int, flow, selectedCat
 	return out
 }
 
-func transactionListURL(account, query, flow, category string, page, limit int) string {
+func transactionListURL(account, query, flow, category, categoryName, month string, page, limit int) string {
 	values := make([]string, 0, 6)
 	if page > 1 {
 		values = append(values, "page="+strconv.Itoa(page))
@@ -268,6 +295,12 @@ func transactionListURL(account, query, flow, category string, page, limit int) 
 	}
 	if category != "" && category != string(storage.CategoryFacetAll) {
 		values = append(values, "facet="+url.QueryEscape(category))
+	}
+	if categoryName != "" {
+		values = append(values, "category="+url.QueryEscape(categoryName))
+	}
+	if month != "" {
+		values = append(values, "month="+url.QueryEscape(month))
 	}
 	return "/transactions?" + strings.Join(values, "&")
 }
@@ -299,6 +332,19 @@ func matchesTransactionFacets(tx domain.Transaction, flow, category string, cate
 	default:
 		return true
 	}
+}
+
+func matchesTransactionPeriod(tx domain.Transaction, from, to time.Time, category string) bool {
+	if !from.IsZero() && tx.BookingDate.Before(from) {
+		return false
+	}
+	if !to.IsZero() && !tx.BookingDate.Before(to) {
+		return false
+	}
+	if category != "" && !strings.EqualFold(strings.TrimSpace(tx.Category), strings.TrimSpace(category)) {
+		return false
+	}
+	return true
 }
 
 func transactionCategoryIn(category string, allowed []string) bool {
@@ -853,6 +899,32 @@ func (s *Server) syncNotice(w http.ResponseWriter, status int, class, message st
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	_, _ = fmt.Fprintf(w, `<div class="notice %s" role="status">%s</div>`, class, html.EscapeString(message))
+}
+
+func firstOfMonth(value time.Time) time.Time {
+	return time.Date(value.Year(), value.Month(), 1, 0, 0, 0, 0, time.UTC)
+}
+
+func parseMonthStart(raw string) (time.Time, bool) {
+	parsed, err := time.Parse("2006-01", strings.TrimSpace(raw))
+	if err != nil {
+		return time.Time{}, false
+	}
+	return time.Date(parsed.Year(), parsed.Month(), 1, 0, 0, 0, 0, time.UTC), true
+}
+
+func budgetMonthURL(workspace, month string) string {
+	values := url.Values{}
+	if workspace != "" {
+		values.Set("workspace", workspace)
+	}
+	if month != "" {
+		values.Set("month", month)
+	}
+	if len(values) == 0 {
+		return "/budgets"
+	}
+	return "/budgets?" + values.Encode()
 }
 
 func parsePage(raw string) int {

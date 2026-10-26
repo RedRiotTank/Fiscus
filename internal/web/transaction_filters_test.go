@@ -42,6 +42,11 @@ func TestTransactionsFacetedFiltersAndHTMXSwap(t *testing.T) {
 			BookingDate: bookedAt, Counterparty: "Cash at La Caixa 6277", Description: "Cash at La Caixa 6277",
 			Category: "Cash / ATM", Status: domain.TransactionStatusBooked,
 		},
+		{
+			AccountID: "acc-1", ExternalID: "feb-rent-filter", AmountMinor: -80000, Currency: "EUR",
+			BookingDate: time.Date(2026, 2, 9, 9, 0, 0, 0, time.UTC), Counterparty: "Feb Inmobiliaria", Description: "Alquiler febrero",
+			Category: "Housing / Rent", Status: domain.TransactionStatusBooked,
+		},
 	}
 	for i := range transactions {
 		if _, _, err := f.store.UpsertTransaction(ctx, &transactions[i]); err != nil {
@@ -57,7 +62,7 @@ func TestTransactionsFacetedFiltersAndHTMXSwap(t *testing.T) {
 	for _, want := range []string{
 		`transaction-facet-bar my-6 space-y-4`, `transaction-facet-divider h-6 w-px bg-zinc-700/50`, `Flow`, `Category`, `All Flow`, `Money In`, `Money Out`,
 		`All Categories`, `Transfers / P2P`, `Housing / Rent`, `Utilities &amp; Telecom`, `Cash / ATM`,
-		`flow=inflows`, `facet=needs`, `data-search-toggle`, `transition-all duration-200`,
+		`flow=inflows`, `facet=needs`, `data-search-toggle`, `transition-all duration-200`, `<input type="month" name="month"`, `All Time`,
 		`id="transactions-history"`,
 	} {
 		if !strings.Contains(body, want) {
@@ -79,6 +84,9 @@ func TestTransactionsFacetedFiltersAndHTMXSwap(t *testing.T) {
 		{name: "inflows p2p", query: "flow=inflows&facet=p2p", want: []string{"Bizum Ana"}, absent: []string{"Bizum Alberto", "Coffee Shop", "Employer"}},
 		{name: "outflows utilities", query: "flow=outflows&facet=utilities", want: []string{"Vodafone"}, absent: []string{"Coffee Shop", "Inmobiliaria Centro", "Employer"}},
 		{name: "cash", query: "facet=cash", want: []string{"Cash at La Caixa 6277"}, absent: []string{"Coffee Shop", "Inmobiliaria Centro", "Employer"}},
+		{name: "march outflows housing", query: "month=2026-03&flow=outflows&facet=housing", want: []string{"Inmobiliaria Centro"}, absent: []string{"Feb Inmobiliaria", "Coffee Shop", "Employer"}},
+		{name: "february outflows housing", query: "month=2026-02&flow=outflows&facet=housing", want: []string{"Feb Inmobiliaria"}, absent: []string{"Inmobiliaria Centro", "Coffee Shop", "Employer"}},
+		{name: "exact category drilldown", query: "month=2026-03&flow=outflows&category=Housing+%2F+Rent", want: []string{"Inmobiliaria Centro", "filter-chip active"}, absent: []string{"Feb Inmobiliaria", "Cash at La Caixa 6277", "Employer"}},
 	}
 	for _, test := range tests {
 		response := f.request(t, http.MethodGet, "/transactions?workspace=personal&"+test.query, true, map[string]string{"HX-Request": "true"})

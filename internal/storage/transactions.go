@@ -104,13 +104,16 @@ func NormalizeLegacyFilter(raw string) (FlowFacet, CategoryFacet) {
 // TransactionFilter controls transaction listing. Flow and Category are
 // independent facets and combine with AND.
 type TransactionFilter struct {
-	AccountID  string
-	AccountIDs []string
-	Flow       FlowFacet
-	Category   CategoryFacet
-	Categories []string
-	Limit      int
-	Offset     int
+	AccountID    string
+	AccountIDs   []string
+	Flow         FlowFacet
+	Category     CategoryFacet
+	Categories   []string
+	CategoryName string
+	MonthFrom    time.Time
+	MonthTo      time.Time
+	Limit        int
+	Offset       int
 }
 
 var (
@@ -142,6 +145,18 @@ func transactionWhere(filter TransactionFilter) ([]string, []any) {
 	} else if clause, clauseArgs := accountIDsClause(filter.AccountIDs); clause != "" {
 		where = append(where, clause)
 		args = append(args, clauseArgs...)
+	}
+	if !filter.MonthFrom.IsZero() {
+		where = append(where, "booking_date >= ?")
+		args = append(args, encodeTime(filter.MonthFrom))
+	}
+	if !filter.MonthTo.IsZero() {
+		where = append(where, "booking_date < ?")
+		args = append(args, encodeTime(filter.MonthTo))
+	}
+	if category := strings.TrimSpace(filter.CategoryName); category != "" {
+		where = append(where, "LOWER(TRIM(category)) = ?")
+		args = append(args, strings.ToLower(category))
 	}
 	switch NormalizeFlowFacet(string(filter.Flow)) {
 	case FlowInflows:

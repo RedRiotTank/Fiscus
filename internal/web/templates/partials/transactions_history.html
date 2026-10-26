@@ -34,6 +34,23 @@
           {{if .Active}}aria-current="true"{{end}}>{{.Label}}</a>
       {{end}}
     </div>
+    <span class="transaction-facet-divider h-6 w-px bg-zinc-700/50" aria-hidden="true"></span>
+    <form class="transaction-facet-group transaction-month-group" method="get" action="/transactions"
+      hx-get="/transactions" hx-trigger="change from:input[name='month']"
+      hx-target="#transactions-history" hx-swap="outerHTML" hx-push-url="true">
+      <span class="transaction-facet-label">Month</span>
+      <input type="month" name="month" value="{{.TransactionMonth}}" aria-label="Filter transactions by month">
+      {{if .FilterAccount}}<input type="hidden" name="account" value="{{.FilterAccount}}">{{end}}
+      {{if .SearchQuery}}<input type="hidden" name="q" value="{{.SearchQuery}}">{{end}}
+      {{if ne .FlowFacet "all"}}<input type="hidden" name="flow" value="{{.FlowFacet}}">{{end}}
+      {{if ne .CategoryFacet "all"}}<input type="hidden" name="facet" value="{{.CategoryFacet}}">{{end}}
+      {{if .FilterCategory}}<input type="hidden" name="category" value="{{.FilterCategory}}">{{end}}
+      <input type="hidden" name="limit" value="{{.Limit}}">
+      <a class="filter-chip {{if not .TransactionMonth}}active{{end}}"
+        href="/transactions?limit={{.Limit}}{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}{{if .SearchQuery}}&q={{urlquery .SearchQuery}}{{end}}{{if ne .FlowFacet "all"}}&flow={{.FlowFacet}}{{end}}{{if ne .CategoryFacet "all"}}&facet={{.CategoryFacet}}{{end}}{{if .FilterCategory}}&category={{urlquery .FilterCategory}}{{end}}"
+        hx-get="/transactions?limit={{.Limit}}{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}{{if .SearchQuery}}&q={{urlquery .SearchQuery}}{{end}}{{if ne .FlowFacet "all"}}&flow={{.FlowFacet}}{{end}}{{if ne .CategoryFacet "all"}}&facet={{.CategoryFacet}}{{end}}{{if .FilterCategory}}&category={{urlquery .FilterCategory}}{{end}}"
+        hx-target="#transactions-history" hx-swap="outerHTML" hx-push-url="true">All Time</a>
+    </form>
   </div>
   {{if .Transactions}}
     <div class="table-wrap transactions-table-wrap">
@@ -96,18 +113,18 @@
     </div>
     <nav class="pagination" aria-label="Transaction pages">
       {{if gt .Page 1}}
-        <a class="button ghost small" href="/transactions?page={{.PrevPage}}&limit={{.Limit}}{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}{{if .SearchQuery}}&q={{urlquery .SearchQuery}}{{end}}{{if ne .FlowFacet "all"}}&flow={{.FlowFacet}}{{end}}{{if ne .CategoryFacet "all"}}&facet={{.CategoryFacet}}{{end}}">← Previous</a>
+        <a class="button ghost small" href="/transactions?page={{.PrevPage}}&limit={{.Limit}}{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}{{if .SearchQuery}}&q={{urlquery .SearchQuery}}{{end}}{{if ne .FlowFacet "all"}}&flow={{.FlowFacet}}{{end}}{{if ne .CategoryFacet "all"}}&facet={{.CategoryFacet}}{{end}}{{if .FilterCategory}}&category={{urlquery .FilterCategory}}{{end}}{{if .TransactionMonth}}&month={{.TransactionMonth}}{{end}}">← Previous</a>
       {{else}}
         <span></span>
       {{end}}
       {{if .HasNext}}
-        <a class="button ghost small" href="/transactions?page={{.NextPage}}&limit={{.Limit}}{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}{{if .SearchQuery}}&q={{urlquery .SearchQuery}}{{end}}{{if ne .FlowFacet "all"}}&flow={{.FlowFacet}}{{end}}{{if ne .CategoryFacet "all"}}&facet={{.CategoryFacet}}{{end}}">Next →</a>
+        <a class="button ghost small" href="/transactions?page={{.NextPage}}&limit={{.Limit}}{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}{{if .SearchQuery}}&q={{urlquery .SearchQuery}}{{end}}{{if ne .FlowFacet "all"}}&flow={{.FlowFacet}}{{end}}{{if ne .CategoryFacet "all"}}&facet={{.CategoryFacet}}{{end}}{{if .FilterCategory}}&category={{urlquery .FilterCategory}}{{end}}{{if .TransactionMonth}}&month={{.TransactionMonth}}{{end}}">Next →</a>
       {{end}}
     </nav>
   {{else}}
     <div class="empty">
       <p>No transactions match this view.</p>
-      {{if or .FilterAccount .SearchQuery (ne .FlowFacet "all") (ne .CategoryFacet "all")}}<a class="button ghost" href="/transactions">Clear filters</a>{{end}}
+      {{if or .FilterAccount .SearchQuery .FilterCategory .TransactionMonth (ne .FlowFacet "all") (ne .CategoryFacet "all")}}<a class="button ghost" href="/transactions">Clear filters</a>{{end}}
     </div>
   {{end}}
 </section>

@@ -234,16 +234,22 @@
             <ul class="budget-category-list">
               {{range .Categories}}
                 <li>
-                  <div class="budget-category-head">
+                  <a class="budget-category-head budget-category-link"
+                    href="{{budgetDrilldown $.BudgetMonthValue .Category $.BudgetWorkspace}}"
+                    title="View {{.Category}} transactions for {{$.BudgetMonthLabel}}">
                     <span class="badge category {{categoryClass .Category}}">{{.Category}}</span>
                     {{if .Custom}}<span class="badge muted">Custom</span>{{end}}
                     <span class="budget-category-share">{{bpsPercent .PercentBPS}}</span>
-                  </div>
+                  </a>
                   <div class="budget-category-meta">
                     <span>{{money .SpentMinor $.BudgetPlan.Currency}} of {{money .LimitMinor $.BudgetPlan.Currency}}</span>
                     <span class="badge {{if eq .Tone "critical"}}error{{else if eq .Tone "warning"}}pending{{else}}ok{{end}}">{{.Percent}}%</span>
                   </div>
-                  <progress class="budget-progress {{.Tone}}" max="100" value="{{if gt .Percent 100}}100{{else}}{{.Percent}}{{end}}">{{.Percent}}%</progress>
+                  <a class="budget-category-progress-link"
+                    href="{{budgetDrilldown $.BudgetMonthValue .Category $.BudgetWorkspace}}"
+                    title="View {{.Category}} transactions for {{$.BudgetMonthLabel}}">
+                    <progress class="budget-progress {{.Tone}}" max="100" value="{{if gt .Percent 100}}100{{else}}{{.Percent}}{{end}}">{{.Percent}}%</progress>
+                  </a>
                   {{if and (isHousingCategory .Category) $.Housing}}
                     <div class="housing-category-actions">
                       {{if $.Housing.Rule}}

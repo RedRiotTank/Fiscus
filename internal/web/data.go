@@ -31,6 +31,17 @@ type PageData struct {
 	BudgetWorkspaceRequired bool
 	BudgetWorkspace         string
 	BudgetCurrency          string
+	BudgetMonth             time.Time
+	BudgetMonthValue        string
+	BudgetMonthLabel        string
+	BudgetPrevHref          string
+	BudgetNextHref          string
+	BudgetCurrentHref       string
+	BudgetIsCurrentMonth    bool
+	TransactionMonth        string
+	TransactionMonthLabel   string
+	TransactionMonthCurrent bool
+	FilterCategory          string
 	Subscriptions           []SubscriptionView
 	ActiveSubscriptions     []SubscriptionView
 	InactiveSubscriptions   []SubscriptionView
@@ -387,7 +398,10 @@ func (s *Server) loadOverview(ctx context.Context, data *PageData) error {
 	data.Summary = summarizeAccounts(accounts)
 	data.TotalAccounts = len(accounts)
 	now := s.now().UTC()
-	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	monthStart := firstOfMonth(now)
+	if !data.BudgetMonth.IsZero() {
+		monthStart = firstOfMonth(data.BudgetMonth)
+	}
 	var spending []storage.CategorySpending
 	if data.Workspace.View == domain.WorkspaceAll || len(accounts) > 0 {
 		spending, err = s.store.SpendingByCategoryForAccounts(ctx, monthStart, monthStart.AddDate(0, 1, 0), accountIDsArg(accounts, data.Workspace.View))

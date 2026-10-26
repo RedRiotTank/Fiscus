@@ -2884,3 +2884,60 @@ select {
     display: none;
   }
 }
+
+/* Budget month navigation and drill-down */
+.month-nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--panel-2);
+}
+
+.month-nav-label {
+  min-width: 140px;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.month-nav-arrow.disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.budget-category-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.budget-category-link:hover .badge.category {
+  filter: brightness(1.12);
+}
+
+.budget-category-progress-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.budget-category-progress-link:hover .budget-progress {
+  filter: brightness(1.1);
+}
+
+.transaction-month-group input[type="month"] {
+  width: auto;
+  min-width: 150px;
+  margin: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.74rem;
+}

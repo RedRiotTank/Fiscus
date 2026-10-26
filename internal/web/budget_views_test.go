@@ -57,6 +57,70 @@ func TestBudgetChartDatasetsForDonutAndBars(t *testing.T) {
 	}
 }
 
+func TestBudgetHistoricalMonthScopesSpending(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	anchor := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
+	f.server.now = func() time.Time { return anchor }
+	f.server.budgetPlanner = budgets.NewPlanner(f.store, f.server.now)
+	ctx := context.Background()
+	if err := f.server.budgetPlanner.Save(ctx,
+		budgets.DefaultProfile(domain.WorkspacePersonal, "EUR"),
+		budgets.DefaultAllocations(domain.WorkspacePersonal)); err != nil {
+		t.Fatalf("Save budget plan: %v", err)
+	}
+	if _, err := f.store.SaveHousingRule(ctx, domain.HousingRule{
+		Workspace: domain.WorkspacePersonal, Currency: "EUR", LandlordCounterparty: "Landlord",
+		PersonalNetShareCents: 35_000, CalculationMode: domain.HousingModeFixedShare,
+	}); err != nil {
+		t.Fatalf("SaveHousingRule: %v", err)
+	}
+	transactions := []domain.Transaction{
+		{AccountID: "acc-1", ExternalID: "sep-salary", AmountMinor: 300_000, Currency: "EUR", BookingDate: time.Date(2026, 9, 1, 9, 0, 0, 0, time.UTC), Counterparty: "Employer", Category: "Payroll", Status: domain.TransactionStatusBooked},
+		{AccountID: "acc-1", ExternalID: "sep-rent", AmountMinor: -105_000, Currency: "EUR", BookingDate: time.Date(2026, 9, 1, 10, 0, 0, 0, time.UTC), Counterparty: "Landlord", Category: "Uncategorized", Status: domain.TransactionStatusBooked},
+		{AccountID: "acc-1", ExternalID: "sep-groceries", AmountMinor: -5_000, Currency: "EUR", BookingDate: time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC), Counterparty: "Mercadona", Category: "Groceries", Status: domain.TransactionStatusBooked},
+		{AccountID: "acc-1", ExternalID: "oct-salary", AmountMinor: 300_000, Currency: "EUR", BookingDate: time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC), Counterparty: "Employer", Category: "Payroll", Status: domain.TransactionStatusBooked},
+		{AccountID: "acc-1", ExternalID: "oct-rent", AmountMinor: -105_000, Currency: "EUR", BookingDate: time.Date(2026, 10, 1, 10, 0, 0, 0, time.UTC), Counterparty: "Landlord", Category: "Uncategorized", Status: domain.TransactionStatusBooked},
+		{AccountID: "acc-1", ExternalID: "oct-groceries", AmountMinor: -9_000, Currency: "EUR", BookingDate: time.Date(2026, 10, 10, 10, 0, 0, 0, time.UTC), Counterparty: "Mercadona", Category: "Groceries", Status: domain.TransactionStatusBooked},
+	}
+	for i := range transactions {
+		if _, _, err := f.store.UpsertTransaction(ctx, &transactions[i]); err != nil {
+			t.Fatalf("UpsertTransaction: %v", err)
+		}
+	}
+
+	page := f.request(t, http.MethodGet, "/budgets?workspace=personal&month=2026-09", true, nil)
+	if page.Code != http.StatusOK {
+		t.Fatalf("historical budgets status = %d body=%s", page.Code, page.Body.String())
+	}
+	body := page.Body.String()
+	for _, want := range []string{"September 2026", "Income in September 2026", "Current Month", "€350.00 of", "€50.00 of", "category=Groceries&amp;month=2026-09"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("historical budget page missing %q", want)
+		}
+	}
+	if strings.Contains(body, "€90.00 of") {
+		t.Fatal("historical budget page leaked October spend")
+	}
+	partial := f.request(t, http.MethodGet, "/budgets?workspace=personal&month=2026-09", true, map[string]string{"HX-Request": "true"})
+	if partial.Code != http.StatusOK || strings.Contains(partial.Body.String(), "<html") ||
+		!strings.Contains(partial.Body.String(), `id="budgets-container"`) {
+		t.Fatalf("budget HTMX partial = %d %s", partial.Code, partial.Body.String())
+	}
+}
+
+func TestBudgetDrilldownURL(t *testing.T) {
+	t.Parallel()
+	got := budgetDrilldownURL("2026-10", "Restaurants & Delivery", "personal")
+	for _, want := range []string{
+		"/transactions?", "month=2026-10", "category=Restaurants+%26+Delivery", "workspace=personal",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("drilldown URL = %q missing %q", got, want)
+		}
+	}
+}
+
 func TestBudgetPageRendersChartSwitcher(t *testing.T) {
 	t.Parallel()
 	f := newWebFixture(t)

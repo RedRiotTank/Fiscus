@@ -37,9 +37,11 @@
       {{if .FilterAccount}}<input type="hidden" name="account" value="{{.FilterAccount}}">{{end}}
       {{if ne .FlowFacet "all"}}<input type="hidden" name="flow" value="{{.FlowFacet}}">{{end}}
       {{if ne .CategoryFacet "all"}}<input type="hidden" name="facet" value="{{.CategoryFacet}}">{{end}}
+      {{if .FilterCategory}}<input type="hidden" name="category" value="{{.FilterCategory}}">{{end}}
+      {{if .TransactionMonth}}<input type="hidden" name="month" value="{{.TransactionMonth}}">{{end}}
       <input type="hidden" name="limit" value="{{.Limit}}">
       <button class="button small" type="submit">Search</button>
-      {{if .SearchQuery}}<a class="link" href="/transactions?limit={{.Limit}}{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}{{if ne .FlowFacet "all"}}&flow={{.FlowFacet}}{{end}}{{if ne .CategoryFacet "all"}}&facet={{.CategoryFacet}}{{end}}">Clear</a>{{end}}
+      {{if .SearchQuery}}<a class="link" href="/transactions?limit={{.Limit}}{{if .FilterAccount}}&account={{urlquery .FilterAccount}}{{end}}{{if ne .FlowFacet "all"}}&flow={{.FlowFacet}}{{end}}{{if ne .CategoryFacet "all"}}&facet={{.CategoryFacet}}{{end}}{{if .FilterCategory}}&category={{urlquery .FilterCategory}}{{end}}{{if .TransactionMonth}}&month={{.TransactionMonth}}{{end}}">Clear</a>{{end}}
     </form>
   </div>
 </div>
