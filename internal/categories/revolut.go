@@ -30,7 +30,7 @@ var p2pConceptRules = []struct {
 	},
 	{
 		category: "Restaurants & Delivery",
-		pattern:  regexp.MustCompile(`(?i)(?:uber eats|glovo|just eat|burger king|mcdonald'?s|\bkfc\b|telepizza|starbucks|restaurant|cena|comida|dinner|lunch)`),
+		pattern:  regexp.MustCompile(`(?i)\b(?:uber\s*eats|glovo|just\s*eat|burger|pizza|cena|comida|kebab|tacos|mcdonalds?|mcdonald'?s|kfc|telepizza|starbucks|restaurante|restaurant|bar|tapas|brunch|dinner|lunch|delivery)\b`),
 	},
 	{
 		category: "Groceries",

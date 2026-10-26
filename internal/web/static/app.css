@@ -2414,6 +2414,13 @@ select {
   margin: 0;
 }
 
+.category-quick-shell {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
 .category-quick {
   display: inline-flex;
   flex-direction: column;
@@ -2499,6 +2506,49 @@ select {
 .category-confirm-chip:hover {
   border-color: rgba(56, 189, 248, 0.9);
   background: rgba(56, 189, 248, 0.18);
+}
+
+.category-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.category-quick-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 7px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.64rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.category-quick-chip:hover {
+  border-color: rgba(56, 189, 248, 0.55);
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--text);
+}
+
+.category-quick-chip.quick-food:hover {
+  border-color: rgba(251, 146, 60, 0.6);
+}
+
+.category-quick-chip.quick-groceries:hover {
+  border-color: rgba(52, 211, 153, 0.6);
+}
+
+.category-quick-chip.quick-leisure:hover {
+  border-color: rgba(192, 132, 252, 0.6);
 }
 
 .badge.category.cat-bizum {

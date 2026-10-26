@@ -156,6 +156,110 @@ func TestTransactionsPageRendersBizumBadge(t *testing.T) {
 	}
 }
 
+func TestTransactionsPageRendersQuickClassificationChips(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	ctx := context.Background()
+	now := f.server.now().UTC()
+	transactions := []domain.Transaction{
+		{
+			AccountID: "acc-1", ExternalID: "quick-p2p", AmountMinor: -1800, Currency: "EUR",
+			BookingDate: now, Counterparty: "To Ana", Description: "To Ana",
+			Category: "Transfers / P2P", Status: domain.TransactionStatusBooked,
+		},
+		{
+			AccountID: "acc-1", ExternalID: "quick-uncategorized", AmountMinor: -900, Currency: "EUR",
+			BookingDate: now.Add(-time.Hour), Counterparty: "Mystery Vendor", Description: "Mystery Vendor",
+			Category: "Uncategorized", Status: domain.TransactionStatusBooked,
+		},
+	}
+	for index := range transactions {
+		if _, _, err := f.store.UpsertTransaction(ctx, &transactions[index]); err != nil {
+			t.Fatalf("UpsertTransaction: %v", err)
+		}
+	}
+	page := f.request(t, http.MethodGet, "/transactions", true, nil)
+	if page.Code != http.StatusOK {
+		t.Fatalf("transactions status = %d", page.Code)
+	}
+	body := page.Body.String()
+	for _, want := range []string{
+		"category-quick-actions", "category-quick-chip quick-food", "category-quick-chip quick-groceries",
+		"category-quick-chip quick-leisure", "🍕 Food / Delivery", "🛒 Groceries", "🍻 Leisure / Drinks",
+		`data-quick-category="Restaurants &amp; Delivery"`, `data-quick-category="Groceries"`,
+		`data-quick-category="Leisure &amp; Shopping"`, `hx-patch="/api/transactions/`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("quick chips missing %q", want)
+		}
+	}
+}
+
+func TestQuickChipPatchUpdatesOnlyOneTransactionWithoutLearnedRule(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	ctx := context.Background()
+	now := f.server.now().UTC()
+	transactions := []domain.Transaction{
+		{
+			AccountID: "acc-1", ExternalID: "quick-one", AmountMinor: -1800, Currency: "EUR",
+			BookingDate: now, Counterparty: "To Ana", Description: "cena viernes",
+			Category: "Transfers / P2P", Status: domain.TransactionStatusBooked,
+		},
+		{
+			AccountID: "acc-1", ExternalID: "quick-two", AmountMinor: -2200, Currency: "EUR",
+			BookingDate: now.Add(-time.Hour), Counterparty: "To Ana", Description: "To Ana",
+			Category: "Transfers / P2P", Status: domain.TransactionStatusBooked,
+		},
+	}
+	for index := range transactions {
+		if _, _, err := f.store.UpsertTransaction(ctx, &transactions[index]); err != nil {
+			t.Fatalf("UpsertTransaction: %v", err)
+		}
+	}
+	form := url.Values{
+		"category": {"Restaurants & Delivery"},
+		"remember": {"0"},
+		"quick":    {"1"},
+	}
+	req := httptest.NewRequest(http.MethodPatch, "/api/transactions/"+strconv.FormatInt(transactions[0].ID, 10)+"/category", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set(syncRequestHeader, "1")
+	req.SetBasicAuth("admin", "secret")
+	rec := httptest.NewRecorder()
+	f.handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("quick chip PATCH = %d %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "Restaurants &amp; Delivery") {
+		t.Fatalf("response does not show updated badge: %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "cat-dining") {
+		t.Fatalf("response does not recalculate badge styling: %s", rec.Body.String())
+	}
+	updated, err := f.store.GetTransaction(ctx, transactions[0].ID)
+	if err != nil {
+		t.Fatalf("GetTransaction updated: %v", err)
+	}
+	if updated.Category != "Restaurants & Delivery" {
+		t.Fatalf("updated category = %q", updated.Category)
+	}
+	untouched, err := f.store.GetTransaction(ctx, transactions[1].ID)
+	if err != nil {
+		t.Fatalf("GetTransaction untouched: %v", err)
+	}
+	if untouched.Category != "Transfers / P2P" {
+		t.Fatalf("sibling transaction was recategorized to %q", untouched.Category)
+	}
+	rules, err := f.store.ListLearnedRules(ctx)
+	if err != nil {
+		t.Fatalf("ListLearnedRules: %v", err)
+	}
+	if len(rules) != 0 {
+		t.Fatalf("quick chip created a blanket learned rule: %+v", rules)
+	}
+}
+
 func TestTransactionsPageRendersBayesianConfirmationChip(t *testing.T) {
 	t.Parallel()
 	f := newWebFixture(t)

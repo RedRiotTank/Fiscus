@@ -23,6 +23,8 @@ func TestTransactionFacetQueryBuilderCombinesFlowAndCategory(t *testing.T) {
 		{name: "p2p", filter: TransactionFilter{Category: CategoryFacetP2P}, wantSQL: []string{"LOWER(TRIM(category)) IN"}, wantArgs: 4},
 		{name: "needs", filter: TransactionFilter{Category: CategoryFacetNeeds, Categories: []string{"Utilities & Telecom", "Groceries"}}, wantSQL: []string{"LOWER(TRIM(category)) IN"}, wantArgs: 2},
 		{name: "wants empty", filter: TransactionFilter{Category: CategoryFacetWants}, wantSQL: []string{"1 = 0"}},
+		{name: "wants p2p aliases", filter: TransactionFilter{Category: CategoryFacetWants, Categories: []string{"Transfers / P2P"}}, wantSQL: []string{"LOWER(TRIM(category)) IN"}, wantArgs: 4},
+		{name: "exact p2p aliases", filter: TransactionFilter{CategoryName: "Transfers / P2P"}, wantSQL: []string{"LOWER(TRIM(category)) IN"}, wantArgs: 4},
 		{name: "outflows housing", filter: TransactionFilter{Flow: FlowOutflows, Category: CategoryFacetHousing}, wantSQL: []string{"amount_minor < 0", "LOWER(TRIM(category)) IN"}, wantArgs: 7},
 		{name: "inflows p2p", filter: TransactionFilter{Flow: FlowInflows, Category: CategoryFacetP2P}, wantSQL: []string{"amount_minor > 0", "LOWER(TRIM(category)) IN"}, wantArgs: 4},
 		{name: "all", filter: TransactionFilter{Flow: FlowAll, Category: CategoryFacetAll}, rejectSQL: "amount_minor"},
@@ -81,6 +83,8 @@ func TestListTransactionsFacetedFilters(t *testing.T) {
 		{name: "groceries out", filter: TransactionFilter{Flow: FlowOutflows, Category: CategoryFacetGroceries}, want: []string{"groceries"}},
 		{name: "needs", filter: TransactionFilter{Category: CategoryFacetNeeds, Categories: []string{"Utilities & Telecom", "Groceries"}}, want: []string{"fiber", "groceries"}},
 		{name: "wants", filter: TransactionFilter{Category: CategoryFacetWants, Categories: []string{"Dining"}}, want: []string{"coffee"}},
+		{name: "wants p2p", filter: TransactionFilter{Category: CategoryFacetWants, Categories: []string{"Transfers / P2P"}}, want: []string{"bizum-out", "bizum-in"}},
+		{name: "exact p2p", filter: TransactionFilter{CategoryName: "Transfers / P2P"}, want: []string{"bizum-out", "bizum-in"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

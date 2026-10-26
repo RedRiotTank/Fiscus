@@ -84,10 +84,7 @@ func Compute(spending []storage.CategorySpending, budgets []Budget, now time.Tim
 	now = now.UTC()
 	byKey := make(map[string]int64, len(spending))
 	for _, item := range spending {
-		category := strings.TrimSpace(item.Category)
-		if category == "" {
-			category = "Uncategorized"
-		}
+		category := canonicalSpendingCategory(item.Category)
 		currency := strings.ToUpper(strings.TrimSpace(item.Currency))
 		if currency == "" {
 			currency = "EUR"
@@ -101,7 +98,7 @@ func Compute(spending []storage.CategorySpending, budgets []Budget, now time.Tim
 		if budget.LimitMinor <= 0 {
 			continue
 		}
-		spent := byKey[strings.ToLower(budget.Category)+"\x00"+budget.Currency]
+		spent := byKey[strings.ToLower(canonicalSpendingCategory(budget.Category))+"\x00"+budget.Currency]
 		percent := spent * 100 / budget.LimitMinor
 		tone := ToneHealthy
 		switch {

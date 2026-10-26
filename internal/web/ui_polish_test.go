@@ -112,6 +112,7 @@ func TestBudgetsPageRendersIncomeDrivenPlan(t *testing.T) {
 		`Needs`,
 		`Wants`,
 		`Savings`,
+		`Transfers / P2P`,
 		`/static/budget-donut.js`,
 		`/static/budget-customize.js`,
 	} {

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/RedRiotTank/Fiscus/internal/domain"
+	"github.com/RedRiotTank/Fiscus/pkg/categorizer"
 )
 
 // DefaultCategory is assigned when no rule matches.
@@ -69,6 +70,12 @@ func MustNew(rules []Rule) *Classifier {
 func (c *Classifier) Classify(tx domain.Transaction) string {
 	if c == nil {
 		return DefaultCategory
+	}
+	text := strings.TrimSpace(tx.Counterparty + " " + tx.Description)
+	if tx.AmountMinor <= 0 && categorizer.IsP2PText(text) {
+		if category, ok := categorizer.DiningConceptCategory(text); ok {
+			return category
+		}
 	}
 	for _, rule := range c.rules {
 		if rule.pattern.MatchString(tx.Counterparty) || rule.pattern.MatchString(tx.Description) {

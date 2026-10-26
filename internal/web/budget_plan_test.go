@@ -95,7 +95,7 @@ func TestBudgetCustomizeEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("allocations after delete: %v", err)
 	}
-	if len(allocations) != 8 {
+	if len(allocations) != 9 {
 		t.Fatalf("deleting all categories should restore defaults, got %+v", allocations)
 	}
 	emptyPage := f.request(t, http.MethodGet, "/budgets?workspace=personal", true, nil)
@@ -193,6 +193,38 @@ func TestBudgetWorkspaceIsolationAndEmptyState(t *testing.T) {
 	}
 }
 
+func TestBudgetPageIncludesP2PSpendUnderWants(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	f.server.budgetPlanner = budgets.NewPlanner(f.store, f.server.now)
+	ctx := context.Background()
+	if err := f.server.budgetPlanner.Save(ctx,
+		budgets.DefaultProfile(domain.WorkspacePersonal, "EUR"),
+		budgets.DefaultAllocations(domain.WorkspacePersonal)); err != nil {
+		t.Fatalf("Save budget plan: %v", err)
+	}
+	now := f.server.now().UTC()
+	transactions := []domain.Transaction{
+		{AccountID: "acc-1", ExternalID: "p2p-wants-1", AmountMinor: -5_000, Currency: "EUR", BookingDate: now, Counterparty: "To Ana", Description: "To Ana", Category: "Transfers / P2P", Status: domain.TransactionStatusBooked},
+		{AccountID: "acc-1", ExternalID: "p2p-wants-2", AmountMinor: -2_500, Currency: "EUR", BookingDate: now, Counterparty: "Bizum Luis", Description: "Bizum Luis", Category: "Transfers / Bizum", Status: domain.TransactionStatusBooked},
+	}
+	for index := range transactions {
+		if _, _, err := f.store.UpsertTransaction(ctx, &transactions[index]); err != nil {
+			t.Fatalf("UpsertTransaction: %v", err)
+		}
+	}
+	page := f.request(t, http.MethodGet, "/budgets?workspace=personal", true, nil)
+	if page.Code != http.StatusOK {
+		t.Fatalf("budgets status = %d body=%s", page.Code, page.Body.String())
+	}
+	body := page.Body.String()
+	for _, want := range []string{"Transfers / P2P", "€75.00 of", "cat-bizum"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("budget page missing P2P spend marker %q", want)
+		}
+	}
+}
+
 func TestBudgetDonutData(t *testing.T) {
 	t.Parallel()
 	plan := budgets.Plan{
@@ -217,7 +249,7 @@ func TestDefaultBudgetTemplateAutoSeed(t *testing.T) {
 		t.Fatalf("budgets status = %d", page.Code)
 	}
 	body := page.Body.String()
-	for _, want := range []string{"Housing / Rent", "Groceries", "Utilities &amp; Telecom", "Restaurants &amp; Delivery", "Subscriptions", "Cash / ATM", "Leisure &amp; Shopping", "Emergency Fund"} {
+	for _, want := range []string{"Housing / Rent", "Groceries", "Utilities &amp; Telecom", "Restaurants &amp; Delivery", "Subscriptions", "Cash / ATM", "Leisure &amp; Shopping", "Transfers / P2P", "Emergency Fund"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("default budget page missing %q", want)
 		}
@@ -240,7 +272,7 @@ func TestDefaultBudgetTemplateAutoSeed(t *testing.T) {
 	for _, allocation := range allocations {
 		total += allocation.PercentBPS
 	}
-	if len(allocations) != 8 || total != 10000 {
+	if len(allocations) != 9 || total != 10000 {
 		t.Fatalf("allocations = %+v total=%d", allocations, total)
 	}
 
@@ -311,7 +343,7 @@ func TestBudgetSaveWithoutCategoriesInjectsDefaults(t *testing.T) {
 	for _, allocation := range allocations {
 		total += allocation.PercentBPS
 	}
-	if len(allocations) != 8 || total != 10000 {
+	if len(allocations) != 9 || total != 10000 {
 		t.Fatalf("default injection = %+v total=%d", allocations, total)
 	}
 	page := f.request(t, http.MethodGet, "/budgets?workspace=personal", true, nil)

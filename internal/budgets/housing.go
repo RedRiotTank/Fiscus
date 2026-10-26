@@ -16,6 +16,9 @@ func canonicalSpendingCategory(category string) string {
 	if housing.IsCategory(category) {
 		return housing.Category
 	}
+	if IsP2PCategory(category) {
+		return CategoryP2P
+	}
 	category = strings.TrimSpace(category)
 	if category == "" {
 		return "Uncategorized"

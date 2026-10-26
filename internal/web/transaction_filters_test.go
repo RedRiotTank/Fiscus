@@ -79,7 +79,7 @@ func TestTransactionsFacetedFiltersAndHTMXSwap(t *testing.T) {
 		{name: "inflows", query: "flow=inflows", want: []string{"Employer", "Bizum Ana"}, absent: []string{"Coffee Shop", "Bizum Alberto"}},
 		{name: "outflows", query: "flow=outflows", want: []string{"Coffee Shop", "Bizum Alberto", "Inmobiliaria Centro"}, absent: []string{"Employer", "Bizum Ana"}},
 		{name: "p2p", query: "facet=p2p", want: []string{"Bizum Alberto", "Bizum Ana"}, absent: []string{"Coffee Shop", "Employer"}},
-		{name: "wants", query: "facet=wants", want: []string{"Coffee Shop"}, absent: []string{"Employer", "Bizum Alberto", "Inmobiliaria Centro"}},
+		{name: "wants", query: "facet=wants", want: []string{"Coffee Shop", "Bizum Alberto", "Bizum Ana"}, absent: []string{"Employer", "Inmobiliaria Centro"}},
 		{name: "outflows housing", query: "flow=outflows&facet=housing", want: []string{"Inmobiliaria Centro"}, absent: []string{"Coffee Shop", "Bizum Alberto", "Employer"}},
 		{name: "inflows p2p", query: "flow=inflows&facet=p2p", want: []string{"Bizum Ana"}, absent: []string{"Bizum Alberto", "Coffee Shop", "Employer"}},
 		{name: "outflows utilities", query: "flow=outflows&facet=utilities", want: []string{"Vodafone"}, absent: []string{"Coffee Shop", "Inmobiliaria Centro", "Employer"}},

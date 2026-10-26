@@ -97,6 +97,7 @@ func (s *Server) loadBudgetPlan(ctx context.Context, data *PageData, spending []
 			return err
 		}
 	}
+	stored.Allocations = budgets.EnsureP2PWantsAllocation(stored.Profile, stored.Allocations)
 	if len(stored.Allocations) == 0 {
 		data.BudgetEmpty = true
 		return nil
@@ -284,6 +285,7 @@ func (s *Server) handleBudgetCustomize(w http.ResponseWriter, r *http.Request) {
 		}
 		stored.Allocations = budgets.DefaultAllocations(workspace)
 	}
+	stored.Allocations = budgets.EnsureP2PWantsAllocation(stored.Profile, stored.Allocations)
 	editor := BudgetEditorView{
 		Workspace: workspace, Currency: currency,
 		Profile: stored.Profile, Allocations: stored.Allocations,

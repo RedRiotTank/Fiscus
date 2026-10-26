@@ -155,8 +155,18 @@ func transactionWhere(filter TransactionFilter) ([]string, []any) {
 		args = append(args, encodeTime(filter.MonthTo))
 	}
 	if category := strings.TrimSpace(filter.CategoryName); category != "" {
-		where = append(where, "LOWER(TRIM(category)) = ?")
-		args = append(args, strings.ToLower(category))
+		categories := canonicalFilterCategories([]string{category})
+		if len(categories) > 1 {
+			placeholders := make([]string, len(categories))
+			for i, candidate := range categories {
+				placeholders[i] = "?"
+				args = append(args, candidate)
+			}
+			where = append(where, "LOWER(TRIM(category)) IN ("+strings.Join(placeholders, ",")+")")
+		} else {
+			where = append(where, "LOWER(TRIM(category)) = ?")
+			args = append(args, strings.ToLower(category))
+		}
 	}
 	switch NormalizeFlowFacet(string(filter.Flow)) {
 	case FlowInflows:
@@ -198,6 +208,7 @@ func transactionWhere(filter TransactionFilter) ([]string, []any) {
 func canonicalFilterCategories(categories []string) []string {
 	seen := make(map[string]struct{}, len(categories))
 	out := make([]string, 0, len(categories))
+	p2p := false
 	for _, category := range categories {
 		category = strings.ToLower(strings.TrimSpace(category))
 		if category == "" {
@@ -208,6 +219,19 @@ func canonicalFilterCategories(categories []string) []string {
 		}
 		seen[category] = struct{}{}
 		out = append(out, category)
+		switch category {
+		case "transfers / p2p", "transfers/p2p", "p2p", "transfers / bizum", "transfers/bizum", "bizum":
+			p2p = true
+		}
+	}
+	if p2p {
+		for _, category := range p2pFacetCategories {
+			if _, exists := seen[category]; exists {
+				continue
+			}
+			seen[category] = struct{}{}
+			out = append(out, category)
+		}
 	}
 	return out
 }

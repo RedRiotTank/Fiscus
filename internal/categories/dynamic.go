@@ -67,14 +67,14 @@ func NewDynamicClassifier(ctx context.Context, store LearnedRuleSource, custom, 
 // Reload refreshes the deterministic rule snapshot from SQLite. The Bayesian
 // model is intentionally preserved so online corrections are not discarded.
 func (d *DynamicClassifier) Reload(ctx context.Context) error {
-	rules := append([]Rule(nil), d.custom...)
+	explicitRules := append([]Rule(nil), d.custom...)
 	if d.store != nil {
 		learned, err := d.store.ListLearnedRules(ctx)
 		if err != nil {
 			return err
 		}
 		for _, rule := range learned {
-			rules = append(rules, Rule{Category: rule.Category, Pattern: rule.Pattern})
+			explicitRules = append(explicitRules, Rule{Category: rule.Category, Pattern: rule.Pattern})
 		}
 		if source, ok := d.store.(HousingRuleSource); ok {
 			housingRules, err := source.ListHousingRules(ctx)
@@ -86,7 +86,7 @@ func (d *DynamicClassifier) Reload(ctx context.Context) error {
 				if len([]rune(landlord)) < 3 {
 					continue
 				}
-				rules = append(rules, Rule{Category: categorizer.CategoryHousing, Pattern: LearnedPattern(landlord)})
+				explicitRules = append(explicitRules, Rule{Category: categorizer.CategoryHousing, Pattern: LearnedPattern(landlord)})
 			}
 		}
 		if source, ok := d.store.(RecurringBillRuleSource); ok {
@@ -100,18 +100,21 @@ func (d *DynamicClassifier) Reload(ctx context.Context) error {
 				if len([]rune(counterparty)) < 3 || category == "" {
 					continue
 				}
-				rules = append(rules, Rule{Category: category, Pattern: LearnedPattern(counterparty)})
+				explicitRules = append(explicitRules, Rule{Category: category, Pattern: LearnedPattern(counterparty)})
 			}
 		}
 	}
-	rules = append(rules, d.defaults...)
+	rules := append(append([]Rule(nil), explicitRules...), d.defaults...)
 
 	compiled, err := New(rules)
 	if err != nil {
 		return err
 	}
-	cascadeRules := make([]categorizer.Rule, 0, len(rules))
-	for _, rule := range rules {
+	// Defaults are represented by the deterministic catalog inside the
+	// cascade. Only explicit/learned rules are compiled as regexes there, so a
+	// specific P2P dining concept can outrank the generic "Bizum" catalog entry.
+	cascadeRules := make([]categorizer.Rule, 0, len(explicitRules))
+	for _, rule := range explicitRules {
 		cascadeRules = append(cascadeRules, categorizer.Rule{Category: rule.Category, Pattern: rule.Pattern})
 	}
 	if err := d.cascade.SetRules(cascadeRules); err != nil {

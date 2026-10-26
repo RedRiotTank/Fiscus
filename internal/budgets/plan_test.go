@@ -71,6 +71,65 @@ func TestBuildPlanPersonalIncomeDriven(t *testing.T) {
 	}
 }
 
+func TestBuildPlanP2PTransfersCountUnderWants(t *testing.T) {
+	t.Parallel()
+	allocations := []Allocation{
+		{Category: "Restaurants & Delivery", Pillar: PillarWants, PercentBPS: 1200},
+		{Category: CategoryP2P, Pillar: PillarWants, PercentBPS: DefaultP2PWantsBPS},
+	}
+	spending := []storage.CategorySpending{
+		{Category: CategoryP2P, Currency: "EUR", Minor: 1_600},
+		{Category: "Transfers / Bizum", Currency: "EUR", Minor: 400},
+	}
+	plan := BuildPlan(personalProfile(), allocations, spending, 280_000, 0, 280_000, time.Now())
+	var p2p *CategoryPlan
+	for index := range plan.Categories {
+		if plan.Categories[index].Category == CategoryP2P {
+			p2p = &plan.Categories[index]
+		}
+	}
+	if p2p == nil {
+		t.Fatalf("P2P category missing: %+v", plan.Categories)
+	}
+	if p2p.Pillar != PillarWants || p2p.SpentMinor != 2_000 || p2p.LimitMinor != 8_400 {
+		t.Fatalf("P2P category = %+v", *p2p)
+	}
+	if plan.Pillars[1].Label != "Wants" || plan.Pillars[1].SpentMinor != 2_000 {
+		t.Fatalf("wants pillar = %+v", plan.Pillars[1])
+	}
+}
+
+func TestEnsureP2PWantsAllocationRebalancesOldPlan(t *testing.T) {
+	t.Parallel()
+	allocations := []Allocation{
+		{Category: "Restaurants & Delivery", Pillar: PillarWants, PercentBPS: 1200},
+		{Category: "Subscriptions", Pillar: PillarWants, PercentBPS: 500},
+		{Category: "Cash / ATM", Pillar: PillarWants, PercentBPS: 300},
+		{Category: "Leisure & Shopping", Pillar: PillarWants, PercentBPS: 1000},
+		{Category: "Emergency Fund", Pillar: PillarSavings, PercentBPS: 2000},
+		{Category: "Housing / Rent", Pillar: PillarNeeds, PercentBPS: 3000},
+		{Category: "Groceries", Pillar: PillarNeeds, PercentBPS: 1200},
+		{Category: "Utilities & Telecom", Pillar: PillarNeeds, PercentBPS: 800},
+	}
+	ensured := EnsureP2PWantsAllocation(personalProfile(), allocations)
+	total, wants := allocationTotals(ensured)
+	if total != 10000 || wants != 3000 {
+		t.Fatalf("allocation totals = total %d wants %d: %+v", total, wants, ensured)
+	}
+	found := false
+	for _, allocation := range ensured {
+		if allocation.Category == CategoryP2P {
+			found = true
+			if allocation.Pillar != PillarWants || allocation.PercentBPS != DefaultP2PWantsBPS {
+				t.Fatalf("P2P allocation = %+v", allocation)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("P2P allocation missing: %+v", ensured)
+	}
+}
+
 func TestBuildPlanBusinessWorkspaceIsolation(t *testing.T) {
 	t.Parallel()
 	profile := Profile{
@@ -197,17 +256,24 @@ func hasMessage(messages []AdvisoryMessage, contains string) bool {
 func TestDefaultAllocations(t *testing.T) {
 	t.Parallel()
 	personal := DefaultAllocations("personal")
-	if len(personal) != 8 {
+	if len(personal) != 9 {
 		t.Fatalf("personal defaults = %+v", personal)
 	}
 	foundCash := false
+	foundP2P := false
 	for _, allocation := range personal {
 		if allocation.Category == "Cash / ATM" && allocation.Pillar == PillarWants {
 			foundCash = true
 		}
+		if allocation.Category == CategoryP2P && allocation.Pillar == PillarWants {
+			foundP2P = true
+		}
 	}
 	if !foundCash {
 		t.Fatalf("personal defaults missing Cash / ATM wants category: %+v", personal)
+	}
+	if !foundP2P {
+		t.Fatalf("personal defaults missing Transfers / P2P wants category: %+v", personal)
 	}
 	if personal[0].Category != housing.Category {
 		t.Fatalf("personal housing category = %q, want %q", personal[0].Category, housing.Category)

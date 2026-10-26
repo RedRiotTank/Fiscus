@@ -35,6 +35,19 @@ func TestDynamicClassifierReloadsLearnedRules(t *testing.T) {
 	}
 }
 
+func TestDynamicClassifierRoutesP2PDiningConcept(t *testing.T) {
+	t.Parallel()
+	classifier, err := NewDynamicClassifier(context.Background(), &fakeLearnedSource{}, nil, DefaultRules())
+	if err != nil {
+		t.Fatalf("NewDynamicClassifier: %v", err)
+	}
+	tx := domain.Transaction{Counterparty: "Bizum Juan", Description: "cena viernes", AmountMinor: -2_000}
+	result := classifier.ClassifyDetailed(tx)
+	if result.Category != "Restaurants & Delivery" || result.Confidence < 0.82 {
+		t.Fatalf("P2P dining result = %+v, want Restaurants & Delivery", result)
+	}
+}
+
 func TestOnlyUncategorized(t *testing.T) {
 	t.Parallel()
 	classify := OnlyUncategorized(func(domain.Transaction) string { return "Groceries" })

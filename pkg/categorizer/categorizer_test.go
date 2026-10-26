@@ -163,6 +163,31 @@ func TestCascadeExplicitRulesWin(t *testing.T) {
 	}
 }
 
+func TestCascadeP2PDiningConceptsRouteToRestaurants(t *testing.T) {
+	t.Parallel()
+	cascade, err := NewCascade(Config{})
+	if err != nil {
+		t.Fatalf("NewCascade: %v", err)
+	}
+	tests := []Input{
+		{Counterparty: "Bizum Juan", Description: "cena viernes", AmountMinor: -2_000},
+		{Counterparty: "Bizum Luis", Description: "Burger King", AmountMinor: -1_500},
+		{Counterparty: "John", Description: "For Uber Eats | To John", AmountMinor: -1_800},
+		{Counterparty: "Bizum Ana", Description: "pizza y tapas", AmountMinor: -1_200},
+		{Counterparty: "Bizum Ana", Description: "brunch domingo", AmountMinor: -2_400},
+	}
+	for _, input := range tests {
+		result := cascade.Classify(input)
+		if result.Category != CategoryRestaurants || result.Tier != TierExact {
+			t.Errorf("Classify(%+v) = %+v, want exact Restaurants & Delivery", input, result)
+		}
+	}
+	inbound := cascade.Classify(Input{Counterparty: "John", Description: "cena viernes | From John", AmountMinor: 2_000})
+	if inbound.Category == CategoryRestaurants {
+		t.Fatalf("inbound transfer was classified as dining: %+v", inbound)
+	}
+}
+
 func TestCascadeConcurrentLearnAndClassify(t *testing.T) {
 	t.Parallel()
 	cascade, err := NewCascade(Config{})

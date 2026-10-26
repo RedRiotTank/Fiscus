@@ -39,6 +39,19 @@ func TestComputeBudgetStatuses(t *testing.T) {
 	}
 }
 
+func TestComputeP2PAliasCountsAgainstTransfersBudget(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 3, 10, 12, 0, 0, 0, time.UTC)
+	statuses := Compute(
+		[]storage.CategorySpending{{Category: "Transfers / Bizum", Currency: "EUR", Minor: 4_000}},
+		[]Budget{{Category: CategoryP2P, LimitMinor: 10_000, Currency: "EUR"}},
+		now,
+	)
+	if len(statuses) != 1 || statuses[0].SpentMinor != 4_000 || statuses[0].Percent != 40 {
+		t.Fatalf("P2P alias status = %+v", statuses)
+	}
+}
+
 func TestComputeCriticalAndOverBudget(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC)

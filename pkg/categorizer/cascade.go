@@ -194,6 +194,20 @@ func (c *Cascade) Classify(input Input) Result {
 			}
 		}
 	}
+	// A dining note is more specific than the generic Bizum catalog entry. This
+	// applies to outbound peer-to-peer transfers only, regardless of the
+	// counterparty name.
+	if input.AmountMinor <= 0 {
+		text := input.text()
+		if IsP2PText(text) {
+			if category, ok := DiningConceptCategory(text); ok {
+				return Result{
+					Category: category, Tier: TierExact, Confidence: 1,
+					Matched: "p2p-dining-concept", Candidate: category, CandidateConfidence: 1,
+				}
+			}
+		}
+	}
 	for _, field := range input.fields() {
 		if result, ok := catalog.Match(field, input.AmountMinor); ok {
 			result.Candidate = result.Category

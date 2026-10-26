@@ -54,6 +54,8 @@ func TestClassifierRecognisesRevolutP2PConcepts(t *testing.T) {
 		"Luz octubre | To Jose":         "Utilities & Telecom",
 		"Agua marzo | To Jose":          "Utilities & Telecom",
 		"For Uber Eats | To John":       "Restaurants & Delivery",
+		"Bizum cena viernes":            "Restaurants & Delivery",
+		"Bizum pizza | To Ana":          "Restaurants & Delivery",
 		"Coviran | To Ana":              "Groceries",
 		"Unknown concept | To Ana":      CategoryP2P,
 		"Amazon Prime*nk9ae7fn4":        "Subscriptions",

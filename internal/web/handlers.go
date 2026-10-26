@@ -341,7 +341,7 @@ func matchesTransactionPeriod(tx domain.Transaction, from, to time.Time, categor
 	if !to.IsZero() && !tx.BookingDate.Before(to) {
 		return false
 	}
-	if category != "" && !strings.EqualFold(strings.TrimSpace(tx.Category), strings.TrimSpace(category)) {
+	if category != "" && !transactionCategoryIn(tx.Category, []string{category}) {
 		return false
 	}
 	return true
@@ -350,11 +350,25 @@ func matchesTransactionPeriod(tx domain.Transaction, from, to time.Time, categor
 func transactionCategoryIn(category string, allowed []string) bool {
 	category = strings.ToLower(strings.TrimSpace(category))
 	for _, candidate := range allowed {
-		if category == strings.ToLower(strings.TrimSpace(candidate)) {
+		candidate = strings.ToLower(strings.TrimSpace(candidate))
+		if category == candidate {
+			return true
+		}
+		if isP2PCategoryName(category) && isP2PCategoryName(candidate) {
 			return true
 		}
 	}
 	return false
+}
+
+func isP2PCategoryName(category string) bool {
+	switch strings.ToLower(strings.TrimSpace(category)) {
+	case "transfers / p2p", "transfers/p2p", "p2p",
+		"transfers / bizum", "transfers/bizum", "bizum":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Server) facetCategories(ctx context.Context, workspace, currency, dataFilter string) ([]string, error) {
@@ -388,10 +402,14 @@ func (s *Server) facetCategories(ctx context.Context, workspace, currency, dataF
 
 func (s *Server) workspaceBudgetAllocations(ctx context.Context, workspace, currency string) ([]budgets.Allocation, error) {
 	var allocations []budgets.Allocation
+	profile := budgets.DefaultProfile(workspace, currency)
 	if workspace != domain.WorkspaceAll && s.budgetPlanner != nil {
 		stored, err := s.budgetPlanner.Load(ctx, workspace, currency)
 		if err != nil {
 			return nil, err
+		}
+		if stored.Exists {
+			profile = stored.Profile
 		}
 		if stored.Exists && len(stored.Allocations) > 0 {
 			allocations = stored.Allocations
@@ -403,7 +421,7 @@ func (s *Server) workspaceBudgetAllocations(ctx context.Context, workspace, curr
 			allocations = append(allocations, budgets.DefaultAllocations(domain.WorkspaceBusiness)...)
 		}
 	}
-	return allocations, nil
+	return budgets.EnsureP2PWantsAllocation(profile, allocations), nil
 }
 
 const maxNoteRunes = 2000

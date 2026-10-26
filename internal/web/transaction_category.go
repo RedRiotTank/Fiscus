@@ -24,6 +24,14 @@ type TransactionCategoryView struct {
 	Categories           []string
 	Suggestion           string
 	SuggestionConfidence int
+	QuickActions         []QuickCategoryAction
+}
+
+// QuickCategoryAction is one single-transaction category shortcut.
+type QuickCategoryAction struct {
+	Label    string
+	Category string
+	Class    string
 }
 
 func categoryEditor(tx TransactionView, categories []string) TransactionCategoryView {
@@ -47,14 +55,19 @@ func categoryEditor(tx TransactionView, categories []string) TransactionCategory
 	return TransactionCategoryView{Transaction: transaction, Categories: options}
 }
 
-// categoryEditor adds a one-click Bayesian confirmation chip to low-confidence
-// rows. Selecting it immediately trains and persists the correction.
+// categoryEditor adds quick single-transaction chips for P2P and
+// uncategorized rows, plus a Bayesian confirmation chip when available.
 func (s *Server) categoryEditor(tx TransactionView, options []string) TransactionCategoryView {
 	view := categoryEditor(tx, options)
 	category := strings.TrimSpace(view.Transaction.Category)
 	if !strings.EqualFold(category, categories.DefaultCategory) &&
-		!strings.EqualFold(category, categories.CategoryP2P) {
+		!isP2PCategoryName(category) {
 		return view
+	}
+	view.QuickActions = []QuickCategoryAction{
+		{Label: "🍕 Food / Delivery", Category: "Restaurants & Delivery", Class: "quick-food"},
+		{Label: "🛒 Groceries", Category: "Groceries", Class: "quick-groceries"},
+		{Label: "🍻 Leisure / Drinks", Category: "Leisure & Shopping", Class: "quick-leisure"},
 	}
 	suggester, ok := s.classifier.(interface {
 		SuggestCategory(domain.Transaction) (string, float64)
@@ -137,7 +150,7 @@ func (s *Server) handleTransactionCategory(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	tx.Category = category
-	if !strings.EqualFold(category, categories.DefaultCategory) {
+	if remember && !strings.EqualFold(category, categories.DefaultCategory) {
 		if learner, ok := s.classifier.(interface {
 			Learn(domain.Transaction, string)
 		}); ok {
