@@ -146,6 +146,83 @@ func CurrentBalance(account domain.AccruingAccount, transfers []Transfer, asOf t
 	return Project(account, transfers, asOf).BalanceMinor
 }
 
+// HistoricalEstimate is the estimated interest earned over a known window.
+// StartBalanceMinor is reconstructed by removing known transfers from the
+// current anchor balance, so it is necessarily approximate.
+type HistoricalEstimate struct {
+	InterestMinor      int64
+	MonthInterestMinor int64
+	StartBalanceMinor  int64
+	Since              time.Time
+}
+
+// EstimateInterestSince reconstructs the earliest known principal from the
+// current anchor and known transfers, then estimates interest over the window.
+func EstimateInterestSince(account domain.AccruingAccount, transfers []Transfer, since, asOf time.Time) HistoricalEstimate {
+	anchor := dateOnly(account.AnchorDate)
+	since = dateOnly(since)
+	target := dateOnly(asOf)
+	if since.IsZero() || target.Before(since) {
+		return HistoricalEstimate{}
+	}
+	if since.After(anchor) {
+		since = anchor
+	}
+	cutoff := anchor
+	if target.Before(cutoff) {
+		cutoff = target
+	}
+	netToAnchor := int64(0)
+	for _, transfer := range transfers {
+		day := dateOnly(transfer.Date)
+		if day.Before(since) || day.After(cutoff) {
+			continue
+		}
+		netToAnchor += transfer.AmountMinor
+	}
+	startBalance := account.AnchorBalanceCents - netToAnchor
+	frequency := strings.ToLower(strings.TrimSpace(account.CompoundingFrequency))
+	if frequency != domain.AccruingMonthly {
+		frequency = domain.AccruingDaily
+	}
+	dailyRate := NetDailyRate(account.APYRateBasisPoints, account.TaxWithholdingBPS)
+	monthlyRate := NetMonthlyRate(account.APYRateBasisPoints, account.TaxWithholdingBPS)
+	byDay := make(map[string]float64, len(transfers))
+	for _, transfer := range transfers {
+		day := dateOnly(transfer.Date)
+		if day.Before(since) || day.After(target) {
+			continue
+		}
+		byDay[day.Format("2006-01-02")] += float64(transfer.AmountMinor)
+	}
+	balance := float64(startBalance)
+	interest := 0.0
+	monthInterest := 0.0
+	for day := since; day.Before(target); day = day.AddDate(0, 0, 1) {
+		yield := 0.0
+		switch frequency {
+		case domain.AccruingMonthly:
+			if day.AddDate(0, 0, 1).Month() != day.Month() {
+				yield = balance * monthlyRate
+			}
+		default:
+			yield = balance * dailyRate
+		}
+		balance += yield
+		interest += yield
+		if day.Year() == target.Year() && day.Month() == target.Month() {
+			monthInterest += yield
+		}
+		balance += byDay[day.Format("2006-01-02")]
+	}
+	return HistoricalEstimate{
+		InterestMinor:      int64(math.Round(interest)),
+		MonthInterestMinor: int64(math.Round(monthInterest)),
+		StartBalanceMinor:  int64(math.Round(float64(startBalance))),
+		Since:              since,
+	}
+}
+
 // ComputeBalance is an alias for CurrentBalance used by integration callers.
 func ComputeBalance(account domain.AccruingAccount, transfers []Transfer, asOf time.Time) int64 {
 	return CurrentBalance(account, transfers, asOf)
@@ -162,6 +239,16 @@ func AccruedInterest(account domain.AccruingAccount, transfers []Transfer, asOf 
 // transactions into principal movements. Savings inflows (positive checking
 // amounts) reduce the accruing principal.
 func TransfersFromTransactions(account domain.AccruingAccount, transactions []domain.Transaction) ([]Transfer, error) {
+	return transfersFromTransactions(account, transactions, false)
+}
+
+// AllTransfersFromTransactions includes movements before the anchor date so
+// historical interest can be reconstructed and estimated.
+func AllTransfersFromTransactions(account domain.AccruingAccount, transactions []domain.Transaction) ([]Transfer, error) {
+	return transfersFromTransactions(account, transactions, true)
+}
+
+func transfersFromTransactions(account domain.AccruingAccount, transactions []domain.Transaction, includeBeforeAnchor bool) ([]Transfer, error) {
 	pattern := strings.TrimSpace(account.TransferMatchPattern)
 	if pattern == "" {
 		return nil, nil
@@ -182,7 +269,7 @@ func TransfersFromTransactions(account domain.AccruingAccount, transactions []do
 		if !re.MatchString(text) {
 			continue
 		}
-		if !dateOnly(tx.BookingDate).After(dateOnly(account.AnchorDate)) {
+		if !includeBeforeAnchor && !dateOnly(tx.BookingDate).After(dateOnly(account.AnchorDate)) {
 			continue
 		}
 		out = append(out, Transfer{Date: dateOnly(tx.BookingDate), AmountMinor: -tx.AmountMinor})

@@ -48,13 +48,13 @@ func (s *Server) accruingAccountViews(ctx context.Context, workspace string, syn
 	for _, account := range synced {
 		allowed[account.ID] = struct{}{}
 	}
-	earliest := accounts[0].AnchorDate
-	for _, account := range accounts[1:] {
-		if account.AnchorDate.Before(earliest) {
-			earliest = account.AnchorDate
+	queryStart := now.UTC().AddDate(-2, 0, 0)
+	for _, account := range accounts {
+		if account.AnchorDate.Before(queryStart) {
+			queryStart = account.AnchorDate
 		}
 	}
-	transactions, err := s.store.ListTransactionsBetween(ctx, earliest, now.UTC().Add(24*time.Hour))
+	transactions, err := s.store.ListTransactionsBetween(ctx, queryStart, now.UTC().Add(24*time.Hour))
 	if err != nil {
 		return nil, err
 	}
@@ -66,16 +66,25 @@ func (s *Server) accruingAccountViews(ctx context.Context, workspace string, syn
 	}
 	out := make([]AccruingAccountView, 0, len(accounts))
 	for _, account := range accounts {
-		transfers, transferErr := accrual.TransfersFromTransactions(account, filtered)
+		transfers, transferErr := accrual.AllTransfersFromTransactions(account, filtered)
 		if transferErr != nil {
 			transfers = nil
 		}
 		report := accrual.Project(account, transfers, now)
+		since := account.AnchorDate
+		for _, transfer := range transfers {
+			if transfer.Date.Before(since) {
+				since = transfer.Date
+			}
+		}
+		estimate := accrual.EstimateInterestSince(account, transfers, since, now)
 		out = append(out, AccruingAccountView{
 			AccruingAccount:       account,
 			BalanceMinor:          report.BalanceMinor,
 			LifetimeInterestMinor: report.LifetimeInterestMinor,
-			MonthInterestMinor:    report.MonthInterestMinor,
+			MonthInterestMinor:    estimate.MonthInterestMinor,
+			InterestSinceMinor:    estimate.InterestMinor,
+			InterestSince:         estimate.Since,
 			TAELabel: fmt.Sprintf("%.2f%% TAE · %s",
 				float64(account.APYRateBasisPoints)/100, frequencyLabel(account.CompoundingFrequency)),
 		})

@@ -83,6 +83,7 @@
     <div>
       <h2>Accruing savings</h2>
       <p class="panel-sub">Manual principal anchors with daily compound APY/TAE</p>
+      <p class="muted small">Interest is an estimate based on known transfers. Banks may not share complete savings-account history.</p>
     </div>
     <button class="button ghost small"
       hx-get="/api/accounts/accruing/new?workspace={{.Workspace.View}}{{if .Summary}}&currency={{(index .Summary 0).Currency}}{{end}}"
@@ -107,8 +108,8 @@
               <dd class="credit">+{{money .MonthInterestMinor .Currency}} in {{$.Now.Format "January 2006"}}</dd>
             </div>
             <div>
-              <dt>Lifetime interest</dt>
-              <dd class="credit">+{{money .LifetimeInterestMinor .Currency}}</dd>
+              <dt>Interest since {{date .InterestSince}} <span class="badge muted">est.</span></dt>
+              <dd class="credit">+{{money .InterestSinceMinor .Currency}}</dd>
             </div>
             <div>
               <dt>Balance at anchor</dt>

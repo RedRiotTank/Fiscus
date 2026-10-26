@@ -157,7 +157,7 @@ func TestAccruingAccountSetupAndAccountsPage(t *testing.T) {
 	body := page.Body.String()
 	for _, want := range []string{
 		"Revolut Cuenta Remunerada", "3.10% TAE · Daily", "Add savings account",
-		"Passive Yield", "Lifetime interest", "Reconcile", "€5,200.50", "Budget: Emergency Fund",
+		"Passive Yield", "Interest since", "est.", "Reconcile", "€5,200.50", "Budget: Emergency Fund", "estimate",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("accounts page missing %q", want)

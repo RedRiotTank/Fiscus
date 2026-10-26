@@ -37,6 +37,31 @@ func TestDailyCompoundingMatchesClosedForm(t *testing.T) {
 	}
 }
 
+func TestEstimateInterestSinceReconstructsStartBalance(t *testing.T) {
+	t.Parallel()
+	account := testAccount()
+	account.AnchorDate = time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC)
+	account.AnchorBalanceCents = 1_000_000
+	transfers := []Transfer{{
+		Date: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC), AmountMinor: 100_000,
+	}}
+	estimate := EstimateInterestSince(account, transfers,
+		time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 10, 31, 0, 0, 0, 0, time.UTC))
+	if estimate.StartBalanceMinor != 900_000 {
+		t.Fatalf("reconstructed start = %d, want 900000", estimate.StartBalanceMinor)
+	}
+	if estimate.InterestMinor <= 0 {
+		t.Fatalf("estimated interest = %d, want > 0", estimate.InterestMinor)
+	}
+	if estimate.MonthInterestMinor <= 0 || estimate.MonthInterestMinor > estimate.InterestMinor {
+		t.Fatalf("estimated month interest = %d (total %d)", estimate.MonthInterestMinor, estimate.InterestMinor)
+	}
+	if estimate.Since.Format("2006-01-02") != "2026-10-01" {
+		t.Fatalf("since = %v", estimate.Since)
+	}
+}
+
 func TestAnchorBalanceAlreadyIncludesAnchorDateMovements(t *testing.T) {
 	t.Parallel()
 	account := testAccount()

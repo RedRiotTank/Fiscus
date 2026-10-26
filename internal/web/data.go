@@ -102,6 +102,8 @@ type AccruingAccountView struct {
 	BalanceMinor          int64
 	LifetimeInterestMinor int64
 	MonthInterestMinor    int64
+	InterestSinceMinor    int64
+	InterestSince         time.Time
 	TAELabel              string
 }
 
