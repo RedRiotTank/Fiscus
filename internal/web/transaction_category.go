@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"errors"
+	"math"
 	"net/http"
 	"regexp"
 	"sort"
@@ -19,8 +20,10 @@ var bizumPattern = regexp.MustCompile(`(?i)\bbizum\b`)
 
 // TransactionCategoryView supplies the inline category editor.
 type TransactionCategoryView struct {
-	Transaction domain.Transaction
-	Categories  []string
+	Transaction          domain.Transaction
+	Categories           []string
+	Suggestion           string
+	SuggestionConfidence int
 }
 
 func categoryEditor(tx TransactionView, categories []string) TransactionCategoryView {
@@ -42,6 +45,31 @@ func categoryEditor(tx TransactionView, categories []string) TransactionCategory
 	}
 	sort.Strings(options)
 	return TransactionCategoryView{Transaction: transaction, Categories: options}
+}
+
+// categoryEditor adds a one-click Bayesian confirmation chip to low-confidence
+// rows. Selecting it immediately trains and persists the correction.
+func (s *Server) categoryEditor(tx TransactionView, options []string) TransactionCategoryView {
+	view := categoryEditor(tx, options)
+	category := strings.TrimSpace(view.Transaction.Category)
+	if !strings.EqualFold(category, categories.DefaultCategory) &&
+		!strings.EqualFold(category, categories.CategoryP2P) {
+		return view
+	}
+	suggester, ok := s.classifier.(interface {
+		SuggestCategory(domain.Transaction) (string, float64)
+	})
+	if !ok {
+		return view
+	}
+	suggestion, confidence := suggester.SuggestCategory(view.Transaction)
+	suggestion = strings.TrimSpace(suggestion)
+	if suggestion == "" || strings.EqualFold(suggestion, category) || confidence < 0.5 {
+		return view
+	}
+	view.Suggestion = suggestion
+	view.SuggestionConfidence = int(math.Round(confidence * 100))
+	return view
 }
 
 func isBizum(counterparty, description string) bool {
@@ -108,11 +136,18 @@ func (s *Server) handleTransactionCategory(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Could not update category", http.StatusInternalServerError)
 		return
 	}
+	tx.Category = category
+	if !strings.EqualFold(category, categories.DefaultCategory) {
+		if learner, ok := s.classifier.(interface {
+			Learn(domain.Transaction, string)
+		}); ok {
+			learner.Learn(tx, category)
+		}
+	}
 	if remember && !strings.EqualFold(category, categories.DefaultCategory) {
 		s.learnCategoryRule(r.Context(), tx, category)
 	}
-	tx.Category = category
-	view := categoryEditor(TransactionView{Transaction: tx}, s.categoryOptions(category))
+	view := s.categoryEditor(TransactionView{Transaction: tx}, s.categoryOptions(category))
 	s.renderPartialData(w, "transaction_category", view)
 }
 

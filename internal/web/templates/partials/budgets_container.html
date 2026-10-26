@@ -3,14 +3,14 @@
   <nav class="month-nav" aria-label="Budget month navigation">
     <a class="button ghost small month-nav-arrow" href="{{.BudgetPrevHref}}"
       hx-get="{{.BudgetPrevHref}}" hx-target="#budgets-container" hx-swap="outerHTML" hx-push-url="true"
-      aria-label="Previous month">‹ Prev</a>
+      aria-label="Previous month">←</a>
     <span class="month-nav-label">{{.BudgetMonthLabel}}</span>
     {{if .BudgetIsCurrentMonth}}
-      <span class="button ghost small month-nav-arrow disabled" aria-disabled="true">Next ›</span>
+      <span class="button ghost small month-nav-arrow disabled" aria-disabled="true">→</span>
     {{else}}
       <a class="button ghost small month-nav-arrow" href="{{.BudgetNextHref}}"
         hx-get="{{.BudgetNextHref}}" hx-target="#budgets-container" hx-swap="outerHTML" hx-push-url="true"
-        aria-label="Next month">Next ›</a>
+        aria-label="Next month">→</a>
       <a class="button ghost small" href="{{.BudgetCurrentHref}}"
         hx-get="{{.BudgetCurrentHref}}" hx-target="#budgets-container" hx-swap="outerHTML" hx-push-url="true">Current Month</a>
     {{end}}

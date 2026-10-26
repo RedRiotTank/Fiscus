@@ -94,13 +94,25 @@ func TestBudgetHistoricalMonthScopesSpending(t *testing.T) {
 		t.Fatalf("historical budgets status = %d body=%s", page.Code, page.Body.String())
 	}
 	body := page.Body.String()
-	for _, want := range []string{"September 2026", "Income in September 2026", "Current Month", "€350.00 of", "€50.00 of", "category=Groceries&amp;month=2026-09"} {
+	for _, want := range []string{"September 2026", "Income in September 2026", "Current Month", "←", "→", "month-nav-label", "€350.00 of", "€50.00 of", "category=Groceries&amp;month=2026-09"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("historical budget page missing %q", want)
 		}
 	}
 	if strings.Contains(body, "€90.00 of") {
 		t.Fatal("historical budget page leaked October spend")
+	}
+	current := f.request(t, http.MethodGet, "/budgets?workspace=personal", true, nil)
+	if current.Code != http.StatusOK {
+		t.Fatalf("current budgets status = %d body=%s", current.Code, current.Body.String())
+	}
+	for _, want := range []string{"October 2026", "€90.00 of"} {
+		if !strings.Contains(current.Body.String(), want) {
+			t.Errorf("current budget page missing %q", want)
+		}
+	}
+	if strings.Contains(current.Body.String(), "€50.00 of") {
+		t.Fatal("current budget page leaked September spend")
 	}
 	partial := f.request(t, http.MethodGet, "/budgets?workspace=personal&month=2026-09", true, map[string]string{"HX-Request": "true"})
 	if partial.Code != http.StatusOK || strings.Contains(partial.Body.String(), "<html") ||

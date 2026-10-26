@@ -155,3 +155,34 @@ func TestTransactionsPageRendersBizumBadge(t *testing.T) {
 		}
 	}
 }
+
+func TestTransactionsPageRendersBayesianConfirmationChip(t *testing.T) {
+	t.Parallel()
+	f := newWebFixture(t)
+	ctx := context.Background()
+	classifier, err := categories.NewDynamicClassifier(ctx, f.store, nil, categories.DefaultRules())
+	if err != nil {
+		t.Fatalf("NewDynamicClassifier: %v", err)
+	}
+	f.server.classifier = classifier
+	tx := domain.Transaction{
+		AccountID: "acc-1", ExternalID: "luna-1", AmountMinor: -350, Currency: "EUR",
+		BookingDate: f.server.now().UTC(), Counterparty: "Panaderia Luna",
+		Description: "Panaderia Luna", Category: "Uncategorized",
+		Status: domain.TransactionStatusBooked,
+	}
+	if _, _, err := f.store.UpsertTransaction(ctx, &tx); err != nil {
+		t.Fatalf("UpsertTransaction: %v", err)
+	}
+	classifier.Learn(tx, "Groceries")
+	page := f.request(t, http.MethodGet, "/transactions", true, nil)
+	if page.Code != http.StatusOK {
+		t.Fatalf("transactions status = %d", page.Code)
+	}
+	body := page.Body.String()
+	for _, want := range []string{"category-confirm-chip", "✓ Groceries", "hx-patch=\"/api/transactions/", "teach the classifier"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("transaction page missing %q", want)
+		}
+	}
+}

@@ -2478,6 +2478,29 @@ select {
   outline-offset: 2px;
 }
 
+.category-confirm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 3px 8px;
+  border: 1px dashed rgba(56, 189, 248, 0.55);
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.1);
+  color: #bae6fd;
+  font: inherit;
+  font-size: 0.66rem;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.category-confirm-chip:hover {
+  border-color: rgba(56, 189, 248, 0.9);
+  background: rgba(56, 189, 248, 0.18);
+}
+
 .badge.category.cat-bizum {
   --cat-bg: rgba(192, 132, 252, 0.14);
   --cat-fg: #d8b4fe;

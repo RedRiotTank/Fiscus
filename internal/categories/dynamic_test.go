@@ -48,3 +48,49 @@ func TestOnlyUncategorized(t *testing.T) {
 		t.Fatalf("empty result = %q", got)
 	}
 }
+
+func TestDynamicClassifierLearnsUserCorrection(t *testing.T) {
+	t.Parallel()
+	source := &fakeLearnedSource{}
+	classifier, err := NewDynamicClassifier(context.Background(), source, nil, DefaultRules())
+	if err != nil {
+		t.Fatalf("NewDynamicClassifier: %v", err)
+	}
+	tx := domain.Transaction{Counterparty: "Panaderia Luna", AmountMinor: -350}
+	before := classifier.ClassifyDetailed(tx)
+	if before.Category != DefaultCategory {
+		t.Fatalf("before learning = %+v, want Uncategorized", before)
+	}
+	classifier.Learn(tx, "Groceries")
+	after := classifier.ClassifyDetailed(tx)
+	if after.Category != "Groceries" || after.Confidence < 0.82 {
+		t.Fatalf("after learning = %+v, want high-confidence Groceries", after)
+	}
+}
+
+type fakeHistorySource struct {
+	fakeLearnedSource
+	history []domain.Transaction
+}
+
+func (f *fakeHistorySource) ListCategorizedTransactionsForTraining(context.Context, int) ([]domain.Transaction, error) {
+	return f.history, nil
+}
+
+func TestDynamicClassifierSeedsFromConfirmedHistory(t *testing.T) {
+	t.Parallel()
+	source := &fakeHistorySource{}
+	for i := 0; i < 20; i++ {
+		source.history = append(source.history, domain.Transaction{
+			Counterparty: "Panaderia Luna", AmountMinor: -350, Category: "Groceries",
+		})
+	}
+	classifier, err := NewDynamicClassifier(context.Background(), source, nil, DefaultRules())
+	if err != nil {
+		t.Fatalf("NewDynamicClassifier: %v", err)
+	}
+	result := classifier.ClassifyDetailed(domain.Transaction{Counterparty: "Panaderia Luna", AmountMinor: -350})
+	if result.Category != "Groceries" || result.Confidence < 0.82 {
+		t.Fatalf("history-trained result = %+v, want high-confidence Groceries", result)
+	}
+}

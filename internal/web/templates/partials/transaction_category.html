@@ -13,5 +13,14 @@
     <input id="remember-{{.Transaction.ID}}" type="checkbox" name="remember" value="1" checked>
     <label for="remember-{{.Transaction.ID}}" title="Uncheck for a one-off variable utility bill or a single transfer">Remember for all transfers to this person</label>
   </span>
+  {{if .Suggestion}}
+    <button type="button" class="category-confirm-chip"
+      hx-patch="/api/transactions/{{.Transaction.ID}}/category"
+      hx-vals='{{printf "{\"category\":%q,\"remember\":\"1\"}" .Suggestion}}'
+      hx-target="closest form" hx-swap="outerHTML"
+      title="Confirm the Bayesian suggestion and teach the classifier">
+      ✓ {{.Suggestion}} · {{.SuggestionConfidence}}%
+    </button>
+  {{end}}
 </form>
 {{end}}

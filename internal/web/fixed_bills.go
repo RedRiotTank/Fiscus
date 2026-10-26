@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -11,6 +12,11 @@ import (
 	"github.com/RedRiotTank/Fiscus/internal/domain"
 	"github.com/RedRiotTank/Fiscus/pkg/recurring"
 )
+
+// digitalSubscriptionPattern protects SaaS, Usenet, hosting, and VPN services
+// from the household-bill filter even if their names mention "internet" or
+// "services" or an old import labelled them as a utility.
+var digitalSubscriptionPattern = regexp.MustCompile(`(?i)\b(?:eweka|usenet|newsgroup|newshosting|giganews|vpn|hosting|saas|cloud)\b`)
 
 func workspaceList(view string) []string {
 	switch view {
@@ -251,7 +257,8 @@ func (s *Server) loadHousingRules(ctx context.Context, workspace string, account
 func filterFixedBillSubscriptions(subscriptions []analysis.Subscription, rules []domain.RecurringBillRule, housingRules []domain.HousingRule, fixedNeeds map[string]struct{}) []analysis.Subscription {
 	out := make([]analysis.Subscription, 0, len(subscriptions))
 	for _, subscription := range subscriptions {
-		if isUtilityCategory(subscription.Category) || isFixedNeedCategory(subscription.Category, fixedNeeds) {
+		digital := digitalSubscriptionPattern.MatchString(subscription.Counterparty)
+		if !digital && (isUtilityCategory(subscription.Category) || isFixedNeedCategory(subscription.Category, fixedNeeds)) {
 			continue
 		}
 		fixed := false

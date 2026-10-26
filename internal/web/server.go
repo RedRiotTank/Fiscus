@@ -211,7 +211,7 @@ func (s *Server) templateFuncs() template.FuncMap {
 		"bpsPercent":          bpsPercent,
 		"bpsInput":            bpsInput,
 		"moneyInput":          moneyInput,
-		"categoryEditor":      categoryEditor,
+		"categoryEditor":      s.categoryEditor,
 		"isBizum":             isBizum,
 		"isHousingCategory":   housing.IsCategory,
 		"budgetDrilldown":     budgetDrilldownURL,
