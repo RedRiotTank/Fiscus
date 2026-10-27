@@ -1,0 +1,44 @@
+# Fiscus demo deployment for Komodo + Nginx Proxy Manager.
+#
+# Build and run:
+#   docker compose -f compose.demo.yml up -d --build
+#
+# The demo is intentionally ephemeral: it seeds a temporary SQLite database in
+# /tmp on every start and removes it on shutdown. Do not add a /data volume.
+
+services:
+  fiscus-demo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fiscus-demo:local
+    container_name: fiscus-demo
+
+    # Seeded demo dashboard, no bank connection or external integrations.
+    command: ["demo", "--address", ":8080"]
+
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    # Nginx Proxy Manager must be attached to this same network.
+    # Override the name with FISCUS_PROXY_NETWORK if your NPM network differs.
+    networks:
+      - proxy
+
+    # This file deliberately does not load .env or publish a host port:
+    # the demo needs no credentials and NPM reaches it over the Docker network.
+    #
+    # If NPM is not running in Docker, comment out `networks` above and use:
+    # ports:
+    #   - "127.0.0.1:8080:8080"
+
+networks:
+  proxy:
+    external: true
+    name: ${FISCUS_PROXY_NETWORK:-proxy_net}
